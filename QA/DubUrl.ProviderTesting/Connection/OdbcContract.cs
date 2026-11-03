@@ -9,6 +9,7 @@ public abstract class OdbcContract : ConnectionQaContract
 {
     protected abstract string ConnectionUrl { get; }
     protected override string CliConnectionUrl => ConnectionUrl;
+    protected override ConnectionUrl CreateLiveConnectionUrl() => new(ConnectionUrl);
     protected abstract string SelectFirstCustomerSql { get; }
     protected abstract string SelectCustomerByIdSql { get; }
     protected virtual bool SupportsParameters => true;

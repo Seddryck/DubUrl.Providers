@@ -20,6 +20,7 @@ public abstract class AdomdContract : ConnectionQaContract
     protected abstract string ConnectionUrl { get; }
     protected override string CliConnectionUrl => ConnectionUrl;
     protected abstract string InvalidConnectionUrl { get; }
+    protected override ConnectionUrl CreateLiveConnectionUrl() => CreateUrl();
     protected abstract string SelectFirstCustomerSql { get; }
     protected abstract string SelectFirstCustomerRowSql { get; }
     protected abstract string SelectCustomerByIdSql { get; }

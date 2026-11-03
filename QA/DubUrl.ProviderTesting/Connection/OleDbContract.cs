@@ -8,6 +8,7 @@ public abstract class OleDbContract : ConnectionQaContract
 {
     protected abstract ConnectionUrl CreateConnectionUrl();
     protected override string CliConnectionUrl => CreateConnectionUrl().Url;
+    protected override ConnectionUrl CreateLiveConnectionUrl() => CreateConnectionUrl();
     protected abstract string SelectFirstCustomerSql { get; }
     protected abstract string SelectCustomerByIdSql { get; }
 
