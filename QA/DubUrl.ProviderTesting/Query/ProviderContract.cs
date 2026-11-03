@@ -39,7 +39,7 @@ public abstract class ProviderContract : ConnectionQaContract
     [OneTimeSetUp]
     public virtual void RegisterProviderFactories()
     {
-        new ProviderFactoriesRegistrator().Register();
+        new ProviderFactoriesRegistrator(new QaFactoryDiscovery(GetType().Assembly)).Register();
         DateOnlyMappings.Register();
     }
 

@@ -25,7 +25,7 @@ git -C $source checkout --quiet --detach FETCH_HEAD
 if ($LASTEXITCODE) { throw 'Could not check out the pinned Schema commit.' }
 
 foreach ($name in 'DubUrl.Schema', 'DubUrl.Schema.Documents') {
-    dotnet pack (Join-Path $source $name) -c Release "-p:Version=$version" "-p:DubUrlVersion=$DubUrlVersion" -o $feed --nologo
+    dotnet pack (Join-Path $source $name) -c Release "-p:Version=$version" "-p:DubUrlVersion=$DubUrlVersion" -p:PackageIcon= -o $feed --nologo
     if ($LASTEXITCODE) { throw "Could not pack $name for live QA." }
 }
 Set-Content -LiteralPath $revision -Value "$SourceCommit/$DubUrlVersion"

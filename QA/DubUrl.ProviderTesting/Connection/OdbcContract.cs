@@ -15,7 +15,7 @@ public abstract class OdbcContract : ConnectionQaContract
 
     [OneTimeSetUp]
     public void RegisterProviderFactories()
-        => new ProviderFactoriesRegistrator().Register();
+        => new ProviderFactoriesRegistrator(new QaFactoryDiscovery(GetType().Assembly)).Register();
 
     [Test, Category("ODBC")]
     public void Connect()
