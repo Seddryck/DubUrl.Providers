@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><TargetFrameworks>net10.0</TargetFrameworks><IsPackable>false</IsPackable><IsTestProject>true</IsTestProject></PropertyGroup>
+  <ItemGroup>
+    <Compile Include="../RequiresDotNet10.cs" Link="RequiresDotNet10.cs" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.11.0" />
+    <PackageReference Include="NUnit" Version="5.0.0" />
+    <PackageReference Include="NUnit3TestAdapter" Version="5.1.0" />
+    <ProjectReference Include="../../../Providers/Sqlite/DubUrl.Provider.Sqlite/DubUrl.Provider.Sqlite.csproj" />
+    <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.12" />
+    <ProjectReference Include="../../DubUrl.ProviderTesting/DubUrl.ProviderTesting.csproj" />
+    <PackageReference Include="DubUrl.Schema.Documents" Version="$(SchemaPackageVersion)" />
+  </ItemGroup>
+</Project>

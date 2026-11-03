@@ -1,0 +1,72 @@
+name: Shared schema database QA
+
+on:
+  workflow_call:
+    inputs:
+      providers-ref:
+        description: Provider repository ref when called from DubUrl.Schema.
+        type: string
+        required: false
+      schema-commit:
+        description: DubUrl.Schema source commit to build and exercise.
+        type: string
+        required: false
+      duburl-version:
+        description: DubUrl package version used by the Schema caller.
+        type: string
+        required: false
+
+permissions:
+  contents: read
+
+jobs:
+  schema-qa:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { database: Sqlite, os: windows-latest }
+          - { database: DuckDb, os: windows-latest }
+          - { database: PostgreSql, os: ubuntu-latest }
+          - { database: SqlServer, os: ubuntu-latest }
+          - { database: Oracle, os: ubuntu-latest }
+          - { database: SingleStore, os: ubuntu-latest }
+          - { database: MySql, os: ubuntu-latest }
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          repository: Seddryck/DubUrl.Providers
+          ref: ${{ inputs.providers-ref || github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 10.0.401
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+      - run: python -m pip install defusedxml==0.7.1
+      - name: Prepare Schema QA packages
+        shell: pwsh
+        env:
+          SCHEMA_SOURCE_COMMIT: ${{ inputs.schema-commit }}
+          DUBURL_DEPENDENCY_VERSION: ${{ inputs.duburl-version }}
+        run: |
+          $arguments = @{}
+          if ($env:SCHEMA_SOURCE_COMMIT) { $arguments.SourceCommit = $env:SCHEMA_SOURCE_COMMIT }
+          if ($env:DUBURL_DEPENDENCY_VERSION) { $arguments.DubUrlVersion = $env:DUBURL_DEPENDENCY_VERSION }
+          ./build/Initialize-SchemaQa.ps1 @arguments
+      - name: Run schema QA
+        shell: pwsh
+        env:
+          DUBURL_DEPENDENCY_VERSION: ${{ inputs.duburl-version }}
+        run: |
+          $arguments = @{}
+          if ($env:DUBURL_DEPENDENCY_VERSION) { $arguments.DubUrlVersion = $env:DUBURL_DEPENDENCY_VERSION }
+          ./QA/Schema/run.ps1 @arguments -Database '${{ matrix.database }}'
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: schema-qa-${{ matrix.database }}
+          path: artifacts/results/${{ matrix.database }}

@@ -1,0 +1,12 @@
+using DubUrl.ProviderTesting;
+using DubUrl.Providers.QA.Contracts.Connection;
+using DubUrl.Providers.QA.Contracts.Query;
+using NUnit.Framework;
+namespace DubUrl.Provider.MsSqlServer.QA.Connection;
+[TestFixture, Category("MsSqlServer")]
+public sealed class MsSqlServerOdbcTests : OdbcContract
+{
+    protected override string ConnectionUrl => "odbc+mssql://sa:Password12!@localhost/DubUrl?TrustServerCertificate=Yes";
+    protected override string SelectFirstCustomerSql => "select FullName from Customer where CustomerId=1";
+    protected override string SelectCustomerByIdSql => "select FullName from Customer where CustomerId=?";
+}

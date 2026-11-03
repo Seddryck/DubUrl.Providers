@@ -1,0 +1,33 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+    <QaProvider>sqlite</QaProvider>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="DubUrl.Schema" Version="[$(SchemaPackageVersion)]" />
+    <PackageReference Include="Microsoft.Data.Sqlite.Core" Version="10.0.12" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.11.0" />
+    <PackageReference Include="NUnit" Version="5.0.0" />
+    <PackageReference Include="NUnit3TestAdapter" Version="5.1.0" />
+    <PackageReference Include="SQLitePCLRaw.bundle_e_sqlite3" Version="3.0.1" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="DubUrl" Version="$(DubUrlVersion)" />
+    <ProjectReference Include="..\..\..\QA\DubUrl.ProviderTesting\DubUrl.ProviderTesting.csproj" />
+
+  </ItemGroup>
+  <ItemGroup>
+    <None Update="qa-manifest.json" CopyToOutputDirectory="PreserveNewest" />
+    <QaInfrastructure Include="infrastructure\**\*" />
+  </ItemGroup>
+  <Import Project="..\..\..\build\ProviderQaBundle.targets" />
+  <ItemGroup>
+    <ProjectReference Include="../DubUrl.Provider.Sqlite/DubUrl.Provider.Sqlite.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <Using Include="DubUrl.Provider.Sqlite.QA.Connection.Specific" />
+    <Using Include="DubUrl.Provider.Sqlite.QA.infrastructure" />
+    <Using Include="DubUrl.Provider.Sqlite.QA.Query" />
+    <Using Include="DubUrl.Provider.Sqlite.QA.Schema.Specific" />
+  </ItemGroup>
+</Project>
