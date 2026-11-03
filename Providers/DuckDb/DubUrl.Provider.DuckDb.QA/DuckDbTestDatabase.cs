@@ -1,7 +1,7 @@
 using DuckDB.NET.Data;
 using NUnit.Framework;
 
-namespace DubUrl.Provider.DuckDb.QA.infrastructure;
+namespace DubUrl.Provider.DuckDb.QA;
 
 [SetUpFixture]
 public sealed class DuckDbTestDatabase
