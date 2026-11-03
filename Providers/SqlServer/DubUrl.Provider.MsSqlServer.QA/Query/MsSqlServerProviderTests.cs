@@ -6,6 +6,8 @@ namespace DubUrl.Provider.MsSqlServer.QA.Query;
 [TestFixture, Category("MsSqlServer")]
 public sealed class MsSqlServerProviderTests : ProviderContract
 {
+    protected override bool SupportsSchemaDiscovery => true;
+    protected override bool SupportsBulkCopy => true;
     protected override string CliConnectionUrl => Environment.GetEnvironmentVariable("DUBURL_MSSQLSERVER_CONNECTION_CHECK_QA_URL") ?? ConnectionUrl;
     internal static string DatabaseUrl => "mssql://sa:Password12!@localhost/DubUrl?TrustServerCertificate=True";
     protected override string ConnectionUrl => DatabaseUrl;

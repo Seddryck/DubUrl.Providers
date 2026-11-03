@@ -9,6 +9,7 @@ namespace DubUrl.Provider.Sqlite.QA.Query;
 [Category("Sqlite")]
 public sealed class SqliteProviderTests : ProviderContract
 {
+    protected override bool SupportsSchemaDiscovery => true;
     protected override string ConnectionUrl => SqliteTestDatabase.ConnectionUrl;
     protected override string SelectFirstCustomerSql => "select FullName from Customer where CustomerId=1";
     protected override string SelectCustomerByIdSql => "select FullName from Customer where CustomerId=@CustId";

@@ -9,6 +9,7 @@ namespace DubUrl.Provider.PostgreSql.QA.Query;
 [Category("Postgresql")]
 public sealed class PostgreSqlProviderTests : ProviderContract
 {
+    protected override bool SupportsSchemaDiscovery => true;
     protected override string ConnectionUrl => PostgreSqlTestDatabase.ConnectionUrl;
     protected override string CliTableName => "\"Customer\"";
     protected override string SelectFirstCustomerSql => "select \"FullName\" from \"Customer\" where \"CustomerId\"=1";

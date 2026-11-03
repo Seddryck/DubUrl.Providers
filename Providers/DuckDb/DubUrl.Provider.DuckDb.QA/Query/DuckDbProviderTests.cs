@@ -11,6 +11,8 @@ namespace DubUrl.Provider.DuckDb.QA.Query;
 [TestFixture, Category("DuckDB"), NonParallelizable]
 public sealed class DuckDbProviderTests : ProviderContract
 {
+    protected override bool SupportsSchemaDiscovery => true;
+    protected override bool SupportsBulkCopy => true;
     protected override string ConnectionUrl => DuckDbTestDatabase.ConnectionUrl;
     protected override string SelectFirstCustomerSql => "select FullName from Customer where CustomerId=1";
     protected override string SelectCustomerByIdSql => string.Empty;

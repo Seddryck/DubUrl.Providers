@@ -6,6 +6,7 @@ namespace DubUrl.Provider.SingleStore.QA.Query;
 [TestFixture, Category("SingleStore")]
 public sealed class SingleStoreProviderTests : ProviderContract
 {
+    protected override bool SupportsSchemaDiscovery => true;
     protected override string ConnectionUrl => SingleStoreTestDatabase.ConnectionUrl;
     protected override string SelectFirstCustomerSql => "select FullName from Customer where CustomerId=1";
     protected override string SelectCustomerByIdSql => "select FullName from Customer where CustomerId=@CustId";

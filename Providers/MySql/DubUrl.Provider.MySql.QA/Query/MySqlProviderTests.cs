@@ -6,6 +6,7 @@ namespace DubUrl.Provider.MySql.QA.Query;
 [TestFixture, Category("MySQL")]
 public sealed class MySqlProviderTests : ProviderContract
 {
+    protected override bool SupportsSchemaDiscovery => true;
     protected override string ConnectionUrl => "mysql://root:Password12!@localhost/DubUrl";
     protected override string SelectFirstCustomerSql => "select FullName from Customer where CustomerId=1";
     protected override string SelectCustomerByIdSql => "select FullName from Customer where CustomerId=@CustId";

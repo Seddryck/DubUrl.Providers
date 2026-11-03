@@ -1,3 +1,5 @@
+using DubUrl.Providers.QA.Contracts.BulkCopy;
+using DubUrl.Providers.QA.Contracts.Schema;
 using System.Data;
 using NUnit.Framework;
 using DubUrl.Mapping;
@@ -25,6 +27,17 @@ public abstract class ConnectionQaContract : PasswordAuthenticationQaContract
         connection.Open();
         Assert.That(connection.State, Is.EqualTo(ConnectionState.Open));
     }
+
+    protected virtual bool SupportsSchemaDiscovery => false;
+    protected virtual bool SupportsBulkCopy => false;
+
+    [Test, Category("SharedSchema")]
+    public Task SchemaDiscoveryMatchesProviderSupport()
+        => SchemaDiscoveryBaseline.VerifyAsync(CreateLiveConnectionUrl(), SupportsSchemaDiscovery);
+
+    [Test, Category("SharedBulkCopy")]
+    public void BulkCopyMatchesProviderSupport()
+        => BulkCopyBaseline.Verify(CreateLiveConnectionUrl(), SupportsBulkCopy);
 
     protected virtual string CliTableName => "Customer";
     protected virtual string? CliEmptyTableName => null;
