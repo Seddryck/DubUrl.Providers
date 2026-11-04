@@ -40,7 +40,18 @@ Push-Location $repositoryRoot
 try {
     & docker info --format '{{.OSType}}'
     if ($LASTEXITCODE -ne 0) { throw 'Docker must be running with Linux containers.' }
-    & docker @compose up --detach --wait --wait-timeout $readinessTimeoutSeconds
+    for ($attempt = 1; $attempt -le 3; $attempt++) {
+        $pullOutput = @(& docker @compose pull db2 2>&1)
+        $pullExitCode = $LASTEXITCODE
+        Write-RedactedOutput $pullOutput
+        if ($pullExitCode -eq 0) { break }
+        $retryable = ($pullOutput -join [Environment]::NewLine) -match 'context deadline exceeded|TLS handshake timeout|i/o timeout|connection reset|unexpected EOF|502 Bad Gateway|503 Service Unavailable|504 Gateway Timeout'
+        if (!$retryable -or $attempt -eq 3) { throw 'Could not pull the Db2 QA image.' }
+        Write-Warning "Db2 image pull failed with a transient registry error (attempt $attempt of 3)."
+        Start-Sleep -Seconds (10 * $attempt)
+    }
+
+    & docker @compose up --pull never --detach --wait --wait-timeout $readinessTimeoutSeconds
     if ($LASTEXITCODE -ne 0) { throw 'Db2 QA infrastructure did not become healthy before the readiness timeout.' }
 
     # The container instance owner initializes the fixture through stdin.
