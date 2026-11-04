@@ -11,7 +11,7 @@
   <ItemGroup>
     <PackageReference Include="DubUrl" Version="$(DubUrlVersion)" />
     <PackageReference Include="DubUrl.OleDb" Version="$(DubUrlVersion)" />
-    <ProjectReference Include="..\..\..\QA\DubUrl.ProviderTesting\DubUrl.ProviderTesting.csproj" />
+    <ProjectReference Include="..\..\..\QA\DubUrl.Provider.QA\DubUrl.Provider.QA.csproj" />
   </ItemGroup>
   <ItemGroup>
     <None Update="CreateFilePasswordFixture.ps1" CopyToOutputDirectory="PreserveNewest" />

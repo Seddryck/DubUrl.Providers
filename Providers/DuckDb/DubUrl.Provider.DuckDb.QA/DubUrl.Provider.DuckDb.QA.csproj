@@ -15,7 +15,7 @@
     <ProjectReference Include="..\DubUrl.Provider.DuckDb.Native\DubUrl.Provider.DuckDb.Native.csproj" />
     <PackageReference Include="DubUrl.BulkCopy" Version="$(DubUrlVersion)" />
     <PackageReference Include="DubUrl" Version="$(DubUrlVersion)" />
-    <ProjectReference Include="..\..\..\QA\DubUrl.ProviderTesting\DubUrl.ProviderTesting.csproj" />
+    <ProjectReference Include="..\..\..\QA\DubUrl.Provider.QA\DubUrl.Provider.QA.csproj" />
   </ItemGroup>
   <ItemGroup><None Update="qa-manifest.json" CopyToOutputDirectory="PreserveNewest" /><QaInfrastructure Include="infrastructure\**\*" /></ItemGroup>
   <Import Project="..\..\..\build\ProviderQaBundle.targets" />

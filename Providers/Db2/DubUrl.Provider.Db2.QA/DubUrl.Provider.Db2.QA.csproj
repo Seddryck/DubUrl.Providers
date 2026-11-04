@@ -7,7 +7,7 @@
     <PackageReference Include="NUnit" Version="5.0.0" />
     <PackageReference Include="NUnit3TestAdapter" Version="5.1.0" />
     <ProjectReference Include="../DubUrl.Provider.Db2/DubUrl.Provider.Db2.csproj" />
-    <ProjectReference Include="../../../QA/DubUrl.ProviderTesting/DubUrl.ProviderTesting.csproj" />
+    <ProjectReference Include="../../../QA/DubUrl.Provider.QA/DubUrl.Provider.QA.csproj" />
   </ItemGroup>
   <ItemGroup><None Update="qa-manifest.json" CopyToOutputDirectory="PreserveNewest" /><QaInfrastructure Include="infrastructure/**/*" /></ItemGroup>
   <Import Project="../../../build/ProviderQaBundle.targets" />

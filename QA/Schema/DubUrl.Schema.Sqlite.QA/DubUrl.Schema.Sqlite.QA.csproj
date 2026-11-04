@@ -7,7 +7,7 @@
     <PackageReference Include="NUnit3TestAdapter" Version="5.1.0" />
     <ProjectReference Include="../../../Providers/Sqlite/DubUrl.Provider.Sqlite/DubUrl.Provider.Sqlite.csproj" />
     <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.12" />
-    <ProjectReference Include="../../DubUrl.ProviderTesting/DubUrl.ProviderTesting.csproj" />
+    <ProjectReference Include="../../DubUrl.Provider.QA/DubUrl.Provider.QA.csproj" />
     <PackageReference Include="DubUrl.Schema.Documents" Version="$(SchemaPackageVersion)" />
   </ItemGroup>
 </Project>

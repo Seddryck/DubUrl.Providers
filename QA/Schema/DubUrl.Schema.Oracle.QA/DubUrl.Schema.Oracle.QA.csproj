@@ -8,7 +8,7 @@
     <PackageReference Include="NUnit3TestAdapter" Version="5.1.0" />
     <ProjectReference Include="../../../Providers/Oracle/DubUrl.Provider.Oracle/DubUrl.Provider.Oracle.csproj" />
     <PackageReference Include="Oracle.ManagedDataAccess.Core" Version="23.26.301" />
-    <ProjectReference Include="../../DubUrl.ProviderTesting/DubUrl.ProviderTesting.csproj" />
+    <ProjectReference Include="../../DubUrl.Provider.QA/DubUrl.Provider.QA.csproj" />
     <PackageReference Include="DubUrl.Schema.Documents" Version="$(SchemaPackageVersion)" />
   </ItemGroup>
 </Project>

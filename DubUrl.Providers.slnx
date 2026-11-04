@@ -49,7 +49,7 @@
   <Project Path="Providers/Trino/DubUrl.Provider.Trino.QA/DubUrl.Provider.Trino.QA.csproj" />
   <Project Path="QA/DubUrl.Provider.Testing/DubUrl.Provider.Testing.csproj" />
   <Project Path="QA/DubUrl.Providers.Testing/DubUrl.Providers.Testing.csproj" />
-  <Project Path="QA/DubUrl.ProviderTesting/DubUrl.ProviderTesting.csproj" />
+  <Project Path="QA/DubUrl.Provider.QA/DubUrl.Provider.QA.csproj" />
   <Project Path="QA/DubUrl.QA/DubUrl.QA.csproj" />
   <Project Path="QA/Schema/DubUrl.Schema.DuckDb.QA/DubUrl.Schema.DuckDb.QA.csproj" />
   <Project Path="QA/Schema/DubUrl.Schema.MySql.QA/DubUrl.Schema.MySql.QA.csproj" />

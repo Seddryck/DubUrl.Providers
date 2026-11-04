@@ -7,7 +7,7 @@ The projects under Providers use released DubUrl packages. The provider unit sui
     dotnet test QA/DubUrl.Providers.Testing
     dotnet test DubUrl.BulkCopy.Testing
 
-The shared live fixtures are in QA/DubUrl.ProviderTesting. Their four namespaces are Schema, Connection, BulkCopy, and Query under DubUrl.Providers.QA.Contracts. Concrete fixtures supply their real driver, SQL, and expected behavior. Engine regressions live in Specific subfolders.
+The shared live fixtures are in QA/DubUrl.Provider.QA. Their four namespaces are Schema, Connection, BulkCopy, and Query under DubUrl.Providers.QA.Contracts. Concrete fixtures supply their real driver, SQL, and expected behavior. Engine regressions live in Specific subfolders.
 
 Prepare the Schema dependency and build the solution with:
 
@@ -29,3 +29,5 @@ Every active provider QA job requires a passing live connection lifecycle, custo
 
 Live QA is disabled for Snowflake, Teradata, and SSAS Tabular and Multidimensional. SSAS keeps its named checks for its package and manifest checks only.
 The required Apache Drill QA check builds the provider and validates its manifest. Live ODBC QA requires an authenticated driver distribution and is excluded on public runners.
+
+The published [DubUrl.ProviderTesting 0.60.0 package](https://www.nuget.org/packages/DubUrl.ProviderTesting/0.60.0) remains available for compatibility. The internal DubUrl.Provider.QA project is not published.

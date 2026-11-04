@@ -1,7 +1,6 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <IsPackable>true</IsPackable>
-    <PackageId>DubUrl.ProviderTesting</PackageId>
+    <IsPackable>false</IsPackable>
     <Description>Reusable live provider QA contracts for DubUrl provider modules.</Description>
   </PropertyGroup>
   <ItemGroup>
