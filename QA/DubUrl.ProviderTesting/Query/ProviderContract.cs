@@ -69,7 +69,7 @@ public abstract class ProviderContract : ConnectionQaContract
 
     [Test, Category("ConnectionUrl")]
     public void QueryCustomer()
-        => AssertScalar(SelectFirstCustomerSql, "Nikola Tesla");
+        => CustomerQueryBaseline.Verify(CreateLiveConnectionUrl(), SelectFirstCustomerSql);
 
     [Test, Category("DatabaseUrl")]
     public void QueryCustomerWithDatabase()

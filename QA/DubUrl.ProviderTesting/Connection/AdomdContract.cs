@@ -51,7 +51,7 @@ public abstract class AdomdContract : ConnectionQaContract
     [Test] public void Open() { using var connection = CreateUrl().Open(); Assert.That(connection.State, Is.EqualTo(ConnectionState.Open)); }
     [Test] public void OpenWrongUrl() => Assert.That(CreateUrl(InvalidConnectionUrl).Open, Throws.InstanceOf<Exception>());
 
-    [Test] public void QueryCustomer() { Require(SupportsCustomerQueries, "Customer queries are not implemented."); AssertScalar(SelectFirstCustomerSql, null, "Nikola Tesla"); }
+    [Test] public void QueryCustomer() { Require(SupportsCustomerQueries, "Customer queries are not implemented."); CustomerQueryBaseline.Verify(CreateLiveConnectionUrl(), SelectFirstCustomerSql); }
     [Test] public void QueryCustomerScalarValueWithReader()
     {
         Require(SupportsCustomerQueries, "Customer queries are not implemented.");

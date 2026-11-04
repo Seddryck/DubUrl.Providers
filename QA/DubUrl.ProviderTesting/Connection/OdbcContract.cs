@@ -27,7 +27,7 @@ public abstract class OdbcContract : ConnectionQaContract
 
     [Test, Category("ConnectionUrl"), Category("ODBC")]
     public void QueryCustomer()
-        => AssertScalar(SelectFirstCustomerSql, null, 1, "Nikola Tesla");
+        => CustomerQueryBaseline.Verify(CreateLiveConnectionUrl(), SelectFirstCustomerSql);
 
     [Test, Category("ConnectionUrl"), Category("ODBC")]
     public void QueryCustomerWithParams()

@@ -1,5 +1,5 @@
 function Assert-ProviderQaResults {
-    param([Parameter(Mandatory)][string] $path, [switch] $requireAll)
+    param([Parameter(Mandatory)][string] $path, [switch] $requireAll, [switch] $requireShared)
     if (!(Test-Path -LiteralPath $path)) { throw 'Expected test result file is missing.' }
     [xml] $result = Get-Content -LiteralPath $path -Raw
     $counts = $result.TestRun.ResultSummary.Counters
@@ -7,6 +7,14 @@ function Assert-ProviderQaResults {
     if ([int]$counts.failed -gt 0 -or [int]$counts.error -gt 0 -or [int]$counts.aborted -gt 0) { throw 'Test results contain failures.' }
     if ($requireAll -and ([int]$counts.executed -ne [int]$counts.total -or [int]$counts.passed -ne [int]$counts.total)) {
         throw 'Required suite contains skipped or unsuccessful tests.'
+    }
+    if ($requireShared) {
+        foreach ($name in 'ConnectionCanCloseAndReopen','SchemaDiscoveryMatchesProviderSupport','BulkCopyMatchesProviderSupport','QueryCustomer') {
+            $passed = @($result.TestRun.Results.UnitTestResult | Where-Object {
+                $_.outcome -eq 'Passed' -and ($_.testName -split '\.')[-1] -eq $name
+            })
+            if (!$passed.Count) { throw "Required live QA did not pass: $name." }
+        }
     }
 }
 Function Start-ProviderQaInfrastructure {
@@ -127,7 +135,13 @@ Function Run-ProviderQaSuite {
 				}
 
 				$frameworkResults = Join-Path $resultsRoot "$provider/$framework"
-                $suites = @(@{ Name='complete'; Filter=$testFilter; Strict=![string]::IsNullOrEmpty($testFilter) })
+                $requireShared = !$testFilter -and $provider -notin @('ssasmultidim','ssastabular')
+                $filter = $testFilter
+                if ($testFilter -eq 'TestCategory=OleDB') {
+                    $filter = 'FullyQualifiedName~OleDbTests&(TestCategory=OleDB|TestCategory=Connection|TestCategory=SharedSchema|TestCategory=SharedBulkCopy)'
+                    $requireShared = $true
+                }
+                $suites = @(@{ Name='complete'; Filter=$filter; Strict=![string]::IsNullOrEmpty($testFilter); Shared=$requireShared })
                 $manifest = Get-Content (Join-Path (Split-Path $project) 'qa-manifest.json') -Raw | ConvertFrom-Json
                 if (!$testFilter -and $manifest.capabilities -contains 'Schema') {
                     $suites += @{ Name='schema'; Filter='TestCategory=Schema'; Strict=$true }
@@ -144,7 +158,7 @@ Function Run-ProviderQaSuite {
                     if ($suite.Filter) { $arguments += @('--filter', $suite.Filter) }
                     & dotnet @arguments
                     if ($LASTEXITCODE -ne 0) { $failures += "$($suite.Name) tests failed for $provider ($framework)." }
-                    try { Assert-ProviderQaResults -path $result -requireAll:$suite.Strict }
+                    try { Assert-ProviderQaResults -path $result -requireAll:$suite.Strict -requireShared:([bool]$suite.Shared) }
                     catch { $failures += "$provider ($framework) $($suite.Name): $($_.Exception.Message)" }
                 }
 				Write-Host "Building $provider QA bundle for $framework"

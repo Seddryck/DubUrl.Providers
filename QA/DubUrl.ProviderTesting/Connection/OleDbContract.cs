@@ -21,7 +21,7 @@ public abstract class OleDbContract : ConnectionQaContract
 
     [Test, Category("OleDB")]
     public void QueryCustomer()
-        => AssertScalar(SelectFirstCustomerSql, null, "Nikola Tesla");
+        => CustomerQueryBaseline.Verify(CreateLiveConnectionUrl(), SelectFirstCustomerSql);
 
     [Test, Category("OleDB")]
     public void QueryCustomerWithParams()
