@@ -8,7 +8,7 @@ if ($env:GITHUB_ACTIONS -eq "true") {
 	$ErrorActionPreference = "Stop"
 	. $PSScriptRoot\..\Run-ProviderQaSuite.ps1
 	$project = Join-Path $PSScriptRoot "..\..\..\Providers\Drill\DubUrl.Provider.Drill.QA\DubUrl.Provider.Drill.QA.csproj"
-	Run-ProviderQaSuite -project $project -provider "drill" -config $config -frameworks $frameworks
+	Run-ProviderQaSuite -project $project -provider "drill" -config $config -frameworks $frameworks -testFilter 'TestCategory=Manifest'
 	exit 0
 }
 
