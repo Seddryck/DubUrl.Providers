@@ -1,0 +1,35 @@
+name: Power BI Desktop provider QA
+on:
+  workflow_dispatch:
+concurrency:
+  group: qa-powerbidesktop-${{ github.ref }}
+  cancel-in-progress: false
+permissions: { contents: read }
+env: { DOTNET_CLI_TELEMETRY_OPTOUT: 1, DOTNET_NOLOGO: 1, DOTNET_NO_WORKLOAD_UPDATE_NOTIFICATION: 1 }
+jobs:
+  provider-qa:
+    name: Power BI Desktop QA
+    runs-on: windows-latest
+    timeout-minutes: 135
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: |
+            8.0.416
+            9.0.308
+            10.0.401
+      - name: Prepare Schema QA packages
+        shell: pwsh
+        run: ./build/Initialize-SchemaQa.ps1
+      - name: Run provider QA
+        shell: pwsh
+        run: ./QA/DubUrl.QA/PowerBiDesktop/deploy-powerbidesktop-test-env.ps1 -force -config Release -frameworks @('net8.0', 'net9.0', 'net10.0')
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v7
+        with: { name: 'qa-powerbidesktop-results-${{ github.sha }}', path: '.test-results/powerbidesktop', if-no-files-found: error }
+      - name: Upload QA bundle
+        if: always()
+        uses: actions/upload-artifact@v7
+        with: { name: 'qa-powerbidesktop-bundle-${{ github.sha }}', path: 'Providers/Adomd/DubUrl.Provider.PowerBiDesktop.QA/bin/qa/powerbidesktop/*/**', include-hidden-files: true, if-no-files-found: error }

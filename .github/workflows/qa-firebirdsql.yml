@@ -1,0 +1,59 @@
+name: FirebirdSQL provider QA
+
+on:
+  pull_request:
+    branches: [ main ]
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+concurrency:
+  group: qa-firebirdsql-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+env:
+  DOTNET_CLI_TELEMETRY_OPTOUT: 1
+  DOTNET_NOLOGO: 1
+  DOTNET_NO_WORKLOAD_UPDATE_NOTIFICATION: 1
+
+jobs:
+  provider-qa:
+    name: FirebirdSQL QA
+    runs-on: windows-latest
+    timeout-minutes: 75
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: |
+            8.0.416
+            9.0.308
+            10.0.401
+      - name: Prepare Schema QA packages
+        shell: pwsh
+        run: ./build/Initialize-SchemaQa.ps1
+      - name: Run provider QA
+        shell: pwsh
+        run: >-
+          ./QA/DubUrl.QA/FirebirdSQL/deploy-firebirdsql-test-env.ps1
+          -force
+          -config Release
+          -frameworks @('net8.0', 'net9.0', 'net10.0')
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: qa-firebirdsql-results-${{ github.sha }}
+          path: .test-results/firebirdsql
+          if-no-files-found: error
+      - name: Upload QA bundle
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: qa-firebirdsql-bundle-${{ github.sha }}
+          path: Providers/FirebirdSql/DubUrl.Provider.FirebirdSql.QA/bin/qa/firebirdsql/*/**
+          include-hidden-files: true
+          if-no-files-found: error

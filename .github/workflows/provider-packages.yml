@@ -1,0 +1,82 @@
+name: Provider packages
+
+on:
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: New NuGet version for the provider package set.
+        type: string
+        required: true
+      publish:
+        description: Publish the validated package set to NuGet.
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  pack:
+    runs-on: windows-latest
+    env:
+      PROVIDER_PACKAGE_VERSION: ${{ inputs.version || '0.61.0-preview.1' }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 10.0.401
+      - name: Prepare Schema QA packages
+        shell: pwsh
+        run: ./build/Initialize-SchemaQa.ps1
+      - name: Run provider unit tests
+        run: dotnet test QA/DubUrl.Providers.Testing -c Release --nologo
+      - name: Pack and validate provider libraries
+        shell: pwsh
+        run: ./build/Pack-Providers.ps1 -Version $env:PROVIDER_PACKAGE_VERSION
+      - uses: actions/upload-artifact@v7
+        with:
+          name: provider-nuget
+          path: artifacts/nuget
+          if-no-files-found: error
+
+  publish:
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.publish
+    needs: pack
+    runs-on: ubuntu-latest
+    environment: release
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      PROVIDER_PACKAGE_VERSION: ${{ inputs.version }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 10.0.401
+      - uses: actions/download-artifact@v7
+        with:
+          name: provider-nuget
+          path: artifacts/nuget
+      - name: Validate downloaded package set
+        shell: pwsh
+        run: ./build/Test-ProviderPackages.ps1 -Version $env:PROVIDER_PACKAGE_VERSION -NuGetDirectory artifacts/nuget
+      - name: Exchange GitHub identity for a NuGet API key
+        id: nuget-login
+        uses: NuGet/login@8d196754b4036150537f80ac539e15c2f1028841
+        with:
+          user: Seddryck
+      - name: Publish provider packages
+        shell: pwsh
+        env:
+          NUGET_API_KEY: ${{ steps.nuget-login.outputs.NUGET_API_KEY }}
+        run: |
+          foreach ($package in Get-ChildItem artifacts/nuget -Filter '*.nupkg') {
+            dotnet nuget push $package.FullName --api-key $env:NUGET_API_KEY --source https://api.nuget.org/v3/index.json --skip-duplicate
+            if ($LASTEXITCODE) { throw "Publishing $($package.Name) failed." }
+          }

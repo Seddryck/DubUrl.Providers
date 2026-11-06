@@ -1,0 +1,50 @@
+name: Microsoft SQL Server provider QA
+on:
+  pull_request:
+    branches: [ main ]
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+concurrency:
+  group: qa-mssqlserver-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+permissions:
+  contents: read
+env:
+  DOTNET_CLI_TELEMETRY_OPTOUT: 1
+  DOTNET_NOLOGO: 1
+  DOTNET_NO_WORKLOAD_UPDATE_NOTIFICATION: 1
+jobs:
+  provider-qa:
+    name: SQL Server QA
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: |
+            8.0.416
+            9.0.308
+            10.0.401
+      - name: Prepare Schema QA packages
+        shell: pwsh
+        run: ./build/Initialize-SchemaQa.ps1
+      - name: Install SQL Server ODBC driver
+        shell: bash
+        run: |
+          curl --proto '=https' --proto-redir '=https' -fsSLO https://packages.microsoft.com/config/ubuntu/24.04/packages-microsoft-prod.deb
+          sudo env DEBIAN_FRONTEND=noninteractive dpkg --force-confnew --force-confmiss -i packages-microsoft-prod.deb
+          sudo apt-get update
+          sudo ACCEPT_EULA=Y apt-get install -y msodbcsql18
+      - name: Run provider QA
+        shell: pwsh
+        run: ./QA/DubUrl.QA/MsSqlServer/deploy-mssqlserver-test-env.ps1 -force -config Release -frameworks @('net8.0', 'net9.0', 'net10.0')
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v7
+        with: { name: 'qa-mssqlserver-results-${{ github.sha }}', path: '.test-results/mssqlserver', if-no-files-found: error }
+      - name: Upload QA bundle
+        if: always()
+        uses: actions/upload-artifact@v7
+        with: { name: 'qa-mssqlserver-bundle-${{ github.sha }}', path: 'Providers/SqlServer/DubUrl.Provider.MsSqlServer.QA/bin/qa/mssqlserver/*/**', include-hidden-files: true, if-no-files-found: error }

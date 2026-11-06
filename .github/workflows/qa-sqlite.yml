@@ -1,0 +1,64 @@
+name: SQLite provider QA
+
+on:
+  pull_request:
+    branches:
+      - main
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+concurrency:
+  group: qa-sqlite-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+env:
+  DOTNET_CLI_TELEMETRY_OPTOUT: 1
+  DOTNET_NOLOGO: 1
+  DOTNET_NO_WORKLOAD_UPDATE_NOTIFICATION: 1
+
+jobs:
+  provider-qa:
+    name: SQLite QA
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up .NET SDK
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 10.0.401
+
+      - name: Prepare Schema QA packages
+        shell: pwsh
+        run: ./build/Initialize-SchemaQa.ps1
+      - name: Run provider QA
+        shell: pwsh
+        run: >-
+          ./QA/DubUrl.QA/Sqlite/deploy-sqlite-test-env.ps1
+          -force
+          -config Release
+          -frameworks @('net10.0')
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: qa-sqlite-results-${{ github.sha }}
+          path: .test-results/sqlite
+          if-no-files-found: error
+
+      - name: Upload QA bundle
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: qa-sqlite-bundle-${{ github.sha }}
+          path: Providers/Sqlite/DubUrl.Provider.Sqlite.QA/bin/qa/sqlite/*/**
+          include-hidden-files: true
+          if-no-files-found: error

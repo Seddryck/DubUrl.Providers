@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <IsPackable>false</IsPackable>
+    <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="DubUrl" Version="$(DubUrlVersion)" />
+    <ProjectReference Include="../../Providers/*/DubUrl.Provider.*/*.csproj"
+                      Exclude="../../Providers/*/*.QA/*.csproj;../../Providers/*/*.BulkCopy/*.csproj;../../Providers/*/*.Native/*.csproj" />
+    <PackageReference Include="DubUrl.OleDb" Version="$(DubUrlVersion)" />
+  </ItemGroup>
+</Project>

@@ -1,0 +1,32 @@
+name: Build and schema QA
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: |
+            8.0.416
+            9.0.308
+            10.0.401
+      - name: Prepare Schema QA packages
+        shell: pwsh
+        run: ./build/Initialize-SchemaQa.ps1
+      - run: dotnet build DubUrl.Providers.slnx -c Release --nologo
+      - run: dotnet test QA/DubUrl.Providers.Testing -c Release --no-build --no-restore
+      - run: dotnet test DubUrl.BulkCopy.Testing -c Release --no-build --no-restore
+      - run: dotnet test QA/DubUrl.Provider.Testing -c Release --no-build --no-restore
+
+  schema-qa:
+    uses: ./.github/workflows/schema-qa.yml

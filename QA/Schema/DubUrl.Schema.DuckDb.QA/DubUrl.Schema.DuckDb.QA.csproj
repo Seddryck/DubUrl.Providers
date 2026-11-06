@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><TargetFrameworks>net10.0</TargetFrameworks><IsPackable>false</IsPackable><IsTestProject>true</IsTestProject></PropertyGroup>
+  <ItemGroup>
+    <Compile Include="../RequiresDotNet10.cs" Link="RequiresDotNet10.cs" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.11.0" />
+    <PackageReference Include="NUnit" Version="5.0.0" />
+    <PackageReference Include="NUnit3TestAdapter" Version="5.1.0" />
+    <ProjectReference Include="../../../Providers/DuckDb/DubUrl.Provider.DuckDb/DubUrl.Provider.DuckDb.csproj" />
+    <ProjectReference Include="../../../Providers/DuckDb/DubUrl.Provider.DuckDb.Native/DubUrl.Provider.DuckDb.Native.csproj" />
+    <PackageReference Include="DuckDB.NET.Data" Version="1.5.6" />
+    <PackageReference Include="DuckDB.NET.Bindings.Full" Version="1.5.6" />
+    <ProjectReference Include="../../DubUrl.Provider.QA/DubUrl.Provider.QA.csproj" />
+    <PackageReference Include="DubUrl.Schema.Documents" Version="$(SchemaPackageVersion)" />
+  </ItemGroup>
+</Project>

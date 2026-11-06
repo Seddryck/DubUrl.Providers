@@ -1,0 +1,12 @@
+###############################################################################
+# Define language based on file's extension
+###############################################################################
+*.st linguist-language=StringTemplate
+*.stg linguist-language=StringTemplate
+
+###############################################################################
+# Set default behavior to automatically normalize line endings.
+###############################################################################
+* text=auto
+QA/Authentication/**/*.sh text eol=lf
+build/credential-store-smoke/*.sh text eol=lf

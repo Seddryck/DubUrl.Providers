@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><TargetFrameworks>net10.0</TargetFrameworks><IsPackable>false</IsPackable><IsTestProject>true</IsTestProject></PropertyGroup>
+  <ItemGroup>
+    <Compile Include="../RequiresDotNet10.cs" Link="RequiresDotNet10.cs" />
+    <PackageReference Include="System.Security.Cryptography.Pkcs" Version="9.0.21" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.11.0" />
+    <PackageReference Include="NUnit" Version="5.0.0" />
+    <PackageReference Include="NUnit3TestAdapter" Version="5.1.0" />
+    <ProjectReference Include="../../../Providers/Oracle/DubUrl.Provider.Oracle/DubUrl.Provider.Oracle.csproj" />
+    <PackageReference Include="Oracle.ManagedDataAccess.Core" Version="23.26.301" />
+    <ProjectReference Include="../../DubUrl.Provider.QA/DubUrl.Provider.QA.csproj" />
+    <PackageReference Include="DubUrl.Schema.Documents" Version="$(SchemaPackageVersion)" />
+  </ItemGroup>
+</Project>
