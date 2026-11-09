@@ -26,18 +26,20 @@ internal sealed class OracleSchemaSqlRenderer : StandardSchemaSqlRenderer, IUniq
 
     public override string RenderColumnType(IDialect dialect, string type, int? length, int precision, int scale, bool nativeType)
     {
-        if (!nativeType || !(type.Equals("CHAR", StringComparison.OrdinalIgnoreCase)
-            || type.Equals("VARCHAR", StringComparison.OrdinalIgnoreCase)
-            || type.Equals("VARCHAR2", StringComparison.OrdinalIgnoreCase)))
+        if (!nativeType) return base.RenderColumnType(dialect, type, length, precision, scale, nativeType);
+        var parts = type.ToUpperInvariant().Split(' ');
+        var characterType = parts[0];
+        if (characterType is not ("CHAR" or "VARCHAR" or "VARCHAR2"))
             return base.RenderColumnType(dialect, type, length, precision, scale, nativeType);
 
         // VARCHAR is currently an Oracle synonym; emit the stable native spelling.
-        type = type.Equals("CHAR", StringComparison.OrdinalIgnoreCase) ? "CHAR" : "VARCHAR2";
+        type = characterType == "CHAR" ? "CHAR" : "VARCHAR2";
+        var unit = parts.Length == 2 ? " " + parts[1] : "";
         // Use the portable STANDARD limit. Larger VARCHAR2 values require MAX_STRING_SIZE=EXTENDED.
         var maximum = type == "CHAR" ? 2000 : 4000;
         if (length is null or <= 0 || length > maximum || precision != 0 || scale != 0)
             throw new ArgumentException($"Oracle native {type} requires a length from 1 to {maximum} without numeric precision or scale.");
-        return $"{type}({length.Value})";
+        return $"{type}({length.Value}{unit})";
     }
 
     public override string RenderRegex(IDialect dialect, string expression, string pattern)

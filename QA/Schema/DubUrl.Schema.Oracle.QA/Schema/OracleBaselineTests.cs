@@ -1,5 +1,5 @@
 using System.Data.Common;
-using Oracle.ManagedDataAccess.Client;
+using DubUrl.Provider.Oracle.QA;
 using DubUrl.Provider.Oracle.Sql;
 using DubUrl.Querying.Dialects;
 using DubUrl.Providers.QA.Contracts.Schema;
@@ -11,8 +11,15 @@ namespace DubUrl.Schema.Oracle.QA;
 [Category("Oracle")]
 public sealed partial class OracleBaselineTests : ProviderContract
 {
-    protected override DbConnection CreateConnection()
-        => new OracleConnection(Environment.GetEnvironmentVariable("DUBURL_ORACLE_QA_CONNECTION_STRING") ?? throw new InvalidOperationException("Configure a disposable Oracle QA database."));
+    private OracleTestSchema schema = null!;
+
+    [OneTimeSetUp]
+    public void CreateSchema() => schema = OracleTestDatabase.CreateSchema();
+
+    [OneTimeTearDown]
+    public void DropSchema() => schema?.Dispose();
+
+    protected override DbConnection CreateConnection() => schema.Connect();
 
     protected override IDialect CreateDialect()
     {
