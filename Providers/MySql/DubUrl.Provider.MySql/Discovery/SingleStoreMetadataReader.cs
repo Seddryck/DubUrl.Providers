@@ -2,13 +2,18 @@ using System.Data;
 using System.Data.Common;
 using System.Text.RegularExpressions;
 using DubUrl.Discovery;
+using DubUrl.Schema;
+using DubUrl.Schema.Constraints;
 using DubUrl.Provider.MySql.Sql;
 
 namespace DubUrl.Provider.MySql.Discovery;
 
 /// <summary>Read-only SingleStore metadata. Foreign keys and checks are not enforced by this engine.</summary>
-public sealed class SingleStoreMetadataReader : ISchemaMetadataReader
+public sealed class SingleStoreMetadataReader : ISchemaMetadataReader, IUniqueConstraintMetadataReader
 {
+    public UniqueConstraintMetadata GetUniqueConstraintMetadata(MetadataTable table, MetadataKey key)
+        => new(UniqueNullPolicy.NullsDistinct);
+
     private readonly CatalogReader reader = new();
     public IReadOnlyDictionary<SchemaFeature, MetadataCoverage> Capabilities => reader.Capabilities;
 
@@ -82,7 +87,7 @@ public sealed class SingleStoreMetadataReader : ISchemaMetadataReader
               CASE WHEN index_name='PRIMARY' THEN 'PRIMARY KEY' ELSE 'UNIQUE' END AS kind,
               seq_in_index AS ordinal, column_name
             FROM information_schema.statistics
-            WHERE non_unique=0 AND index_type IN ('BTREE','HASH')
+            WHERE non_unique=0 AND index_type IN ('BTREE','HASH','COLUMNSTORE HASH')
               AND table_schema NOT IN ('information_schema','memsql','cluster','mysql','performance_schema','sys')
             """;
         protected override string IndexesSql => """

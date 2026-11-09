@@ -23,7 +23,8 @@ public sealed class UniqueNullPolicyTests
         var builder = new DialectRegistryBuilder();
         builder.AddDialect<TSqlDialect>(["mssql"]);
         await UniqueNullPolicyChecks.VerifyAsync(connection, builder.Build().Get<TSqlDialect>(), new SqlServerMetadataReader(),
-            "dbo", policy, exception => exception is SqlException { Number: 2601 or 2627 },
-            usesIndex: policy == UniqueNullPolicy.NullsDistinct);
+            new(policy, Schema: "dbo", UsesIndex: policy == UniqueNullPolicy.NullsDistinct,
+                CanReference: policy != UniqueNullPolicy.NullsDistinct),
+            exception => exception is SqlException { Number: 2601 or 2627 });
     }
 }

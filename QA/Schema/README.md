@@ -48,6 +48,12 @@ Shared_DiscoveryUnique positively verifies named single and composite UNIQUE con
 | SQL Server | Native UNIQUE treats matching null positions as equal. A unique index filtered to all-nonnull tuples implements `NullsDistinct` and cannot serve as a foreign-key target. Discovery recognizes that filter shape and maps it as one UNIQUE tuple. |
 | DuckDB | Native UNIQUE allows duplicate tuples containing a null. DuckDB generates native constraint names, so a custom name uses a standalone unique index. Discovery preserves that index as an index and foreign keys require a native key. Nullable `NullsNotDistinct` is rejected before deployment. |
 | PostgreSQL | Native UNIQUE allows duplicate tuples containing a null. `NullsNotDistinct` uses `NULLS NOT DISTINCT` on PostgreSQL 15 or later. Discovery reads the policy from the constraint's backing index. |
+| MySQL | Native UNIQUE implements `NullsDistinct`, including for composite keys. Discovery reports the policy and ordered members without a second index. |
+| SQLite | Native UNIQUE implements `NullsDistinct`. DDL uses the declared name and discovery retains SQLite's generated autoindex name for the constraint. |
+| SingleStore | Native UNIQUE implements `NullsDistinct` on rowstore and columnstore. Every key must contain the nonempty shard key. Columnstore permits one primary or unique key. Foreign-key targets are rejected. Discovery reports the policy and key order. Replay also needs the physical layout supplied by the caller. |
+| Oracle | Native composite UNIQUE compares partially-null tuples and allows duplicate all-null tuples. An explicit `NullsDistinct` plan works for a nullable single-column key, and `NullsNotDistinct` works when a required member rules out all-null tuples. Both explicit policies are rejected for a fully nullable composite key. QA checks the native catalog directly while provider discovery is tracked in [#6](https://github.com/Seddryck/DubUrl.Providers/issues/6). |
+
+MySQL, SQLite, and SingleStore reject `NullsNotDistinct` when a key member can be null. A native UNIQUE constraint can enforce either explicit policy when all members are required.
 
 `UniqueNullPolicyTests` exercises the plans on .NET 10 using real databases. The cases assert tuple order, catalog names, one enforcement structure, foreign-key eligibility, and inserts with both members present, either member null, and both members null.
 

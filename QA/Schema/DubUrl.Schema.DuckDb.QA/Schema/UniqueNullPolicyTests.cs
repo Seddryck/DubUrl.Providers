@@ -20,10 +20,9 @@ public sealed class UniqueNullPolicyTests
     {
         using var connection = new DuckDBConnection("DataSource=:memory:");
         await connection.OpenAsync();
-        await UniqueNullPolicyChecks.VerifyAsync(connection, Dialect(), new DuckDbMetadataReader(), "main",
-            UniqueNullPolicy.NullsDistinct, exception => exception is DuckDBException
-                && exception.Message.Contains("duplicate key", StringComparison.OrdinalIgnoreCase),
-            usesIndex: named, named: named, discoverAsIndex: named);
+        await UniqueNullPolicyChecks.VerifyAsync(connection, Dialect(), new DuckDbMetadataReader(),
+            new(UniqueNullPolicy.NullsDistinct, Schema: "main", Named: named, UsesIndex: named, CanReference: !named, DiscoverAsIndex: named),
+            exception => exception is DuckDBException && exception.Message.Contains("duplicate key", StringComparison.OrdinalIgnoreCase));
     }
 
     [Test]

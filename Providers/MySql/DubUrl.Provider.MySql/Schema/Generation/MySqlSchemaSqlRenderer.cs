@@ -1,10 +1,21 @@
 using DubUrl.Querying.Dialects;
+using DubUrl.Schema.Constraints;
+using DubUrl.Schema.Renderers;
 
 namespace DubUrl.Provider.MySql.Schema.Generation;
 
-internal sealed class MySqlSchemaSqlRenderer : StandardSchemaSqlRenderer
+internal sealed class MySqlSchemaSqlRenderer : StandardSchemaSqlRenderer, IUniqueConstraintSqlRenderer
 {
     internal static MySqlSchemaSqlRenderer Default { get; } = new();
+
+    public UniqueConstraintPlan? PlanUniqueConstraint(IDialect dialect, UniqueConstraintContext context)
+    {
+        var key = context.Constraint;
+        return key.NullPolicy == UniqueNullPolicy.NullsDistinct
+            || key.Columns.All(column => column.Constraints.Get<NotNullableConstraint>() is not null)
+            ? new NativeUniqueConstraintPlan(key.NullPolicy, true)
+            : null;
+    }
 
     public override bool SupportsCommentRendering => true;
 
