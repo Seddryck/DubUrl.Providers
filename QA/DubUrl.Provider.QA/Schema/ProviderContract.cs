@@ -446,6 +446,8 @@ public abstract partial class ProviderContract : SchemaContract
     }
 
     protected virtual bool DiscoveryIndexIsUnique => true;
+    protected virtual IndexSortDirection DiscoveryFirstIndexDirection => IndexSortDirection.Descending;
+    protected virtual DbType ExpectedDiscoveredIntegerType => DbType.Int32;
     protected virtual TablePhysicalOptions? DiscoveryPhysicalOptions(string scenario) => null;
     protected virtual Constraint[] DiscoveryUniqueConstraints(Column[] columns)
         => [new UniquenessConstraint([columns[1], columns[0]], Name("unique_pair")),
@@ -454,7 +456,7 @@ public abstract partial class ProviderContract : SchemaContract
     private async Task DiscoverTable(string scenario, SchemaFeature[] basic)
     {
         var table = CreateDiscoveryTable(scenario);
-        var indexes = scenario == "DiscoveryIndexes" ? new[] { new Index(Name("idx"), table.Name, [new IndexColumn("b", IndexSortDirection.Descending), new IndexColumn("a", IndexSortDirection.Ascending)], DiscoveryIndexIsUnique) } : [];
+        var indexes = scenario == "DiscoveryIndexes" ? new[] { new Index(Name("idx"), table.Name, [new IndexColumn("b", DiscoveryFirstIndexDirection), new IndexColumn("a", IndexSortDirection.Ascending)], DiscoveryIndexIsUnique) } : [];
         var portable = new View(Name("portable"), new ViewQuery(table.Identity, new ViewProjection(new ColumnIdentityExpression("b"), "label")));
         if (!DeployDiscoveryTable(scenario, table, indexes, portable)) return;
         if (scenario is "ExpressionIndexDiagnostic" or "FilteredIndexDiagnostic")
@@ -596,7 +598,7 @@ public abstract partial class ProviderContract : SchemaContract
             case "DiscoveryIndexes":
                 var ix = inspected.Schema.Indexes.Values.Single(i => i.Name == indexes[0].Name);
                 Assert.That(ix.IsUnique, Is.EqualTo(indexes[0].IsUnique)); Assert.That(ix.Columns.Keys, Is.EqualTo(new[] { "b", "a" }));
-                Assert.That(ix.Columns.Values.Select(c => c.SortDirection), Is.EqualTo(expectation.Outcome == ExpectedOutcome.NotEnforced ? new IndexSortDirection?[] { null, null } : new IndexSortDirection?[] { IndexSortDirection.Descending, IndexSortDirection.Ascending })); break;
+                Assert.That(ix.Columns.Values.Select(c => c.SortDirection), Is.EqualTo(expectation.Outcome == ExpectedOutcome.NotEnforced ? new IndexSortDirection?[] { null, null } : new IndexSortDirection?[] { DiscoveryFirstIndexDirection, IndexSortDirection.Ascending })); break;
             case "DiscoveryViews": Assert.That(inspected.Schema.Views.Values.Single(v => v.Name == portable.Name).Query.Projections.Single().Alias, Is.EqualTo("label")); break;
             case "DiscoveryTableFilter": Assert.That(inspected.Schema.Tables.Values.Select(t => t.Name), Is.EqualTo(new[] { table.Name })); break;
             case "DiscoverySchemaFilter":
@@ -618,7 +620,7 @@ public abstract partial class ProviderContract : SchemaContract
         {
             case "DiscoveryTablesColumns": Assert.That(actual.Columns.Keys, Is.EqualTo(source.Columns.Values.Select(c => c.Name))); break;
             case "DiscoveryFacets":
-                Assert.That(actual.Columns["b"].Type, Is.EqualTo(DbType.Int32));
+                Assert.That(actual.Columns["b"].Type, Is.EqualTo(ExpectedDiscoveredIntegerType));
                 Assert.That(actual.Columns["b"].Constraints.OfType<NotNullableConstraint>(), Has.Exactly(1).Items);
                 Assert.That(actual.Columns["title"].Constraints.OfType<NullableConstraint>(), Has.Exactly(1).Items);
                 if (ExpectedDiscoveredStringLength is int length)

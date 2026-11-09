@@ -25,7 +25,10 @@ public class OracleDialect : BaseDialect
         SupportsComments = true,
         SupportsViews = true,
         SupportsRegularExpressionChecks = true,
-        NativeTypes = new HashSet<string>(["CHAR", "VARCHAR", "VARCHAR2"], StringComparer.OrdinalIgnoreCase),
+        NativeTypes = new HashSet<string>([
+            "CHAR", "VARCHAR", "VARCHAR2", "CHAR BYTE", "CHAR CHAR", "VARCHAR2 BYTE", "VARCHAR2 CHAR",
+            "NUMBER", "DATE", "TIMESTAMP", "BINARY_FLOAT", "BINARY_DOUBLE", "RAW", "CLOB", "NCLOB", "BLOB"
+        ], StringComparer.OrdinalIgnoreCase),
     };
 
     public override ISchemaSqlRenderer SchemaSqlRenderer => OracleSchemaSqlRenderer.Default;

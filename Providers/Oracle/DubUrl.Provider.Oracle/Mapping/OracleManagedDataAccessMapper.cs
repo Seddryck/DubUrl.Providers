@@ -1,4 +1,6 @@
+using DubUrl.Discovery;
 using DubUrl.Mapping;
+using DubUrl.Provider.Oracle.Discovery;
 using DubUrl.Provider.Oracle.Metadata;
 using DubUrl.Provider.Oracle.Rewriting;
 using DubUrl.Querying.Dialects;
@@ -15,6 +17,7 @@ namespace DubUrl.Provider.Oracle.Mapping;
 [Mapper<OracleDatabase, OracleParametrizer>(
     "Oracle.ManagedDataAccess"
 )]
+[SchemaDiscovery(typeof(OracleMetadataReader))]
 [ConnectionConfiguration(ApplicationName = "property:ModuleName", Pooling = "Pooling", MinPoolSize = "Min Pool Size", MaxPoolSize = "Max Pool Size", ConnectionTimeout = "Connection Timeout", MaxLifetime = "Connection Lifetime", TimeZone = "sql:oracle")]
 public class OracleManagedDataAccessMapper : BaseMapper
 {

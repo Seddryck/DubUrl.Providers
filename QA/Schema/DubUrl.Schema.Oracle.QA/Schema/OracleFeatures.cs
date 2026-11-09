@@ -1,6 +1,8 @@
 using System.Data.Common;
 using Oracle.ManagedDataAccess.Client;
 using DubUrl.Discovery;
+using DubUrl.Provider.Oracle.Discovery;
+using DubUrl.Provider.Oracle.QA;
 using DubUrl.Schema;
 using DubUrl.Providers.QA.Contracts.Schema;
 
@@ -43,31 +45,31 @@ public sealed partial class OracleBaselineTests
             ["UniqueIndex"] = FeatureExpectation.Supported,
             ["IndexDirection"] = FeatureExpectation.Supported,
             ["ProjectionView"] = FeatureExpectation.Supported,
-            ["DiscoveryTablesColumns"] = new(ExpectedOutcome.NoDiscovery,"The published provider does not register SchemaDiscoveryCapability; SDI001 is required."),
-            ["DiscoveryFacets"] = new(ExpectedOutcome.NoDiscovery,"The published provider does not register SchemaDiscoveryCapability; SDI001 is required."),
-            ["DiscoveryPrimaryKey"] = new(ExpectedOutcome.NoDiscovery,"The published provider does not register SchemaDiscoveryCapability; SDI001 is required."),
-            ["DiscoveryUnique"] = new(ExpectedOutcome.NoDiscovery,"The published provider does not register SchemaDiscoveryCapability; SDI001 is required."),
-            ["DiscoveryForeignKey"] = new(ExpectedOutcome.NoDiscovery,"The published provider does not register SchemaDiscoveryCapability; SDI001 is required."),
-            ["DiscoveryDefaults"] = new(ExpectedOutcome.NoDiscovery,"The published provider does not register SchemaDiscoveryCapability; SDI001 is required."),
-            ["DiscoveryIdentity"] = new(ExpectedOutcome.NoDiscovery,"No schema discovery capability is registered."),
-            ["DiscoveryChecks"] = new(ExpectedOutcome.NoDiscovery,"No schema discovery capability is registered."),
-            ["DiscoveryGeneration"] = new(ExpectedOutcome.NoDiscovery,"The published provider does not register SchemaDiscoveryCapability; SDI001 is required."),
-            ["DiscoveryComments"] = new(ExpectedOutcome.NoDiscovery,"The published provider does not register SchemaDiscoveryCapability; SDI001 is required."),
-            ["DiscoveryIndexes"] = new(ExpectedOutcome.NoDiscovery,"The published provider does not register SchemaDiscoveryCapability; SDI001 is required."),
-            ["DiscoveryViews"] = new(ExpectedOutcome.NoDiscovery,"The published provider does not register SchemaDiscoveryCapability; SDI001 is required."),
-            ["DiscoveryTableFilter"] = new(ExpectedOutcome.NoDiscovery,"The published provider does not register SchemaDiscoveryCapability; SDI001 is required."),
-            ["DiscoverySchemaFilter"] = new(ExpectedOutcome.NoDiscovery,"The published provider does not register SchemaDiscoveryCapability; SDI001 is required."),
-            ["DiscoveryClosure"] = new(ExpectedOutcome.NoDiscovery,"The published provider does not register SchemaDiscoveryCapability; SDI001 is required."),
-            ["DiscoveryPartial"] = new(ExpectedOutcome.NoDiscovery,"The published provider does not register SchemaDiscoveryCapability; SDI001 is required."),
-            ["DiscoveryStrict"] = new(ExpectedOutcome.NoDiscovery,"The published provider does not register SchemaDiscoveryCapability; SDI001 is required."),
-            ["DiscoveryRoundTrip"] = new(ExpectedOutcome.NoDiscovery,"The published provider does not register SchemaDiscoveryCapability; SDI001 is required."),
+            ["DiscoveryTablesColumns"] = FeatureExpectation.Supported,
+            ["DiscoveryFacets"] = FeatureExpectation.Supported,
+            ["DiscoveryPrimaryKey"] = FeatureExpectation.Supported,
+            ["DiscoveryUnique"] = FeatureExpectation.Supported,
+            ["DiscoveryForeignKey"] = FeatureExpectation.Supported,
+            ["DiscoveryDefaults"] = new(ExpectedOutcome.NotEnforced,"Discovery of Oracle LONG defaults is outside the qualified slice."),
+            ["DiscoveryIdentity"] = new(ExpectedOutcome.RendererRejects,"Oracle identity generation is outside the qualified slice.","Identity"),
+            ["DiscoveryChecks"] = new(ExpectedOutcome.NotEnforced,"Discovery of Oracle check conditions is outside the qualified slice."),
+            ["DiscoveryGeneration"] = new(ExpectedOutcome.RendererRejects,"Oracle generated columns are outside the qualified slice.","Generated"),
+            ["DiscoveryComments"] = FeatureExpectation.Supported,
+            ["DiscoveryIndexes"] = FeatureExpectation.Supported,
+            ["DiscoveryViews"] = FeatureExpectation.Supported,
+            ["DiscoveryTableFilter"] = FeatureExpectation.Supported,
+            ["DiscoverySchemaFilter"] = FeatureExpectation.Supported,
+            ["DiscoveryClosure"] = FeatureExpectation.Supported,
+            ["DiscoveryPartial"] = FeatureExpectation.Supported,
+            ["DiscoveryStrict"] = FeatureExpectation.Supported,
+            ["DiscoveryRoundTrip"] = FeatureExpectation.Supported,
             ["NativeVarcharKey"] = FeatureExpectation.Supported,
             ["NativeCharKey"] = FeatureExpectation.Supported,
-            ["ExpressionIndexDiagnostic"] = new(ExpectedOutcome.NoDiscovery,"The published provider does not register SchemaDiscoveryCapability; SDI001 is required."),
-            ["FilteredIndexDiagnostic"] = new(ExpectedOutcome.NoDiscovery,"The published provider does not register SchemaDiscoveryCapability; SDI001 is required."),
-            ["AggregateViewDiagnostic"] = new(ExpectedOutcome.NoDiscovery,"The published provider does not register SchemaDiscoveryCapability; SDI001 is required."),
-            ["MissingReferenceDiagnostic"] = new(ExpectedOutcome.NoDiscovery,"The published provider does not register SchemaDiscoveryCapability; SDI001 is required."),
-            ["DiagnosticDetails"] = new(ExpectedOutcome.NoDiscovery,"The published provider does not register SchemaDiscoveryCapability; SDI001 is required."),
+            ["ExpressionIndexDiagnostic"] = FeatureExpectation.Supported,
+            ["FilteredIndexDiagnostic"] = new(ExpectedOutcome.DatabaseRejects,"Oracle has no predicate-filtered CREATE INDEX syntax.","2158","933"),
+            ["AggregateViewDiagnostic"] = FeatureExpectation.Supported,
+            ["MissingReferenceDiagnostic"] = FeatureExpectation.Supported,
+            ["DiagnosticDetails"] = FeatureExpectation.Supported,
             ["PublicDeployment"] = FeatureExpectation.Supported,
             ["FluentDeployment"] = FeatureExpectation.Supported,
             ["CleanupAfterFailure"] = FeatureExpectation.Supported,
@@ -77,13 +79,15 @@ public sealed partial class OracleBaselineTests
     protected override string DatabaseErrorCode(DbException exception) => ((OracleException)exception).Number.ToString();
     protected override string CurrentSchema(DbConnection connection) => QaSql.Text(QaSql.Rows(connection,"SELECT SYS_CONTEXT('USERENV','CURRENT_SCHEMA') FROM dual").Single()[0]);
     protected override DatabaseObjectName QualifiedName(DbConnection connection,string name) => new(name,schema:CurrentSchema(connection));
-    protected override ISchemaMetadataReader? CreateMetadataReader() => null;
-    protected override int? ExpectedDiscoveredStringLength => null;
+    protected override ISchemaMetadataReader CreateMetadataReader() => new OracleMetadataReader();
+    protected override int? ExpectedDiscoveredStringLength => 40;
+    protected override System.Data.DbType ExpectedDiscoveredIntegerType => System.Data.DbType.Decimal;
+    protected override IndexSortDirection DiscoveryFirstIndexDirection => IndexSortDirection.Ascending;
     protected override GeneratedColumnStorage DiscoveryGenerationStorage => GeneratedColumnStorage.Stored;
     protected override PublicDatabase CreatePublicDatabase()
     {
         DbProviderFactories.RegisterFactory("Oracle.ManagedDataAccess",OracleClientFactory.Instance);
-        return QaSql.Public("oracle",CreateConnection());
+        return QaSql.Public("oracle",OracleTestDatabase.Connect());
     }
     protected override string ExpressionIndexSql(string index,string table,string column) => $"CREATE INDEX {index} ON {table} ((UPPER({column})))";
     protected override string FilteredIndexSql(string index,string table,string column) => $"CREATE INDEX {index} ON {table} ({column}) WHERE {column}>0";
