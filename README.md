@@ -9,12 +9,11 @@ The projects under Providers use released DubUrl Core packages. The provider uni
 
 The shared live fixtures are in QA/DubUrl.Provider.QA. Their four namespaces are Schema, Connection, BulkCopy, and Query under DubUrl.Providers.QA.Contracts. Concrete fixtures supply their real driver, SQL, and expected behavior. Engine regressions live in Specific subfolders.
 
-Prepare the Schema dependency and build the solution with:
+Build the solution using the published Schema packages:
 
-    ./build/Initialize-SchemaQa.ps1
     dotnet build DubUrl.Providers.slnx
 
-The initializer builds Schema packages from a pinned source commit. SQL Server, DuckDB, and PostgreSQL compile against this candidate to exercise the UNIQUE plan contract. Switch to a published Schema package containing that contract before releasing these providers.
+Schema source-compatibility QA can opt into a local package by running `./build/Initialize-SchemaQa.ps1 -SourceCommit <sha>` before building in the same PowerShell session. The initializer selects the candidate for that session or the current GitHub Actions job.
 
 Run the embedded schema suites with:
 
