@@ -2,5 +2,8 @@
   <PropertyGroup>
     <Description>PostgreSQL-family dialects, mapping, and rewriting for DubUrl.</Description>
   </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="DubUrl.Schema" Version="$(SchemaPackageVersion)" />
+  </ItemGroup>
   <Import Project="..\..\Provider.Build.props" />
 </Project>

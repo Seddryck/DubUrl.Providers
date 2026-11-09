@@ -1,7 +1,7 @@
 [CmdletBinding()]
 param(
     [ValidatePattern('^[0-9a-f]{40}$')]
-    [string] $SourceCommit = '7880413050c218150d5ec77f0636c9bfcf2b5ded',
+    [string] $SourceCommit = 'a776806623cd6838058ceb50d8b6dd7d3179a591',
     [string] $DubUrlVersion = '0.60.0'
 )
 
@@ -10,7 +10,7 @@ $root = Split-Path $PSScriptRoot
 $source = Join-Path $root 'artifacts/schema-source'
 $feed = Join-Path $root 'artifacts/schema-feed'
 $revision = Join-Path $feed 'schema-revision.txt'
-$version = '0.101.3-extraction'
+$version = '0.101.4-unique-policies'
 
 if ((Test-Path "$feed/DubUrl.Schema.$version.nupkg") -and
     (Test-Path "$feed/DubUrl.Schema.Documents.$version.nupkg") -and

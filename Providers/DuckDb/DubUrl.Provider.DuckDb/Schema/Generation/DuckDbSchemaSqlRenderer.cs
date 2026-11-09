@@ -2,13 +2,37 @@ using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
 using DubUrl.Querying.Dialects;
+using DubUrl.Schema;
+using DubUrl.Schema.Constraints;
+using DubUrl.Schema.Renderers;
 
 namespace DubUrl.Provider.DuckDb.Schema.Generation;
 
 /// <summary>DuckDB uses a dedicated sequence and nextval default for each portable identity column.</summary>
-internal sealed class DuckDbSchemaSqlRenderer : StandardSchemaSqlRenderer, ISequenceIdentitySqlRenderer
+internal sealed class DuckDbSchemaSqlRenderer : StandardSchemaSqlRenderer, ISequenceIdentitySqlRenderer, IUniqueConstraintSqlRenderer
 {
     internal static DuckDbSchemaSqlRenderer Default { get; } = new();
+
+    public UniqueConstraintPlan? PlanUniqueConstraint(IDialect dialect, UniqueConstraintContext context)
+    {
+        var key = context.Constraint;
+        if (key.NullPolicy != UniqueNullPolicy.NullsDistinct
+            && key.Columns.Any(column => column.Constraints.Get<NotNullableConstraint>() is null))
+            return null;
+
+        // DuckDB generates native constraint names. A separate index preserves a custom name,
+        // but DuckDB only accepts a native UNIQUE constraint as a foreign-key target.
+        var table = context.Table.Identity;
+        var generatedName = $"{table.Name}_{string.Join('_', key.Columns.Select(column => LowerAscii(column.Name)))}_key";
+        if (key.Name is null || key.Name == generatedName)
+            return new NativeUniqueConstraintPlan(key.NullPolicy, true);
+
+        return new UniqueIndexPlan(key.NullPolicy, false,
+            [new(new DatabaseObjectName(key.Name, table.Schema, table.Database, table.Catalog))]);
+    }
+
+    private static string LowerAscii(string name)
+        => new(name.Select(character => character is >= 'A' and <= 'Z' ? char.ToLowerInvariant(character) : character).ToArray());
 
     public override bool RenderForeignKeysInline(IDialect dialect) => true;
     public override bool RequiresForeignKeyDependencyOrder => true;

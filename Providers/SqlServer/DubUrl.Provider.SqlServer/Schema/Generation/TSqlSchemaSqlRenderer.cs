@@ -1,10 +1,30 @@
 using DubUrl.Querying.Dialects;
+using DubUrl.Schema;
+using DubUrl.Schema.Constraints;
+using DubUrl.Schema.Renderers;
 
 namespace DubUrl.Provider.SqlServer.Schema.Generation;
 
-internal sealed class TSqlSchemaSqlRenderer : StandardSchemaSqlRenderer
+internal sealed class TSqlSchemaSqlRenderer : StandardSchemaSqlRenderer, IUniqueConstraintSqlRenderer
 {
     internal static TSqlSchemaSqlRenderer Default { get; } = new();
+
+    public UniqueConstraintPlan? PlanUniqueConstraint(IDialect dialect, UniqueConstraintContext context)
+    {
+        var key = context.Constraint;
+        if (key.NullPolicy == UniqueNullPolicy.NullsNotDistinct
+            || key.Columns.All(column => column.Constraints.Get<NotNullableConstraint>() is not null))
+            return new NativeUniqueConstraintPlan(key.NullPolicy, true);
+
+        if (key.NullPolicy != UniqueNullPolicy.NullsDistinct
+            || key.Columns.Any(column => column.Generation is GeneratedColumnGeneration))
+            return null;
+
+        var table = context.Table.Identity;
+        var identity = new DatabaseObjectName(context.SuggestedName, table.Schema, table.Database, table.Catalog);
+        var predicate = string.Join(" AND ", key.Columns.Select(column => $"{RenderIdentifier(dialect, column.Name)} IS NOT NULL"));
+        return new UniqueIndexPlan(key.NullPolicy, false, [new(identity, predicate)]);
+    }
 
     public override IReadOnlyList<SchemaSqlCommand> PlanCommands(IDialect dialect, IReadOnlyList<SchemaSqlCommand> statements)
     {
@@ -52,6 +72,18 @@ internal sealed class TSqlSchemaSqlRenderer : StandardSchemaSqlRenderer
 
     public override string RenderGenerated(IDialect dialect, string type, string expression, bool stored)
         => $"AS ({expression}){(stored ? " PERSISTED" : string.Empty)}";
+
+    public override string RenderIdentifier(IDialect dialect, string name)
+        => $"[{name.Replace("]", "]]", StringComparison.Ordinal)}]";
+
+    public override string RenderCreateIndexName(IDialect dialect, SchemaSqlObjectName index, SchemaSqlObjectName table)
+    {
+        if ((index.Catalog is not null && index.Catalog != table.Catalog)
+            || (index.Database is not null && index.Database != table.Database)
+            || (index.Schema is not null && index.Schema != table.Schema))
+            throw new NotSupportedException("SQL Server indexes belong to their table's namespace.");
+        return RenderIdentifier(dialect, index.Name);
+    }
 
     public override string RenderObjectName(IDialect dialect, string? catalog, string? database, string? schema, string name)
         => QuoteIdentifierParts(dialect, catalog, database, schema, name);

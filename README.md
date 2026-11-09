@@ -2,7 +2,7 @@
 
 Provider implementation packages, database-free unit tests, and real database QA for DubUrl.
 
-The projects under Providers use released DubUrl packages. The provider unit suite compiles the tests alongside their owning provider and runs without a database.
+The projects under Providers use released DubUrl Core packages. The provider unit suite compiles the tests alongside their owning provider and runs without a database.
 
     dotnet test QA/DubUrl.Providers.Testing
     dotnet test DubUrl.BulkCopy.Testing
@@ -14,7 +14,7 @@ Prepare the Schema dependency and build the solution with:
     ./build/Initialize-SchemaQa.ps1
     dotnet build DubUrl.Providers.slnx
 
-The initializer builds QA-only packages from a pinned Schema commit until its command-plan deployment API is available in a published package.
+The initializer builds Schema packages from a pinned source commit. SQL Server, DuckDB, and PostgreSQL compile against this candidate to exercise the UNIQUE plan contract. Switch to a published Schema package containing that contract before releasing these providers.
 
 Run the embedded schema suites with:
 
