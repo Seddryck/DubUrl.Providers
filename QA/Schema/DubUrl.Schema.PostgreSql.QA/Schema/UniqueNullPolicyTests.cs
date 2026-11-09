@@ -23,6 +23,6 @@ public sealed class UniqueNullPolicyTests
         var builder = new DialectRegistryBuilder();
         builder.AddDialect<PgsqlDialect>(["pgsql"]);
         await UniqueNullPolicyChecks.VerifyAsync(connection, builder.Build().Get<PgsqlDialect>(), new PostgreSqlMetadataReader(),
-            "public", policy, exception => exception is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation });
+            new(policy, Schema: "public"), exception => exception is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation });
     }
 }

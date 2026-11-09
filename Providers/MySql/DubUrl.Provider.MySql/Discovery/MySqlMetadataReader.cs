@@ -2,13 +2,18 @@ using System.Data;
 using System.Data.Common;
 using System.Text.RegularExpressions;
 using DubUrl.Discovery;
+using DubUrl.Schema;
+using DubUrl.Schema.Constraints;
 using DubUrl.Provider.MySql.Sql;
 
 namespace DubUrl.Provider.MySql.Discovery;
 
 /// <summary>Read-only MySQL 8 catalog discovery. Compatible protocols are deliberately not opted in.</summary>
-public sealed class MySqlMetadataReader : CatalogSchemaMetadataReader
+public sealed class MySqlMetadataReader : CatalogSchemaMetadataReader, IUniqueConstraintMetadataReader
 {
+    public UniqueConstraintMetadata GetUniqueConstraintMetadata(MetadataTable table, MetadataKey key)
+        => new(UniqueNullPolicy.NullsDistinct);
+
     protected override string TablesSql => """
         SELECT TABLE_SCHEMA AS database_name,TABLE_NAME AS table_name,NULLIF(TABLE_COMMENT,'') AS comment
         FROM information_schema.tables

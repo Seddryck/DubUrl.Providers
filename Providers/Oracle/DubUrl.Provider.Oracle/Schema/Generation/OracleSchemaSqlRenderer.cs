@@ -1,10 +1,28 @@
 using DubUrl.Querying.Dialects;
+using DubUrl.Schema.Constraints;
+using DubUrl.Schema.Renderers;
 
 namespace DubUrl.Provider.Oracle.Schema.Generation;
 
-internal sealed class OracleSchemaSqlRenderer : StandardSchemaSqlRenderer
+internal sealed class OracleSchemaSqlRenderer : StandardSchemaSqlRenderer, IUniqueConstraintSqlRenderer
 {
     internal static OracleSchemaSqlRenderer Default { get; } = new();
+
+    public UniqueConstraintPlan? PlanUniqueConstraint(IDialect dialect, UniqueConstraintContext context)
+    {
+        var key = context.Constraint;
+        var nonNullable = key.Columns.Count(column => column.Constraints.Get<NotNullableConstraint>() is not null);
+        // Oracle ignores all-null tuples and compares partially-null tuples. A required member
+        // rules out all-null tuples, while a single-column key cannot be partially null.
+        return key.NullPolicy switch
+        {
+            UniqueNullPolicy.NullsDistinct when key.Columns.Count == 1 || nonNullable == key.Columns.Count
+                => new NativeUniqueConstraintPlan(key.NullPolicy, true),
+            UniqueNullPolicy.NullsNotDistinct when nonNullable > 0
+                => new NativeUniqueConstraintPlan(key.NullPolicy, true),
+            _ => null
+        };
+    }
 
     public override string RenderColumnType(IDialect dialect, string type, int? length, int precision, int scale, bool nativeType)
     {

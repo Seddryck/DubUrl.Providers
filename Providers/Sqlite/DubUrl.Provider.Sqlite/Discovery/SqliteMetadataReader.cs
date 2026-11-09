@@ -1,10 +1,15 @@
 using DubUrl.Discovery;
+using DubUrl.Schema;
+using DubUrl.Schema.Constraints;
 
 namespace DubUrl.Provider.Sqlite.Discovery;
 
 /// <summary>SQLite main and attached-database metadata via read-only table-valued PRAGMAs.</summary>
-public sealed class SqliteMetadataReader : CatalogSchemaMetadataReader
+public sealed class SqliteMetadataReader : CatalogSchemaMetadataReader, IUniqueConstraintMetadataReader
 {
+    public UniqueConstraintMetadata GetUniqueConstraintMetadata(MetadataTable table, MetadataKey key)
+        => new(UniqueNullPolicy.NullsDistinct);
+
     public override void ConfigureOwnedConnection(System.Data.Common.DbConnection connection)
     {
         var builder = new System.Data.Common.DbConnectionStringBuilder { ConnectionString = connection.ConnectionString };

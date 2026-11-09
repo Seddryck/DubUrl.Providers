@@ -1,11 +1,40 @@
 using DubUrl.Querying.Dialects;
+using DubUrl.Schema;
+using DubUrl.Schema.Constraints;
+using DubUrl.Schema.Renderers;
 
 namespace DubUrl.Provider.MySql.Schema.Generation;
 
-internal sealed class SingleStoreSchemaSqlRenderer : StandardSchemaSqlRenderer, ITableDescriptionSqlRenderer, ITableDefinitionSqlRenderer
+internal sealed class SingleStoreSchemaSqlRenderer : StandardSchemaSqlRenderer, ITableDescriptionSqlRenderer, ITableDefinitionSqlRenderer, IUniqueConstraintSqlRenderer
 {
     internal static SingleStoreSchemaSqlRenderer Default { get; } = new();
     private SingleStoreSchemaSqlRenderer() : base(MySqlSchemaSqlRenderer.Default) { }
+
+    public UniqueConstraintPlan? PlanUniqueConstraint(IDialect dialect, UniqueConstraintContext context)
+    {
+        var key = context.Constraint;
+        if (key.NullPolicy != UniqueNullPolicy.NullsDistinct
+            && key.Columns.Any(column => column.Constraints.Get<NotNullableConstraint>() is null))
+            return null;
+
+        var table = context.Table;
+        var primary = table.Constraints.Get<PrimaryKeyConstraint>()?.Columns.Keys.ToArray()
+            ?? table.Columns.Values.Where(column => column.Constraints.Get<PrimaryKeyConstraint>() is not null)
+                .Select(column => column.Name).ToArray();
+        var shard = table.PhysicalOptions?.ShardKey ?? primary;
+        ValidateShard(shard, key.Columns.Select(column => column.Name).ToArray());
+        if (table.PhysicalOptions?.Storage != SchemaTableStorage.Rowstore && HasOtherEnforcement(context, primary))
+            throw new NotSupportedException(ColumnstoreUniqueLimit);
+        return new NativeUniqueConstraintPlan(key.NullPolicy, false);
+    }
+
+    private static bool HasOtherEnforcement(UniqueConstraintContext context, string[] primary)
+        => primary.Length > 0 || context.Indexes.Any(index => index.IsUnique)
+            || context.Table.Constraints.OfType<UniquenessConstraint>().Any(key => !ReferenceEquals(key, context.Constraint))
+            || context.Table.Columns.Values.Any(column => column.Constraints.Get<UniquenessConstraint>() is not null);
+
+    private const string ColumnstoreUniqueLimit =
+        "SingleStore columnstore supports only one primary/unique key; select rowstore for multiple unique keys.";
 
     public string RenderTableDescription(IDialect dialect, SchemaSqlObjectName table, string description)
     {
@@ -44,7 +73,7 @@ internal sealed class SingleStoreSchemaSqlRenderer : StandardSchemaSqlRenderer, 
         var keys = AllUniqueKeys(table).ToArray();
         var rowstore = options.Storage == SchemaTableStorage.Rowstore;
         if (!rowstore && keys.Length > 1)
-            throw new NotSupportedException("SingleStore columnstore supports only one primary/unique key; select rowstore for multiple unique keys.");
+            throw new NotSupportedException(ColumnstoreUniqueLimit);
         foreach (var key in keys)
         {
             ValidateColumns(table.Columns, key.Columns, "unique key");
