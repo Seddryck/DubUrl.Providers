@@ -78,6 +78,12 @@ public sealed class OracleMetadataReader : CatalogSchemaMetadataReader, IUniqueC
     protected override Task<List<CatalogRow>> ReadCatalogRowsAsync(DbConnection connection, string sql,
         DiscoveryOptions options, CancellationToken cancellationToken)
     {
+        // Unscoped inspection describes application schemas. Explicit selections can still inspect system objects.
+        if (options.Schemas.Count == 0 && options.Tables.Count == 0)
+            return QueryAsync(connection,
+                $"SELECT * FROM ({sql}) WHERE schema_name IN (SELECT username FROM all_users WHERE oracle_maintained = 'N')",
+                cancellationToken);
+
         // Dependency closure can include owners outside the requested scope.
         if (options.IncludeReferencedTables) return base.ReadCatalogRowsAsync(connection, sql, options, cancellationToken);
         var owners = options.Schemas;
