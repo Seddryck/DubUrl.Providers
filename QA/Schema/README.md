@@ -41,6 +41,16 @@ Where discovery is absent, every discovery scenario verifies the real provider h
 
 Shared_DiscoveryUnique positively verifies named single and composite UNIQUE constraints for PostgreSQL, SQLite, DuckDB and SQL Server, including column order, complete strict inspection and no duplicated backing indexes. MySQL and SingleStore now also verify native unique constraints without duplicate backing indexes; only Oracle retains the absent-reader contract.
 
+## Explicit UNIQUE null policies
+
+| Provider | Nullable tuples |
+|---|---|
+| SQL Server | Native UNIQUE treats matching null positions as equal. A unique index filtered to all-nonnull tuples implements `NullsDistinct` and cannot serve as a foreign-key target. Discovery recognizes that filter shape and maps it as one UNIQUE tuple. |
+| DuckDB | Native UNIQUE allows duplicate tuples containing a null. DuckDB generates native constraint names, so a custom name uses a standalone unique index. Discovery preserves that index as an index and foreign keys require a native key. Nullable `NullsNotDistinct` is rejected before deployment. |
+| PostgreSQL | Native UNIQUE allows duplicate tuples containing a null. `NullsNotDistinct` uses `NULLS NOT DISTINCT` on PostgreSQL 15 or later. Discovery reads the policy from the constraint's backing index. |
+
+`UniqueNullPolicyTests` exercises the plans on .NET 10 using real databases. The cases assert tuple order, catalog names, one enforcement structure, foreign-key eligibility, and inserts with both members present, either member null, and both members null.
+
 ## Framework and cleanup guarantees
 
 The runner accepts only net10.0. A global NUnit setup guard also prevents every provider fixture, including retained regressions, from touching a database under another runtime. QA projects still compile with the multi-target solution; the CI database matrix contains .NET 10 only.

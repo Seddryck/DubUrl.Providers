@@ -4,5 +4,8 @@
     <EmbeddedResource Include="Sql\Formatting\ReservedKeywords\*.txt"
                       LogicalName="DubUrl.Provider.DuckDb.Sql.Formatting.ReservedKeywords.%(Filename)%(Extension)" />
   </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="DubUrl.Schema" Version="$(SchemaPackageVersion)" />
+  </ItemGroup>
   <Import Project="..\..\Provider.Build.props" />
 </Project>

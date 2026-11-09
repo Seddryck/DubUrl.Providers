@@ -1,10 +1,34 @@
 using DubUrl.Discovery;
+using System.Runtime.CompilerServices;
+using DubUrl.Schema;
+using DubUrl.Schema.Constraints;
 
 namespace DubUrl.Provider.PostgreSql.Discovery;
 
 /// <summary>PostgreSQL catalog metadata. PostgreSQL-compatible protocols are not automatically opted in.</summary>
-public sealed class PostgreSqlMetadataReader : CatalogSchemaMetadataReader
+public sealed class PostgreSqlMetadataReader : CatalogSchemaMetadataReader, IUniqueConstraintMetadataReader
 {
+    private readonly ConditionalWeakTable<MetadataKey, UniqueConstraintMetadata> nullPolicies = new();
+
+    public UniqueConstraintMetadata GetUniqueConstraintMetadata(MetadataTable table, MetadataKey key)
+        => nullPolicies.TryGetValue(key, out var policy) ? policy : new(UniqueNullPolicy.NullsDistinct);
+
+    protected override MetadataTable MapTable(CatalogRow row, List<CatalogRow> columnRows, List<CatalogRow> keyRows,
+        List<CatalogRow> indexRows, List<CatalogRow> checkRows, DiscoveryOptions options, Action<SchemaFeature, string> diagnose)
+    {
+        var table = base.MapTable(row, columnRows, keyRows, indexRows, checkRows, options, diagnose);
+        if (table.UniqueConstraints.Count == 0)
+            return table;
+
+        var notDistinct = keyRows.Where(key => key.Text("schema_name") == table.Identity.Schema
+            && key.Text("table_name") == table.Identity.Name && key.Text("kind") == "UNIQUE"
+            && key.Bool("nulls_not_distinct") == true)
+            .Select(key => key.Text("key_name")).ToHashSet(StringComparer.Ordinal);
+        foreach (var key in table.UniqueConstraints.Where(key => notDistinct.Contains(key.Name)))
+            nullPolicies.Add(key, new(UniqueNullPolicy.NullsNotDistinct));
+        return table;
+    }
+
     protected override string TablesSql => """
         SELECT n.nspname AS schema_name, c.relname AS table_name, obj_description(c.oid) AS comment
         FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace
@@ -29,8 +53,10 @@ public sealed class PostgreSqlMetadataReader : CatalogSchemaMetadataReader
         SELECT n.nspname AS schema_name,t.relname AS table_name,c.conname AS key_name,
           CASE c.contype WHEN 'p' THEN 'PRIMARY KEY' WHEN 'u' THEN 'UNIQUE' ELSE 'FOREIGN KEY' END AS kind,
           k.ordinality AS ordinal,a.attname AS column_name,tn.nspname AS target_schema,
-          tt.relname AS target_table,ta.attname AS target_column
+          tt.relname AS target_table,ta.attname AS target_column,
+          COALESCE((to_jsonb(i)->>'indnullsnotdistinct')::boolean, false) AS nulls_not_distinct
         FROM pg_catalog.pg_constraint c
+        LEFT JOIN pg_catalog.pg_index i ON i.indexrelid=c.conindid AND c.contype='u'
         JOIN pg_catalog.pg_class t ON t.oid=c.conrelid JOIN pg_catalog.pg_namespace n ON n.oid=t.relnamespace
         CROSS JOIN LATERAL unnest(c.conkey) WITH ORDINALITY k(attnum,ordinality)
         JOIN pg_catalog.pg_attribute a ON a.attrelid=t.oid AND a.attnum=k.attnum
@@ -43,7 +69,8 @@ public sealed class PostgreSqlMetadataReader : CatalogSchemaMetadataReader
         SELECT n.nspname AS schema_name,t.relname AS table_name,ix.relname AS index_name,
           i.indisunique AS unique_index,k.ordinality AS ordinal,a.attname AS column_name,
           (i.indoption[(k.ordinality-1)::int] & 1)=1 AS descending,
-          (i.indpred IS NOT NULL OR i.indexprs IS NOT NULL OR i.indnatts<>i.indnkeyatts OR am.amname<>'btree') AS unsupported
+          (i.indpred IS NOT NULL OR i.indexprs IS NOT NULL OR i.indnatts<>i.indnkeyatts OR am.amname<>'btree'
+           OR COALESCE((to_jsonb(i)->>'indnullsnotdistinct')::boolean, false)) AS unsupported
         FROM pg_catalog.pg_index i JOIN pg_catalog.pg_class t ON t.oid=i.indrelid
         JOIN pg_catalog.pg_namespace n ON n.oid=t.relnamespace JOIN pg_catalog.pg_class ix ON ix.oid=i.indexrelid
         JOIN pg_catalog.pg_am am ON am.oid=ix.relam

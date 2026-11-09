@@ -1,9 +1,14 @@
 using DubUrl.Discovery;
+using DubUrl.Schema;
+using DubUrl.Schema.Constraints;
 
 namespace DubUrl.Provider.DuckDb.Discovery;
 
-public sealed class DuckDbMetadataReader : CatalogSchemaMetadataReader
+public sealed class DuckDbMetadataReader : CatalogSchemaMetadataReader, IUniqueConstraintMetadataReader
 {
+    public UniqueConstraintMetadata GetUniqueConstraintMetadata(MetadataTable table, MetadataKey key)
+        => new(UniqueNullPolicy.NullsDistinct);
+
     protected override string TablesSql => """
         SELECT schema_name,table_name,comment FROM duckdb_tables() WHERE NOT internal AND database_name=current_database()
         """;
