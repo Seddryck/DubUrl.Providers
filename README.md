@@ -48,6 +48,8 @@ Schema rendering uses the column's explicit `StructuredStorage`. The following t
 | SingleStore 8.5+ native `VectorType`, qualified with `WithServerVersion` | `VECTOR(dimensions, element)` | Fixed dimensions and numeric components | Dimensions and component type from the catalog |
 | MariaDB 10.5.10+ `JsonType` with `JsonText`, qualified with `WithMariaDbDefaults` | `JSON` alias for `LONGTEXT` | JSON syntax via the column's `JSON_VALID` check. Object shape is advisory. | Canonical column validation identifies JSON text |
 | MariaDB 11.7.1+ native `VectorType`, qualified with `WithMariaDbDefaults` | `VECTOR(dimensions)` | Fixed dimensions and float32 components, up to 16,383 | Dimensions from the catalog |
+| SQLite 3.38+ `JsonType` with `JsonText`, qualified with `WithServerVersion` | `TEXT` with a storage-class and `json_valid` check | RFC 8259 JSON text, with optional advisory shape | Renderer’s inline check in `sqlite_schema` |
+| SQLite 3.45+ `JsonType` with `Binary`, qualified with `WithServerVersion` | `BLOB` with a storage-class and `json_valid(value, 8)` check | SQLite’s strictly validated JSONB representation | Renderer’s inline check in `sqlite_schema` |
 | CockroachDB `JsonType` with `Json`, native `ArrayType`, and native `VectorType` | `JSONB`, `type[]`, `VECTOR(dimensions)` | JSON syntax, one-dimensional scalar arrays with nullable elements, and fixed float32 vectors | SQL declarations from `information_schema.columns` |
 | CrateDB native `ArrayType`, `StructType`, and `VectorType` | `ARRAY(type)`, `OBJECT(STRICT) AS (...)`, `FLOAT_VECTOR(dimensions)` | Typed nested arrays, strict object fields, and fixed float32 vectors | Column types, object paths and policies, and vector dimensions |
 | QuestDB 9.0+ native `ArrayType` | `DOUBLE[]` | One-dimensional nullable arrays and nullable double elements | Native declarations from `SHOW COLUMNS` |
@@ -64,6 +66,8 @@ MariaDB discovery treats `LONGTEXT COLLATE utf8mb4_bin` as JSON text when the ca
     dotnet test QA/DubUrl.Providers.Testing -f net10.0 --filter "FullyQualifiedName=DubUrl.Provider.MySql.Tests.Schema.MariaDbStructuredTypeLiveTests.JsonTextAndVectorRoundTrip"
 
 Use each engine’s `WithServerVersion` to qualify CockroachDB vectors (24.2+, up to 16,000 dimensions), CrateDB vectors (5.5+, up to 2,048 dimensions), and QuestDB arrays (9.0+). Catalog discovery covers tables and columns on these routes. CrateDB supports nullable object fields and nullable array elements. CrateDB text arrays are outside discovery because the catalog also reports bounded character arrays as `text_array`. QuestDB higher-rank arrays produce incomplete discovery because the column model has no rectangular tensor type.
+
+Use a SQLite build with JSON functions enabled. Callers can write JSONB using `jsonb(?1)` and read it as JSON text using `json(column)`. Discovery distinguishes the renderer’s validated forms from ordinary `TEXT` and `BLOB`, and reports bare `JSON` and `JSONB` declarations as incomplete. Native array, map, struct, and vector column shapes are outside SQLite’s structured mappings.
 
 For the three opt-in round-trip tests, set `DUBURL_COCKROACH_STRUCTURED_QA_CONNECTION_STRING`, `DUBURL_CRATE_STRUCTURED_QA_CONNECTION_STRING`, or `DUBURL_QUEST_STRUCTURED_QA_CONNECTION_STRING` for the corresponding disposable engine. Use QuestDB’s Npgsql `Server Compatibility Mode=NoTypeLoading`. Select the individual test by its fully qualified name in `PgCompatibleStructuredLiveTests`.
 

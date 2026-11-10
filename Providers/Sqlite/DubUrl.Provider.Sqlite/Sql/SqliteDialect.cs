@@ -32,6 +32,17 @@ public class SqliteDialect : BaseDialect
 
     public override DialectCapabilities Capabilities { get; } = SqliteSchemaCapabilities.Create();
 
+    internal Version? ServerVersion { get; private set; }
+
+    /// <summary>Qualifies JSON support for the SQLite library used by the connection.</summary>
+    public SqliteDialect WithServerVersion(Version serverVersion)
+    {
+        ArgumentNullException.ThrowIfNull(serverVersion);
+        var dialect = (SqliteDialect)MemberwiseClone();
+        dialect.ServerVersion = serverVersion;
+        return dialect;
+    }
+
     internal SqliteDialect(ILanguage language, string[] aliases, IRenderer renderer, ICaster[] casters, IDbTypeMapper dbTypeMapper, ISqlFunctionMapper sqlFunctionMapper)
         : base(language, aliases, renderer, casters, dbTypeMapper, sqlFunctionMapper) { }
 }

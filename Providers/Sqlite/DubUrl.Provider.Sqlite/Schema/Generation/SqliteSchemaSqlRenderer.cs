@@ -1,4 +1,5 @@
 using System.Data;
+using DubUrl.Provider.Sqlite.Sql;
 using DubUrl.Querying.Dialects;
 using DubUrl.Schema;
 using DubUrl.Schema.Constraints;
@@ -6,9 +7,15 @@ using DubUrl.Schema.Renderers;
 
 namespace DubUrl.Provider.Sqlite.Schema.Generation;
 
-internal sealed class SqliteSchemaSqlRenderer : StandardSchemaSqlRenderer, IUniqueConstraintSqlRenderer, IColumnDefinitionSqlRenderer, IColumnDefaultSqlRenderer
+internal sealed class SqliteSchemaSqlRenderer : StandardSchemaSqlRenderer, IUniqueConstraintSqlRenderer, IColumnDefinitionSqlRenderer, IColumnDefaultSqlRenderer, IStructuredColumnSqlRenderer
 {
     internal static SqliteSchemaSqlRenderer Default { get; } = new();
+
+    public string? RenderStructuredType(IDialect dialect, StructuredColumnTypeContext context)
+        => dialect is SqliteDialect sqlite && !context.IsKey && context.Column.Generation is null
+            && context.Column.DefaultValue is null or DBNull && context.Type.Shape is JsonType
+            ? SqliteJsonStorage.Render(sqlite.ServerVersion, context.Type.Storage, RenderIdentifier(dialect, context.Column.Name))
+            : null;
 
     internal const string UuidText = "lower(hex(randomblob(4)) || '-' || hex(randomblob(2)) || '-4' || "
         + "substr(hex(randomblob(2)), 2) || '-' || substr('89ab', (random() & 3) + 1, 1) || "

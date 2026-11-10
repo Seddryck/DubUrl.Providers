@@ -1,4 +1,6 @@
 using System.Data;
+using System.Data.Common;
+using System.Runtime.CompilerServices;
 using DubUrl.Discovery;
 using DubUrl.Provider.Sqlite.Schema.Generation;
 using DubUrl.Schema;
@@ -7,10 +9,51 @@ using DubUrl.Schema.Constraints;
 namespace DubUrl.Provider.Sqlite.Discovery;
 
 /// <summary>SQLite main and attached-database metadata via read-only table-valued PRAGMAs.</summary>
-public sealed class SqliteMetadataReader : CatalogSchemaMetadataReader, IUniqueConstraintMetadataReader
+public sealed class SqliteMetadataReader : CatalogSchemaMetadataReader, IUniqueConstraintMetadataReader, IStructuredColumnMetadataReader
 {
+    private readonly ConditionalWeakTable<MetadataColumn, StructuredColumnMetadata> structured = new();
+
+    public async Task<StructuredSchemaMetadata> ReadWithStructuredTypesAsync(DbConnection connection,
+        DiscoveryOptions options, CancellationToken cancellationToken)
+    {
+        var metadata = await ReadAsync(connection, options, cancellationToken).ConfigureAwait(false);
+        var types = new Dictionary<StructuredColumnIdentity, StructuredColumnMetadata>();
+        foreach (var table in metadata.Tables)
+        foreach (var column in table.Columns)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (structured.TryGetValue(column, out var type))
+                types.Add(new(table.Identity, column.Name), type);
+        }
+        return new(metadata, types);
+    }
+
     public UniqueConstraintMetadata GetUniqueConstraintMetadata(MetadataTable table, MetadataKey key)
         => new(UniqueNullPolicy.NullsDistinct);
+
+    protected override MetadataTable MapTable(CatalogRow row, List<CatalogRow> columnRows, List<CatalogRow> keyRows,
+        List<CatalogRow> indexRows, List<CatalogRow> checkRows, DiscoveryOptions options, Action<SchemaFeature, string> diagnose)
+    {
+        var identity = Identity(row);
+        var definition = SqliteTableDefinition.Parse(row.Text("definition"));
+        var columns = columnRows.Where(column => Identity(column) == identity).ToList();
+        if (definition.Generated.Count > 0 && options.Features.Contains(SchemaFeature.Generation))
+            columns = columns.Select(column => column.Text("generation_expression") is not null
+                && column.Text("column_name") is { } name && definition.Generated.TryGetValue(name, out var expression)
+                    ? column.With(("generation_expression", expression)) : column).ToList();
+
+        var table = base.MapTable(row, columns, keyRows, indexRows, checkRows, options, diagnose);
+        var ambiguous = columns.Where(column => column.Text("type_name")?.Trim().ToUpperInvariant() is "JSON" or "JSONB")
+            .Select(column => column.Text("column_name")).ToHashSet(StringComparer.Ordinal);
+        foreach (var column in table.Columns)
+        {
+            if (definition.JsonColumns.TryGetValue(column.Name, out var storage))
+                structured.Add(column, new(new(new JsonType(), storage), MetadataCoverage.Available));
+            else if (ambiguous.Contains(column.Name))
+                structured.Add(column, new(null, MetadataCoverage.Unrepresentable));
+        }
+        return table;
+    }
 
     protected override MetadataColumn MapCatalogColumn(CatalogRow row, DiscoveryOptions options,
         Action<SchemaFeature, string> diagnose)
@@ -53,8 +96,7 @@ public sealed class SqliteMetadataReader : CatalogSchemaMetadataReader, IUniqueC
 
     protected override IReadOnlySet<SchemaFeature> UnsupportedFeatures => new HashSet<SchemaFeature>
         { SchemaFeature.Comments };
-    private const string DefinitionsSql = "SELECT name AS table_name,sql AS definition FROM {database}.sqlite_schema WHERE type='table' AND name NOT LIKE 'sqlite_%'";
-    protected override string ChecksSql => DefinitionsSql;
+    protected override string ChecksSql => "SELECT name AS table_name,sql AS definition FROM {database}.sqlite_schema WHERE type='table' AND name NOT LIKE 'sqlite_%'";
 
     protected override async Task<List<CatalogRow>> ReadCatalogRowsAsync(System.Data.Common.DbConnection connection,
         string sql, DiscoveryOptions options, CancellationToken cancellationToken)
@@ -71,16 +113,6 @@ public sealed class SqliteMetadataReader : CatalogSchemaMetadataReader, IUniqueC
             if (sql == ChecksSql)
                 found = found.SelectMany(row => SqliteTableDefinition.Parse(row.Text("definition")).Checks.Select(check =>
                     row.With(("check_name", check.Name), ("expression", check.Expression)))).ToList();
-            else if (sql == ColumnsSql && options.Features.Contains(SchemaFeature.Generation))
-            {
-                var definitions = await QueryAsync(connection, DefinitionsSql.Replace("{database}", quoted), cancellationToken).ConfigureAwait(false);
-                var tables = definitions.ToDictionary(row => row.Text("table_name")!,
-                    row => SqliteTableDefinition.Parse(row.Text("definition")), StringComparer.Ordinal);
-                found = found.Select(row => row.Text("generation_expression") is not null
-                    && tables.TryGetValue(row.Text("table_name")!, out var table)
-                    && table.Generated.TryGetValue(row.Text("column_name")!, out var expression)
-                        ? row.With(("generation_expression", expression)) : row).ToList();
-            }
             rows.AddRange(found.Select(row => row.With(("schema_name", null), ("database_name", name),
                 ("target_schema", null), ("target_database", row.Text("target_table") is null ? null : name))));
         }
@@ -88,7 +120,7 @@ public sealed class SqliteMetadataReader : CatalogSchemaMetadataReader, IUniqueC
     }
 
     protected override string TablesSql => """
-        SELECT 'main' AS schema_name,name AS table_name FROM {database}.sqlite_schema
+        SELECT 'main' AS schema_name,name AS table_name,sql AS definition FROM {database}.sqlite_schema
         WHERE type='table' AND name NOT LIKE 'sqlite_%'
         """;
     protected override string ColumnsSql => """
