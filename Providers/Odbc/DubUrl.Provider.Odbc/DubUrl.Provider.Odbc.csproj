@@ -8,6 +8,7 @@
     <ProjectReference Include="..\..\MySql\DubUrl.Provider.MySql\DubUrl.Provider.MySql.csproj" />
     <ProjectReference Include="..\..\PostgreSql\DubUrl.Provider.PostgreSql\DubUrl.Provider.PostgreSql.csproj" />
     <ProjectReference Include="..\..\SqlServer\DubUrl.Provider.SqlServer\DubUrl.Provider.SqlServer.csproj" />
+    <ProjectReference Include="..\..\Spark\DubUrl.Provider.Spark\DubUrl.Provider.Spark.csproj" />
     <ProjectReference Include="..\..\Text\DubUrl.Provider.Text\DubUrl.Provider.Text.csproj" />
     <ProjectReference Include="..\..\Trino\DubUrl.Provider.Trino\DubUrl.Provider.Trino.csproj" />
   </ItemGroup>

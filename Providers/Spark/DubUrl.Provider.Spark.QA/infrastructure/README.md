@@ -1,0 +1,13 @@
+# Apache Spark ODBC QA
+
+This fixture starts the Spark 3.5.8 SQL Thrift Server in Docker Compose. It uses local mode and exposes binary Thrift with no authentication on host loopback port 10000. The Compose health check waits until a Beeline query succeeds. The test then opens a separate ODBC connection through DubUrl and checks `SELECT 1`. The runner removes the container, network, and volumes after the test. [Spark Thrift Server](https://spark.apache.org/docs/3.5.8/sql-distributed-sql-engine.html#running-the-thrift-jdbcodbc-server)
+
+Use Debian or Ubuntu x64 with .NET 10, Docker Compose v2, unixODBC and `odbcinst`. Obtain the licensed Debian x64 **Simba Apache Spark ODBC Connector** from insightsoftware and install it and any required license on the runner. Register the driver in unixODBC as `Simba Spark ODBC Driver` with `Driver` set to the absolute path to the package-owned library. Verify the registration with `odbcinst -q -d -n 'Simba Spark ODBC Driver'`. [Simba Debian install guide](https://documentation.insightsoftware.com/simba-spark-windows-driver-guide/content/odbc/debian/installdeb.htm)
+
+Set `SPARK_ODBC_DRIVER_VERSION` to the full Debian package version from `dpkg-deb -f <installer.deb> Version`. The runner compares it with the package owning the registered library and records it with the test results. Run from the repository root.
+
+```sh
+bash Providers/Spark/DubUrl.Provider.Spark.QA/infrastructure/run-qa.sh
+```
+
+For GitHub Actions, register an approved Linux x64 runner with label `duburl-spark-qa` and add `SPARK_ODBC_DRIVER_VERSION` as a repository Actions variable. Dispatch **Spark and Databricks live ODBC QA** with fixture `spark`. Before the workflow exists on `main`, pushing a reviewed commit to `qa/odbc-connectivity` runs Spark QA when the version variable is configured.

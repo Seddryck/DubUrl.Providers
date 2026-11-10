@@ -25,6 +25,7 @@ $packages = @(
     @{ Id = 'DubUrl.Provider.Oracle'; Assembly = 'DubUrl.Provider.Oracle' },
     @{ Id = 'DubUrl.Provider.PostgreSql'; Assembly = 'DubUrl.Provider.PostgreSql' },
     @{ Id = 'DubUrl.Provider.Snowflake'; Assembly = 'DubUrl.Provider.Snowflake' },
+    @{ Id = 'DubUrl.Provider.Spark'; Assembly = 'DubUrl.Provider.Spark' },
     @{ Id = 'DubUrl.Provider.Sqlite'; Assembly = 'DubUrl.Provider.Sqlite' },
     @{ Id = 'DubUrl.Provider.SqlServer'; Assembly = 'DubUrl.Provider.SqlServer' },
     @{ Id = 'DubUrl.Provider.Teradata'; Assembly = 'DubUrl.Provider.Teradata' },

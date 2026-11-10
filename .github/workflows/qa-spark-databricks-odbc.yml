@@ -1,0 +1,96 @@
+name: Spark and Databricks live ODBC QA
+
+on:
+  push:
+    branches: [qa/odbc-connectivity]
+  workflow_dispatch:
+    inputs:
+      fixture:
+        description: Live fixture to run
+        type: choice
+        options: [databricks, spark, both]
+        default: both
+
+permissions:
+  contents: read
+
+env:
+  DOTNET_CLI_TELEMETRY_OPTOUT: 1
+  DOTNET_NOLOGO: 1
+
+jobs:
+  databricks:
+    name: Databricks Free Edition ODBC
+    if: >-
+      (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/qa/odbc-connectivity') &&
+      (github.event_name == 'push' || inputs.fixture != 'spark')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    environment: databricks-qa
+    concurrency: databricks-odbc-qa
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: '10.0.401'
+      - name: Install pinned Databricks ODBC driver
+        shell: bash
+        run: |
+          mkdir -p .test-results/databricks
+          archive="$RUNNER_TEMP/databricks-odbc.zip"
+          curl --fail --silent --show-error --location --retry 3 \
+            https://databricks-bi-artifacts.s3.amazonaws.com/simba-databricks-odbc-drivers/2.14.0/DatabricksODBC-2.14.0-Debian-64bit.zip \
+            --output "$archive"
+          echo "835f793a68e704e93a3726dc5f873140cc9d8e11a33c6c62b0400435b8d08aa8  $archive" | sha256sum --check
+          unzip -q "$archive" -d "$RUNNER_TEMP/databricks-odbc"
+          sudo apt-get update
+          sudo apt-get install -y unixodbc odbcinst "$RUNNER_TEMP/databricks-odbc/databricksodbc_2.14.0.1000-2_amd64.deb"
+          printf '%s\n' '[Databricks ODBC Driver]' 'Driver=/opt/databricks/databricksodbc/lib/64/libdatabricksodbc64.so' > "$RUNNER_TEMP/databricks-odbc.ini"
+          sudo odbcinst -i -d -f "$RUNNER_TEMP/databricks-odbc.ini"
+          odbcinst -q -d -n 'Databricks ODBC Driver' >/dev/null
+          dpkg-query -W databricksodbc | tee .test-results/databricks/driver.txt
+      - name: Build Databricks QA
+        run: dotnet build Providers/Spark/DubUrl.Provider.Databricks.QA -c Release -f net10.0
+      - name: Run Databricks Free Edition smoke test
+        env:
+          DATABRICKS_HOST: ${{ vars.DATABRICKS_HOST }}
+          DATABRICKS_HTTP_PATH: ${{ vars.DATABRICKS_HTTP_PATH }}
+          DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN }}
+        run: >-
+          dotnet test Providers/Spark/DubUrl.Provider.Databricks.QA -c Release -f net10.0 --no-build
+          --logger 'trx;LogFileName=databricks.trx' --results-directory .test-results/databricks
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: databricks-odbc-qa
+          path: .test-results/databricks
+          if-no-files-found: warn
+
+  spark:
+    name: Apache Spark Thrift Server ODBC
+    if: >-
+      (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/qa/odbc-connectivity') &&
+      ((github.event_name == 'push' && vars.SPARK_ODBC_DRIVER_VERSION != '') ||
+       (github.event_name == 'workflow_dispatch' && inputs.fixture != 'databricks'))
+    runs-on: [self-hosted, linux, x64, duburl-spark-qa]
+    timeout-minutes: 20
+    concurrency: spark-odbc-qa
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: '10.0.401'
+      - name: Run Spark fixture and smoke test
+        env:
+          SPARK_ODBC_DRIVER_VERSION: ${{ vars.SPARK_ODBC_DRIVER_VERSION }}
+        run: bash Providers/Spark/DubUrl.Provider.Spark.QA/infrastructure/run-qa.sh
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: spark-odbc-qa
+          path: .test-results/spark
+          if-no-files-found: warn
