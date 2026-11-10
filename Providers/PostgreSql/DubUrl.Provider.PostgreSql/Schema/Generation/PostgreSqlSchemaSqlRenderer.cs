@@ -36,12 +36,13 @@ internal class PgsqlSchemaSqlRenderer : PostgreSqlSchemaSqlRenderer, IUniqueCons
     internal new static PgsqlSchemaSqlRenderer Default { get; } = new();
 
     public virtual string? RenderStructuredType(IDialect dialect, StructuredColumnTypeContext context)
-        => dialect is PgsqlDialect && !context.IsKey && context.Column.Generation is null
+        => dialect is PgsqlDialect postgres && !context.IsKey && context.Column.Generation is null
             ? context.Type switch
             {
                 { Storage: StructuredStorage.Json, Shape: JsonType } => "JSONB",
                 { Storage: StructuredStorage.Native, Shape: ArrayType array } when context.Column.DefaultValue is null or DBNull
                     => PostgreSqlArrayType.Render(array, context.Column.Name),
+                { Storage: StructuredStorage.Native, Shape: StructType composite } => postgres.ResolveCompositeType(composite),
                 _ => null
             }
             : null;

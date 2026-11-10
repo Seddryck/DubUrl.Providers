@@ -1,4 +1,3 @@
-using System.Data;
 using System.Security.Cryptography;
 using System.Text;
 using DubUrl.Discovery;
@@ -10,33 +9,11 @@ internal static class PostgreSqlArrayType
 {
     internal const string RankCheckPrefix = "__duburl_array_rank_";
 
-    private static readonly IReadOnlyDictionary<DbType, string> ScalarTypes = new Dictionary<DbType, string>
-    {
-        [DbType.Boolean] = "bool",
-        [DbType.Int16] = "int2",
-        [DbType.Int32] = "int4",
-        [DbType.Int64] = "int8",
-        [DbType.Single] = "float4",
-        [DbType.Double] = "float8",
-        [DbType.String] = "text",
-        [DbType.Binary] = "bytea",
-        [DbType.Guid] = "uuid",
-        [DbType.Date] = "date"
-    };
-
-    private static readonly IReadOnlyDictionary<string, DbType> CatalogTypes =
-        ScalarTypes.ToDictionary(item => item.Value, item => item.Key, StringComparer.Ordinal);
-
     internal static string? Render(ArrayType array, string name)
     {
         if (array.ElementNullable != true)
             return null;
-        var element = array.Element switch
-        {
-            ScalarType scalar => ScalarTypes.GetValueOrDefault(scalar.Type),
-            JsonType { ObjectShape: null } => "jsonb",
-            _ => null
-        };
+        var element = PostgreSqlStructuredLeaf.Render(array.Element);
         if (element is null)
             return null;
 
@@ -52,8 +29,7 @@ internal static class PostgreSqlArrayType
         if (rank != 1 || typeModifier != -1 || elementSchema != "pg_catalog" || element is null || defaultCollation != true)
             return new(null, MetadataCoverage.Unrepresentable);
 
-        StructuredType? leaf = element == "jsonb" ? new JsonType()
-            : CatalogTypes.TryGetValue(element, out var type) ? new ScalarType(type) : null;
+        var leaf = PostgreSqlStructuredLeaf.Decode(element);
         return leaf is null ? new(null, MetadataCoverage.Unrepresentable)
             : new(new(new ArrayType(leaf, true), StructuredStorage.Native),
                 checkedRank ? MetadataCoverage.Available : MetadataCoverage.Unrepresentable);

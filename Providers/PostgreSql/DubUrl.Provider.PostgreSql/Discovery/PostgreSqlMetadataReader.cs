@@ -13,7 +13,8 @@ namespace DubUrl.Provider.PostgreSql.Discovery;
 public sealed class PostgreSqlMetadataReader : CatalogSchemaMetadataReader, IUniqueConstraintMetadataReader, IStructuredColumnMetadataReader
 {
     private readonly ConditionalWeakTable<MetadataKey, UniqueConstraintMetadata> nullPolicies = new();
-    private readonly ConditionalWeakTable<MetadataColumn, StructuredColumnMetadata> arrays = new();
+    private readonly ConditionalWeakTable<MetadataColumn, StructuredColumnMetadata> structuredTypes = new();
+    private readonly ConditionalWeakTable<CatalogRow, StructuredColumnMetadata> composites = new();
 
     public async Task<StructuredSchemaMetadata> ReadWithStructuredTypesAsync(DbConnection connection,
         DiscoveryOptions options, CancellationToken cancellationToken)
@@ -24,8 +25,8 @@ public sealed class PostgreSqlMetadataReader : CatalogSchemaMetadataReader, IUni
         foreach (var column in table.Columns)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            if (arrays.TryGetValue(column, out var array))
-                types.Add(new(table.Identity, column.Name), array);
+            if (structuredTypes.TryGetValue(column, out var structured))
+                types.Add(new(table.Identity, column.Name), structured);
             else if (column.NativeType == "jsonb")
                 types.Add(new(table.Identity, column.Name), new(new(new JsonType(), StructuredStorage.Json), MetadataCoverage.Available));
         }
@@ -85,6 +86,7 @@ public sealed class PostgreSqlMetadataReader : CatalogSchemaMetadataReader, IUni
           TRUE AS stored, col_description(pc.oid,a.attnum) AS comment,
           a.attndims AS array_rank,a.atttypmod AS array_type_modifier,e.typname AS array_element,en.nspname AS array_element_schema,
           a.attcollation=at.typcollation AS array_default_collation,shape.conname AS array_rank_check,
+          at.typtype='c' AS is_composite,at.oid AS composite_oid,at.typname AS composite_name,an.nspname AS composite_schema,
           seq.sequence_name,seq.sequence_schema,seq.sequence_count,
           EXISTS (SELECT 1 FROM pg_catalog.pg_depend fd
             WHERE fd.classid='pg_catalog.pg_attrdef'::regclass AND fd.objid=ad.oid
@@ -94,6 +96,7 @@ public sealed class PostgreSqlMetadataReader : CatalogSchemaMetadataReader, IUni
         JOIN pg_catalog.pg_class pc ON pc.relnamespace=n.oid AND pc.relname=c.table_name
         JOIN pg_catalog.pg_attribute a ON a.attrelid=pc.oid AND a.attname=c.column_name
         JOIN pg_catalog.pg_type at ON at.oid=a.atttypid
+        JOIN pg_catalog.pg_namespace an ON an.oid=at.typnamespace
         LEFT JOIN pg_catalog.pg_type e ON e.oid=at.typelem AND e.typarray=at.oid
         LEFT JOIN pg_catalog.pg_namespace en ON en.oid=e.typnamespace
         LEFT JOIN LATERAL (
@@ -185,14 +188,52 @@ public sealed class PostgreSqlMetadataReader : CatalogSchemaMetadataReader, IUni
         @"\A(?:pg_catalog\.)?nextval\('(?:[^']|'')*'::(?:pg_catalog\.)?regclass\)\z",
         RegexOptions.CultureInvariant, TimeSpan.FromSeconds(1));
 
+    protected override async Task<List<CatalogRow>> ReadCatalogRowsAsync(DbConnection connection, string sql,
+        DiscoveryOptions options, CancellationToken cancellationToken)
+    {
+        var rows = await base.ReadCatalogRowsAsync(connection, sql, options, cancellationToken).ConfigureAwait(false);
+        if (sql != ColumnsSql)
+            return rows;
+        var named = rows.Where(row => row.Bool("is_composite") == true).ToArray();
+        if (named.Length == 0)
+            return rows;
+
+        List<CatalogRow> attributes;
+        try
+        {
+            attributes = await QueryAsync(connection, PostgreSqlCompositeCatalog.Sql, cancellationToken).ConfigureAwait(false);
+        }
+        catch (DbException)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            foreach (var row in named)
+                composites.Add(row, new(null, MetadataCoverage.Inaccessible));
+            return rows;
+        }
+
+        var catalog = new PostgreSqlCompositeCatalog(attributes);
+        foreach (var row in named)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            composites.Add(row, catalog.Decode(row.Long("composite_oid")));
+        }
+        return rows;
+    }
+
     protected override MetadataColumn MapCatalogColumn(CatalogRow row, DiscoveryOptions options,
         Action<SchemaFeature, string> diagnose)
     {
         if (row.Text("type_name") == "ARRAY")
         {
             var array = base.MapCatalogColumn(row, options, diagnose);
-            arrays.Add(array, DecodeArray(row));
+            structuredTypes.Add(array, DecodeArray(row));
             return array;
+        }
+        if (composites.TryGetValue(row, out var composite))
+        {
+            var column = base.MapCatalogColumn(row, options, diagnose);
+            structuredTypes.Add(column, composite);
+            return column;
         }
 
         if (!options.Features.Contains(SchemaFeature.Defaults) || row.Text("default_expression") is not { } sql
@@ -239,6 +280,9 @@ public sealed class PostgreSqlMetadataReader : CatalogSchemaMetadataReader, IUni
         var column = base.MapColumn(row);
         if (row.Text("type_name") == "ARRAY")
             return column with { Type = DbType.Object, Length = null, Precision = null, Scale = null };
+        if (row.Bool("is_composite") == true && row.Text("composite_schema") is { } schema && row.Text("composite_name") is { } name)
+            return column with { Type = DbType.Object, NativeType = PostgreSqlCompositeType.QualifiedName(schema, name),
+                NativeDialect = typeof(DubUrl.Provider.PostgreSql.Sql.PgsqlDialect) };
         if (row.Text("native_type_name") is "json" or "jsonb" or "citext")
             return column with { Type = System.Data.DbType.String, NativeType = row.Text("native_type_name"), NativeDialect = typeof(DubUrl.Provider.PostgreSql.Sql.PgsqlDialect) };
         // Preserve VARCHAR for bounded columns: String maps to PostgreSQL TEXT,
