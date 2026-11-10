@@ -15,6 +15,11 @@ internal class PostgreSqlSchemaSqlRenderer : StandardSchemaSqlRenderer
 
     public override bool SupportsCommentRendering => true;
 
+    public override string RenderIdentifier(IDialect dialect, string name)
+        => name.Contains('"') ? QuoteIdentifier(name) : base.RenderIdentifier(dialect, name);
+
+    internal static string QuoteIdentifier(string name) => "\"" + name.Replace("\"", "\"\"", StringComparison.Ordinal) + "\"";
+
     public override string RenderObjectName(IDialect dialect, string? catalog, string? database, string? schema, string name)
     {
         RejectQualifier(catalog, "Catalog", dialect);
@@ -31,10 +36,15 @@ internal class PgsqlSchemaSqlRenderer : PostgreSqlSchemaSqlRenderer, IUniqueCons
     internal new static PgsqlSchemaSqlRenderer Default { get; } = new();
 
     public virtual string? RenderStructuredType(IDialect dialect, StructuredColumnTypeContext context)
-        => dialect is DubUrl.Provider.PostgreSql.Sql.PgsqlDialect
-            && !context.IsKey && context.Column.Generation is null
-            && context.Type is { Storage: StructuredStorage.Json, Shape: JsonType }
-            ? "JSONB" : null;
+        => dialect is PgsqlDialect && !context.IsKey && context.Column.Generation is null
+            ? context.Type switch
+            {
+                { Storage: StructuredStorage.Json, Shape: JsonType } => "JSONB",
+                { Storage: StructuredStorage.Native, Shape: ArrayType array } when context.Column.DefaultValue is null or DBNull
+                    => PostgreSqlArrayType.Render(array, context.Column.Name),
+                _ => null
+            }
+            : null;
 
     public virtual ColumnDefaultPlan? PlanColumnDefault(IDialect dialect, ColumnDefaultContext context)
     {

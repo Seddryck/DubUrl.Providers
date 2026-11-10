@@ -9,6 +9,7 @@ namespace DubUrl.Provider.Timescale.QA.Query;
 public sealed class TimescaleProviderTests : ProviderContract
 {
     protected override string ConnectionUrl => "ts://postgres:Password12!@localhost/DubUrl";
+    protected override bool SupportsSchemaDiscovery => true;
     internal string SchemaQaUrl => ConnectionUrl;
     protected override string CliTableName => "\"Customer\"";
     protected override string SelectFirstCustomerSql => "select \"FullName\" from \"Customer\" where \"CustomerId\"=1";

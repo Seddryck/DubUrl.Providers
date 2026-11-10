@@ -1,7 +1,9 @@
+using System.Data;
 using System.Text.RegularExpressions;
 using System.Data.Common;
 using DubUrl.Discovery;
 using System.Runtime.CompilerServices;
+using DubUrl.Provider.PostgreSql.Schema.Generation;
 using DubUrl.Schema;
 using DubUrl.Schema.Constraints;
 
@@ -11,6 +13,7 @@ namespace DubUrl.Provider.PostgreSql.Discovery;
 public sealed class PostgreSqlMetadataReader : CatalogSchemaMetadataReader, IUniqueConstraintMetadataReader, IStructuredColumnMetadataReader
 {
     private readonly ConditionalWeakTable<MetadataKey, UniqueConstraintMetadata> nullPolicies = new();
+    private readonly ConditionalWeakTable<MetadataColumn, StructuredColumnMetadata> arrays = new();
 
     public async Task<StructuredSchemaMetadata> ReadWithStructuredTypesAsync(DbConnection connection,
         DiscoveryOptions options, CancellationToken cancellationToken)
@@ -21,7 +24,9 @@ public sealed class PostgreSqlMetadataReader : CatalogSchemaMetadataReader, IUni
         foreach (var column in table.Columns)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            if (column.NativeType == "jsonb")
+            if (arrays.TryGetValue(column, out var array))
+                types.Add(new(table.Identity, column.Name), array);
+            else if (column.NativeType == "jsonb")
                 types.Add(new(table.Identity, column.Name), new(new(new JsonType(), StructuredStorage.Json), MetadataCoverage.Available));
         }
         return new(metadata, types);
@@ -33,6 +38,17 @@ public sealed class PostgreSqlMetadataReader : CatalogSchemaMetadataReader, IUni
     protected override MetadataTable MapTable(CatalogRow row, List<CatalogRow> columnRows, List<CatalogRow> keyRows,
         List<CatalogRow> indexRows, List<CatalogRow> checkRows, DiscoveryOptions options, Action<SchemaFeature, string> diagnose)
     {
+        if (checkRows.Count > 0)
+        {
+            var identity = Identity(row);
+            var rankChecks = columnRows.Where(column => Identity(column) == identity
+                    && column.Text("array_rank_check")?.StartsWith(PostgreSqlArrayType.RankCheckPrefix, StringComparison.Ordinal) == true
+                    && DecodeArray(column).Coverage == MetadataCoverage.Available)
+                .Select(column => column.Text("array_rank_check")).ToHashSet(StringComparer.Ordinal);
+            // The array renderer recreates its rank check. Independent catalog checks remain visible.
+            if (rankChecks.Count > 0)
+                checkRows = checkRows.Where(check => Identity(check) != identity || !rankChecks.Contains(check.Text("check_name"))).ToList();
+        }
         var table = base.MapTable(row, columnRows, keyRows, indexRows, checkRows, options, diagnose);
         if (table.UniqueConstraints.Count == 0)
             return table;
@@ -46,13 +62,20 @@ public sealed class PostgreSqlMetadataReader : CatalogSchemaMetadataReader, IUni
         return table;
     }
 
-    protected override string TablesSql => """
+    private static string ExcludeTimescaleInternals(string schema) => $"""
+        AND (NOT (pg_catalog.starts_with({schema}, '_timescaledb_')
+          OR {schema} IN ('timescaledb_information','timescaledb_experimental'))
+          OR NOT EXISTS (SELECT 1 FROM pg_catalog.pg_extension WHERE extname='timescaledb'))
+        """;
+
+    protected override string TablesSql => $$"""
         SELECT n.nspname AS schema_name, c.relname AS table_name, obj_description(c.oid) AS comment
         FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace
         WHERE c.relkind IN ('r','p') AND n.nspname NOT IN ('pg_catalog','information_schema')
           AND n.nspname NOT LIKE 'pg_toast%' AND n.nspname NOT LIKE 'pg_temp_%'
+          {{ExcludeTimescaleInternals("n.nspname")}}
         """;
-    protected override string ColumnsSql => """
+    protected override string ColumnsSql => $$"""
         SELECT c.table_schema AS schema_name,c.table_name,c.column_name,c.ordinal_position AS ordinal,
           c.data_type AS type_name,c.udt_name AS native_type_name,c.is_nullable AS nullable,c.character_maximum_length AS length,
           c.numeric_precision AS precision,c.numeric_scale AS scale,c.column_default AS default_expression,
@@ -60,6 +83,8 @@ public sealed class PostgreSqlMetadataReader : CatalogSchemaMetadataReader, IUni
           CASE WHEN c.is_identity='YES' THEN c.identity_increment END AS identity_increment,
           CASE WHEN c.is_generated='ALWAYS' THEN c.generation_expression END AS generation_expression,
           TRUE AS stored, col_description(pc.oid,a.attnum) AS comment,
+          a.attndims AS array_rank,a.atttypmod AS array_type_modifier,e.typname AS array_element,en.nspname AS array_element_schema,
+          a.attcollation=at.typcollation AS array_default_collation,shape.conname AS array_rank_check,
           seq.sequence_name,seq.sequence_schema,seq.sequence_count,
           EXISTS (SELECT 1 FROM pg_catalog.pg_depend fd
             WHERE fd.classid='pg_catalog.pg_attrdef'::regclass AND fd.objid=ad.oid
@@ -68,6 +93,26 @@ public sealed class PostgreSqlMetadataReader : CatalogSchemaMetadataReader, IUni
         JOIN pg_catalog.pg_namespace n ON n.nspname=c.table_schema
         JOIN pg_catalog.pg_class pc ON pc.relnamespace=n.oid AND pc.relname=c.table_name
         JOIN pg_catalog.pg_attribute a ON a.attrelid=pc.oid AND a.attname=c.column_name
+        JOIN pg_catalog.pg_type at ON at.oid=a.atttypid
+        LEFT JOIN pg_catalog.pg_type e ON e.oid=at.typelem AND e.typarray=at.oid
+        LEFT JOIN pg_catalog.pg_namespace en ON en.oid=e.typnamespace
+        LEFT JOIN LATERAL (
+          SELECT ac.conname
+          FROM pg_catalog.pg_constraint ac
+          WHERE e.oid IS NOT NULL AND ac.conrelid=pc.oid AND ac.contype='c'
+            AND ac.conkey=ARRAY[a.attnum] AND ac.convalidated AND NOT ac.connoinherit
+            AND COALESCE((pg_catalog.to_jsonb(ac)->>'conenforced')::boolean, true)
+            AND pg_catalog.pg_get_expr(ac.conbin, ac.conrelid) IN (
+              pg_catalog.format('(%I(%I) = 1)', 'array_ndims', a.attname),
+              pg_catalog.format('(%I.%I(%I) = 1)', 'pg_catalog', 'array_ndims', a.attname),
+              pg_catalog.format('(%I(%I) OPERATOR(%I.=) 1)', 'array_ndims', a.attname, 'pg_catalog'),
+              pg_catalog.format('(%I.%I(%I) OPERATOR(%I.=) 1)', 'pg_catalog', 'array_ndims', a.attname, 'pg_catalog'))
+            AND NOT EXISTS (SELECT 1 FROM pg_catalog.pg_depend d
+              WHERE d.classid='pg_catalog.pg_constraint'::regclass AND d.objid=ac.oid
+                AND d.refclassid IN ('pg_catalog.pg_proc'::regclass,'pg_catalog.pg_operator'::regclass))
+          ORDER BY pg_catalog.starts_with(ac.conname, '{{PostgreSqlArrayType.RankCheckPrefix}}') DESC, ac.oid
+          LIMIT 1
+        ) shape ON TRUE
         LEFT JOIN pg_catalog.pg_attrdef ad ON ad.adrelid=pc.oid AND ad.adnum=a.attnum
         LEFT JOIN LATERAL (
           SELECT MIN(s.relname::text) AS sequence_name,MIN(sn.nspname::text) AS sequence_schema,COUNT(*) AS sequence_count
@@ -82,8 +127,9 @@ public sealed class PostgreSqlMetadataReader : CatalogSchemaMetadataReader, IUni
                 AND own.refobjid=pc.oid AND own.refobjsubid=a.attnum AND own.deptype IN ('a','i'))
         ) seq ON TRUE
         WHERE c.table_schema NOT IN ('pg_catalog','information_schema') AND pc.relkind IN ('r','p')
+          {{ExcludeTimescaleInternals("n.nspname")}}
         """;
-    protected override string KeysSql => """
+    protected override string KeysSql => $$"""
         SELECT n.nspname AS schema_name,t.relname AS table_name,c.conname AS key_name,
           CASE c.contype WHEN 'p' THEN 'PRIMARY KEY' WHEN 'u' THEN 'UNIQUE' ELSE 'FOREIGN KEY' END AS kind,
           k.ordinality AS ordinal,a.attname AS column_name,tn.nspname AS target_schema,
@@ -98,8 +144,9 @@ public sealed class PostgreSqlMetadataReader : CatalogSchemaMetadataReader, IUni
         LEFT JOIN pg_catalog.pg_namespace tn ON tn.oid=tt.relnamespace
         LEFT JOIN pg_catalog.pg_attribute ta ON ta.attrelid=tt.oid AND ta.attnum=c.confkey[k.ordinality::int]
         WHERE c.contype IN ('p','u','f') AND n.nspname NOT IN ('pg_catalog','information_schema')
+          {{ExcludeTimescaleInternals("n.nspname")}}
         """;
-    protected override string IndexesSql => """
+    protected override string IndexesSql => $$"""
         SELECT n.nspname AS schema_name,t.relname AS table_name,ix.relname AS index_name,
           i.indisunique AS unique_index,k.ordinality AS ordinal,a.attname AS column_name,
           (i.indoption[(k.ordinality-1)::int] & 1)=1 AS descending,
@@ -112,20 +159,23 @@ public sealed class PostgreSqlMetadataReader : CatalogSchemaMetadataReader, IUni
         LEFT JOIN pg_catalog.pg_attribute a ON a.attrelid=t.oid AND a.attnum=k.attnum
         WHERE NOT EXISTS (SELECT 1 FROM pg_catalog.pg_constraint c WHERE c.conindid=i.indexrelid AND c.contype IN ('p','u'))
           AND n.nspname NOT IN ('pg_catalog','information_schema')
+          {{ExcludeTimescaleInternals("n.nspname")}}
         """;
-    protected override string ChecksSql => """
+    protected override string ChecksSql => $$"""
         SELECT n.nspname AS schema_name,t.relname AS table_name,c.conname AS check_name,
           pg_get_expr(c.conbin,c.conrelid) AS expression
         FROM pg_catalog.pg_constraint c JOIN pg_catalog.pg_class t ON t.oid=c.conrelid
         JOIN pg_catalog.pg_namespace n ON n.oid=t.relnamespace
         WHERE c.contype='c' AND n.nspname NOT IN ('pg_catalog','information_schema')
+          {{ExcludeTimescaleInternals("n.nspname")}}
         """;
-    protected override string ViewsSql => """
+    protected override string ViewsSql => $$"""
         SELECT v.schemaname AS schema_name,v.viewname AS table_name,v.definition,
           c.column_name,c.ordinal_position AS ordinal,c.data_type AS type_name,c.is_nullable AS nullable
         FROM pg_catalog.pg_views v LEFT JOIN information_schema.columns c
           ON c.table_schema=v.schemaname AND c.table_name=v.viewname
         WHERE v.schemaname NOT IN ('pg_catalog','information_schema')
+          {{ExcludeTimescaleInternals("v.schemaname")}}
         """;
     private static readonly Regex TemporalDefault = new(
         @"\A(?:LOCAL(?<local>TIME|TIMESTAMP)(?:\((?<precision>[0-6])\))?|\(CURRENT_TIMESTAMP(?:\((?<precision>[0-6])\))? AT TIME ZONE 'UTC'::text\))\z",
@@ -138,6 +188,13 @@ public sealed class PostgreSqlMetadataReader : CatalogSchemaMetadataReader, IUni
     protected override MetadataColumn MapCatalogColumn(CatalogRow row, DiscoveryOptions options,
         Action<SchemaFeature, string> diagnose)
     {
+        if (row.Text("type_name") == "ARRAY")
+        {
+            var array = base.MapCatalogColumn(row, options, diagnose);
+            arrays.Add(array, DecodeArray(row));
+            return array;
+        }
+
         if (!options.Features.Contains(SchemaFeature.Defaults) || row.Text("default_expression") is not { } sql
             || row.Bool("custom_default_function") == true)
             return base.MapCatalogColumn(row, options, diagnose);
@@ -173,9 +230,15 @@ public sealed class PostgreSqlMetadataReader : CatalogSchemaMetadataReader, IUni
             : base.MapCatalogColumn(row.With(("default_expression", null)), options, diagnose) with { Default = expression };
     }
 
+    private static StructuredColumnMetadata DecodeArray(CatalogRow row)
+        => PostgreSqlArrayType.Decode(row.Int("array_rank"), row.Int("array_type_modifier"), row.Text("array_element_schema"),
+            row.Text("array_element"), row.Bool("array_default_collation"), row.Text("array_rank_check") is not null);
+
     protected override MetadataColumn MapColumn(CatalogRow row)
     {
         var column = base.MapColumn(row);
+        if (row.Text("type_name") == "ARRAY")
+            return column with { Type = DbType.Object, Length = null, Precision = null, Scale = null };
         if (row.Text("native_type_name") is "json" or "jsonb" or "citext")
             return column with { Type = System.Data.DbType.String, NativeType = row.Text("native_type_name"), NativeDialect = typeof(DubUrl.Provider.PostgreSql.Sql.PgsqlDialect) };
         // Preserve VARCHAR for bounded columns: String maps to PostgreSQL TEXT,

@@ -45,6 +45,7 @@ Schema rendering uses the column's explicit `StructuredStorage`. The following t
 | Oracle 21c+ `JsonType` with `Json` and `COMPATIBLE` at least 20 | `JSON` | JSON syntax, including top-level scalars | Native JSON storage. JSON type modifiers produce an incomplete discovery diagnostic. |
 | Oracle 23.4+ native `VectorType` with `COMPATIBLE` at least 23.4 | `VECTOR(dimensions, format)` | Fixed dimensions and non-null components in `INT8`, `FLOAT32`, or `FLOAT64` | Fixed dense vectors when the catalog exposes their declaration |
 | DuckDB native `ArrayType`, `MapType`, and `StructType` | `type[]`, `MAP(key, value)`, and `STRUCT(...)` | Element types, struct fields, and non-null, unique map keys. List items, map values, and struct fields can be NULL. | Supported recursive shapes and field names |
+| PostgreSQL and TimescaleDB native `ArrayType` | `type[]` with an `array_ndims` check | One dimension for nonempty arrays. Elements can be NULL. | The catalog must expose a validated rank check for complete discovery |
 | SingleStore 8.5+ native `VectorType`, qualified with `WithServerVersion` | `VECTOR(dimensions, element)` | Fixed dimensions and numeric components | Dimensions and component type from the catalog |
 | MariaDB 10.5.10+ `JsonType` with `JsonText`, qualified with `WithMariaDbDefaults` | `JSON` alias for `LONGTEXT` | JSON syntax via the column's `JSON_VALID` check. Object shape is advisory. | Canonical column validation identifies JSON text |
 | MariaDB 11.7.1+ native `VectorType`, qualified with `WithMariaDbDefaults` | `VECTOR(dimensions)` | Fixed dimensions and float32 components, up to 16,383 | Dimensions from the catalog |
@@ -58,6 +59,10 @@ Schema rendering uses the column's explicit `StructuredStorage`. The following t
 | Snowflake standard tables with native `VectorType` | `VECTOR(INT\|FLOAT, dimensions)` | Fixed dimensions and signed int32 or float32 components | Dimensions and component type from the catalog |
 
 An optional JSON object shape describes the caller's data. Native JSON columns validate syntax within the engine's supported JSON values. The caller supplies any value codec. DuckDB native collections support reversible scalar leaves and unshaped nested JSON. Their DDL rejects required nested values and duplicate struct names under DuckDB's case-insensitive comparison. SingleStore qualifies signed integer and floating-point components up to 16,384 dimensions. SQL Server qualifies up to 1,998 single-precision vector dimensions.
+
+PostgreSQL and TimescaleDB arrays support Boolean, signed 16-, 32-, and 64-bit integers, float32 and float64, text, binary, UUID, date, and unshaped JSONB elements. Bare rank-one declarations produce incomplete discovery because PostgreSQL accepts higher-rank values in those columns. Multidimensional declarations, non-default collations, domains, and unsupported element types or modifiers also produce incomplete discovery. TimescaleDB discovery reads the hypertable's column definitions and excludes the extension's default internal schemas. Hypertable partitioning is outside schema rendering.
+
+For the opt-in PostgreSQL and TimescaleDB live tests in `PostgreSqlArrayLiveTests`, set `DUBURL_POSTGRES_ARRAY_QA_URL` or `DUBURL_TIMESCALE_ARRAY_QA_URL` to the corresponding disposable database and select the individual test by its fully qualified name.
 
 For Oracle, use `WithServerVersion(serverVersion, compatibilityVersion)` when the database's `COMPATIBLE` setting differs from the server release. The one-argument overload assumes they match. Oracle qualifies fixed dense vectors up to 65,535 dimensions. Flexible dimensions or formats, sparse storage, and binary vectors produce incomplete discovery diagnostics.
 
