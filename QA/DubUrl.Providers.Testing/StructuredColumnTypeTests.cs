@@ -5,8 +5,11 @@ using DubUrl.Provider.DuckDb.Sql;
 using DubUrl.Provider.MySql.Schema.Generation;
 using DubUrl.Provider.MySql.Sql;
 using DubUrl.Provider.PostgreSql.Sql;
+using DubUrl.Provider.SqlServer.Discovery;
+using DubUrl.Provider.SqlServer.Sql;
 using DubUrl.Querying.Dialects;
 using DubUrl.Schema;
+using DubUrl.Schema.Constraints;
 using NUnit.Framework;
 
 namespace DubUrl.Providers.Testing;
@@ -82,9 +85,48 @@ public class StructuredColumnTypeTests
             Throws.TypeOf<NotSupportedException>());
     }
 
-    private static string Plan(IDialect dialect, StructuredColumnType type)
+    [Test]
+    public void SqlServerQualifiesNativeTypesByVersion()
+    {
+        var dialect = Dialect<TSqlDialect>();
+        var sql2022 = dialect.WithServerVersion(new(16, 0));
+        var sql2025 = dialect.WithServerVersion(new(17, 0));
+        var json = new StructuredColumnType(new JsonType(), StructuredStorage.Json);
+        var vector = new StructuredColumnType(new VectorType(DbType.Single, 1998), StructuredStorage.Native);
+        Assert.That(Plan(dialect, new(new JsonType(), StructuredStorage.JsonText)), Does.Contain("NVARCHAR(MAX)"));
+        Assert.That(Plan(sql2025, json), Does.Contain(" JSON"));
+        Assert.That(Plan(sql2025, vector), Does.Contain("VECTOR(1998)"));
+        Assert.That(() => Plan(sql2022, json), Throws.TypeOf<NotSupportedException>());
+        Assert.That(() => Plan(dialect, vector), Throws.TypeOf<NotSupportedException>());
+        Assert.That(() => Plan(sql2025, new(new VectorType(DbType.Single, 1999), StructuredStorage.Native)),
+            Throws.TypeOf<NotSupportedException>());
+        Assert.That(() => Plan(sql2025, new(new VectorType(DbType.Double, 3), StructuredStorage.Native)),
+            Throws.TypeOf<NotSupportedException>());
+        Assert.That(() => Plan(sql2025, vector, defaultValue: DBNull.Value, constraints: [new NullableConstraint()]),
+            Throws.TypeOf<NotSupportedException>());
+        Assert.That(() => Plan(sql2025, vector, constraints: [new CheckConstraint(new ColumnIdentityExpression("v"), "=", new ValueExpression(0))]),
+            Throws.TypeOf<NotSupportedException>());
+    }
+
+    [TestCase(0, 3, MetadataCoverage.Available)]
+    [TestCase(1, 3, MetadataCoverage.Unrepresentable)]
+    [TestCase(0, null, MetadataCoverage.Unrepresentable)]
+    public void SqlServerDiscoveryRequiresRepresentableVectorMetadata(int baseType, int? dimensions, MetadataCoverage coverage)
+    {
+        var row = new CatalogRow(new Dictionary<string, object?>
+        {
+            ["type_name"] = "vector", ["user_defined"] = false,
+            ["vector_base_type"] = baseType, ["vector_dimensions"] = dimensions
+        });
+        var result = SqlServerMetadataReader.DecodeStructuredType(row);
+        Assert.That(result?.Coverage, Is.EqualTo(coverage));
+        Assert.That(result?.Type?.Shape, Is.EqualTo(coverage == MetadataCoverage.Available ? new VectorType(DbType.Single, 3) : null));
+        Assert.That(SqlServerMetadataReader.DecodeStructuredType(row.With(("user_defined", true))), Is.Null);
+    }
+
+    private static string Plan(IDialect dialect, StructuredColumnType type, object? defaultValue = null, IConstraint[]? constraints = null)
         => string.Join("\n", new SchemaScriptRenderer(dialect).Plan(new(
-            [new Table("structured_values", [new Column("v", type)], [])])).Select(command => command.CommandText));
+            [new Table("structured_values", [new Column("v", type, defaultValue, constraints)], [])])).Select(command => command.CommandText));
 
     private static TDialect Dialect<TDialect>() where TDialect : IDialect
     {

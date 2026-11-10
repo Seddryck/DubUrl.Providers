@@ -39,9 +39,12 @@ Schema rendering uses the column's explicit `StructuredStorage`. The following t
 | PostgreSQL `JsonType` with `Json` | `JSONB` | JSON syntax | JSONB as arbitrary JSON. Existing `json` native hints are retained. |
 | MySQL 8+ `JsonType` with `Json`, qualified with `WithInnoDbDefaults` | `JSON` | JSON syntax | JSON storage and arbitrary JSON shape |
 | DuckDB `JsonType` with `JsonText` | `VARCHAR` | Text storage | Ordinary text column |
+| SQL Server `JsonType` with `JsonText` | `NVARCHAR(MAX)` | Unicode text storage | Ordinary text column |
+| SQL Server 2025+ `JsonType` with `Json`, qualified with `WithServerVersion` | `JSON` | JSON syntax with an object or array at the top level | Native JSON storage |
+| SQL Server 2025+ native `VectorType`, qualified with `WithServerVersion` | `VECTOR(dimensions)` | Fixed dimensions and 32-bit floating-point components | Dimensions and component type from the catalog |
 | DuckDB native `ArrayType`, `MapType`, and `StructType` | `type[]`, `MAP(key, value)`, and `STRUCT(...)` | Element types, struct fields, and non-null, unique map keys. List items, map values, and struct fields can be NULL. | Supported recursive shapes and field names |
 | SingleStore 8.5+ native `VectorType`, qualified with `WithServerVersion` | `VECTOR(dimensions, element)` | Fixed dimensions and numeric components | Dimensions and component type from the catalog |
 
-An optional JSON object shape describes the caller's data. JSON column types validate syntax and accept other valid JSON values. The caller supplies any value codec. DuckDB native collections support reversible scalar leaves and unshaped nested JSON. Their DDL rejects required nested values and duplicate struct names under DuckDB's case-insensitive comparison. SingleStore qualifies signed integer and floating-point components up to 16,384 dimensions.
+An optional JSON object shape describes the caller's data. Native JSON columns validate syntax within the engine's supported JSON values. The caller supplies any value codec. DuckDB native collections support reversible scalar leaves and unshaped nested JSON. Their DDL rejects required nested values and duplicate struct names under DuckDB's case-insensitive comparison. SingleStore qualifies signed integer and floating-point components up to 16,384 dimensions. SQL Server qualifies up to 1,998 single-precision vector dimensions.
 
 Use `SchemaInspector` with the registered provider reader to recover structured descriptors. Recognized types outside the model, such as DuckDB fixed arrays or SingleStore vectors with unrepresentable component types, produce an incomplete discovery diagnostic. Legacy scalar columns and native type hints retain their rendering path.

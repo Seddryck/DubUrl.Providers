@@ -29,6 +29,7 @@ jobs:
           - { database: DuckDb, os: windows-latest }
           - { database: PostgreSql, os: ubuntu-latest }
           - { database: SqlServer, os: ubuntu-latest }
+          - { database: SqlServer, os: ubuntu-latest, variant: '-2025', image: 'mcr.microsoft.com/mssql/server:2025-latest@sha256:245f6b1c8903edae52cb20fa31419cefcde1a49938bb8c3447099011fc871ca3' }
           - { database: Oracle, os: ubuntu-latest }
           - { database: SingleStore, os: ubuntu-latest }
           - { database: MySql, os: ubuntu-latest }
@@ -61,6 +62,7 @@ jobs:
         shell: pwsh
         env:
           DUBURL_DEPENDENCY_VERSION: ${{ inputs.duburl-version }}
+          DUBURL_SQLSERVER_QA_IMAGE: ${{ matrix.image }}
         run: |
           $arguments = @{}
           if ($env:DUBURL_DEPENDENCY_VERSION) { $arguments.DubUrlVersion = $env:DUBURL_DEPENDENCY_VERSION }
@@ -68,5 +70,5 @@ jobs:
       - uses: actions/upload-artifact@v7
         if: always()
         with:
-          name: schema-qa-${{ matrix.database }}
+          name: schema-qa-${{ matrix.database }}${{ matrix.variant }}
           path: artifacts/results/${{ matrix.database }}

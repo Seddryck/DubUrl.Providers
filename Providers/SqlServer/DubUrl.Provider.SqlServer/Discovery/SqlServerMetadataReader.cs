@@ -1,14 +1,33 @@
+using System.Data;
+using System.Data.Common;
 using System.Runtime.CompilerServices;
 using System.Text.RegularExpressions;
 using DubUrl.Discovery;
+using DubUrl.Provider.SqlServer.Schema.Generation;
 using DubUrl.Schema;
 using DubUrl.Schema.Constraints;
 
 namespace DubUrl.Provider.SqlServer.Discovery;
 
-public sealed class SqlServerMetadataReader : CatalogSchemaMetadataReader, IUniqueConstraintMetadataReader
+public sealed class SqlServerMetadataReader : CatalogSchemaMetadataReader, IUniqueConstraintMetadataReader, IStructuredColumnMetadataReader
 {
     private readonly ConditionalWeakTable<MetadataKey, UniqueConstraintMetadata> nullPolicies = new();
+    private readonly ConditionalWeakTable<MetadataColumn, StructuredColumnMetadata> structuredTypes = new();
+
+    public async Task<StructuredSchemaMetadata> ReadWithStructuredTypesAsync(DbConnection connection,
+        DiscoveryOptions options, CancellationToken cancellationToken)
+    {
+        var metadata = await ReadAsync(connection, options, cancellationToken).ConfigureAwait(false);
+        var types = new Dictionary<StructuredColumnIdentity, StructuredColumnMetadata>();
+        foreach (var table in metadata.Tables)
+        foreach (var column in table.Columns)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (structuredTypes.TryGetValue(column, out var type))
+                types.Add(new(table.Identity, column.Name), type);
+        }
+        return new(metadata, types);
+    }
 
     public UniqueConstraintMetadata GetUniqueConstraintMetadata(MetadataTable table, MetadataKey key)
         => nullPolicies.TryGetValue(key, out var policy) ? policy : new(UniqueNullPolicy.NullsNotDistinct);
@@ -57,6 +76,13 @@ public sealed class SqlServerMetadataReader : CatalogSchemaMetadataReader, IUniq
     protected override MetadataColumn MapCatalogColumn(CatalogRow row, DiscoveryOptions options,
         Action<SchemaFeature, string> diagnose)
     {
+        if (DecodeStructuredType(row) is { } structured)
+        {
+            var mapped = base.MapCatalogColumn(row.With(("structured", true), ("length", null)), options, diagnose);
+            structuredTypes.Add(mapped, structured);
+            return mapped;
+        }
+
         if (!options.Features.Contains(SchemaFeature.Defaults))
             return base.MapCatalogColumn(row, options, diagnose);
 
@@ -96,7 +122,35 @@ public sealed class SqlServerMetadataReader : CatalogSchemaMetadataReader, IUniq
     protected override MetadataColumn MapColumn(CatalogRow row)
     {
         var column = base.MapColumn(row);
+        if (row.Bool("structured") == true)
+            return column with { Type = DbType.Object, Length = null, Precision = null, Scale = null };
         return row.Text("type_name") is "timestamp" or "rowversion" ? column with { Type = System.Data.DbType.Binary, Length = 8 } : column;
+    }
+
+    internal static StructuredColumnMetadata? DecodeStructuredType(CatalogRow row)
+    {
+        if (row.Bool("user_defined") != false)
+            return null;
+
+        var dimensions = row.Int("vector_dimensions");
+        return row.Text("type_name") switch
+        {
+            "json" => new(new(new JsonType(), StructuredStorage.Json), MetadataCoverage.Available),
+            "vector" when row.Int("vector_base_type") == 0
+                && dimensions is > 0 and <= TSqlSchemaSqlRenderer.MaxVectorDimensions
+                => new(new(new VectorType(DbType.Single, dimensions.Value), StructuredStorage.Native), MetadataCoverage.Available),
+            "vector" => new(null, MetadataCoverage.Unrepresentable),
+            _ => null
+        };
+    }
+
+    protected override Task<List<CatalogRow>> ReadCatalogRowsAsync(DbConnection connection, string sql,
+        DiscoveryOptions options, CancellationToken cancellationToken)
+    {
+        if (sql == ColumnsSql && Version.TryParse(connection.ServerVersion, out var version)
+            && version.Major >= TSqlSchemaSqlRenderer.NativeStructuredVersion)
+            sql = VectorColumnsSql;
+        return base.ReadCatalogRowsAsync(connection, sql, options, cancellationToken);
     }
 
     protected override string TablesSql => """
@@ -105,9 +159,12 @@ public sealed class SqlServerMetadataReader : CatalogSchemaMetadataReader, IUniq
         LEFT JOIN sys.extended_properties ep ON ep.major_id=t.object_id AND ep.minor_id=0 AND ep.name='MS_Description' AND ep.class=1
         WHERE t.is_ms_shipped=0
         """;
-    protected override string ColumnsSql => """
+    protected override string ColumnsSql { get; } = ColumnQuery("");
+    private static readonly string VectorColumnsSql = ColumnQuery("c.vector_dimensions,c.vector_base_type,");
+
+    private static string ColumnQuery(string vectorColumns) => $$"""
         SELECT s.name AS schema_name,t.name AS table_name,c.name AS column_name,c.column_id AS ordinal,
-          ty.name AS type_name,c.is_nullable AS nullable,
+          ty.name AS type_name,ty.is_user_defined AS user_defined,c.is_nullable AS nullable,{{vectorColumns}}
           CASE WHEN ty.name IN ('nvarchar','nchar') AND c.max_length>0 THEN c.max_length/2 ELSE c.max_length END AS length,
           c.precision,c.scale,dc.definition AS default_expression,
           CONVERT(bigint,ic.seed_value) AS identity_seed,CONVERT(bigint,ic.increment_value) AS identity_increment,

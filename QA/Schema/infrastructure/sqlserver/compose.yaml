@@ -1,6 +1,6 @@
 services:
   sqlserver:
-    image: mcr.microsoft.com/mssql/server:2022-CU22-ubuntu-22.04
+    image: ${DUBURL_SQLSERVER_QA_IMAGE:-mcr.microsoft.com/mssql/server:2022-CU22-ubuntu-22.04}
     environment:
       ACCEPT_EULA: Y
       MSSQL_SA_PASSWORD: ${MSSQL_SA_PASSWORD:?Configure an ephemeral QA password}
