@@ -127,6 +127,18 @@ public sealed class SingleStoreMetadataReader : ISchemaMetadataReader, IUniqueCo
             if (temporal && value.StartsWith("CURRENT_TIMESTAMP", StringComparison.OrdinalIgnoreCase)) return row;
             return row.With(("default_expression", "'" + value.Replace("'", "''") + "'"));
         }
+        protected override MetadataColumn MapCatalogColumn(CatalogRow row, DiscoveryOptions options,
+            Action<SchemaFeature, string> diagnose)
+        {
+            if (options.Features.Contains(SchemaFeature.Defaults)
+                && row.Text("column_type") is "datetime" or "timestamp"
+                && row.Text("default_expression")?.ToUpperInvariant() is "CURRENT_TIMESTAMP" or "CURRENT_TIMESTAMP()" or "NOW()")
+                return base.MapCatalogColumn(row.With(("default_expression", null)), options, diagnose)
+                    with { Default = ColumnDefaultExpression.CurrentTimestamp() };
+
+            return base.MapCatalogColumn(row, options, diagnose);
+        }
+
         protected override MetadataColumn MapColumn(CatalogRow row)
         {
             var column = base.MapColumn(row);

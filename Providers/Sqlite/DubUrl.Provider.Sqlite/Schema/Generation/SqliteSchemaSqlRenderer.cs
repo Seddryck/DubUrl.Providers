@@ -1,12 +1,38 @@
+using System.Data;
 using DubUrl.Querying.Dialects;
+using DubUrl.Schema;
 using DubUrl.Schema.Constraints;
 using DubUrl.Schema.Renderers;
 
 namespace DubUrl.Provider.Sqlite.Schema.Generation;
 
-internal sealed class SqliteSchemaSqlRenderer : StandardSchemaSqlRenderer, IUniqueConstraintSqlRenderer, IColumnDefinitionSqlRenderer
+internal sealed class SqliteSchemaSqlRenderer : StandardSchemaSqlRenderer, IUniqueConstraintSqlRenderer, IColumnDefinitionSqlRenderer, IColumnDefaultSqlRenderer
 {
     internal static SqliteSchemaSqlRenderer Default { get; } = new();
+
+    internal const string UuidText = "lower(hex(randomblob(4)) || '-' || hex(randomblob(2)) || '-4' || "
+        + "substr(hex(randomblob(2)), 2) || '-' || substr('89ab', (random() & 3) + 1, 1) || "
+        + "substr(hex(randomblob(2)), 2) || '-' || hex(randomblob(6)))";
+
+    public ColumnDefaultPlan? PlanColumnDefault(IDialect dialect, ColumnDefaultContext context)
+    {
+        if (context.Column.DefaultExpression is not { FractionalSecondsPrecision: null or 0 } expression)
+            return null;
+        var type = context.SqlType.ToUpperInvariant();
+        return expression.Kind switch
+        {
+            ColumnDefaultKind.CurrentTimestamp when type == "TEXT" && context.Column.Type != DbType.DateTimeOffset
+                => new("CURRENT_TIMESTAMP"),
+            ColumnDefaultKind.CurrentUtcTimestamp when type == "TEXT" && context.Column.Type != DbType.DateTimeOffset
+                => new("(datetime('now'))"),
+            ColumnDefaultKind.CurrentDate when type == "TEXT" => new("CURRENT_DATE"),
+            ColumnDefaultKind.CurrentTime when type is "TIME" or "TEXT" => new("CURRENT_TIME"),
+            ColumnDefaultKind.NewUuid when expression.Representation == UuidRepresentation.CanonicalText
+                && type.StartsWith("TEXT(", StringComparison.Ordinal)
+                => new($"({UuidText})", UuidSemantics: new(Version: 4, Randomness: "SQLite built-in pseudo-random generator")),
+            _ => null
+        };
+    }
 
     public UniqueConstraintPlan? PlanUniqueConstraint(IDialect dialect, UniqueConstraintContext context)
     {

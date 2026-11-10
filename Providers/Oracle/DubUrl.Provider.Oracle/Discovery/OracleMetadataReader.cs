@@ -11,8 +11,18 @@ namespace DubUrl.Provider.Oracle.Discovery;
 /// <summary>Read-only discovery of Oracle objects visible to the connected user in the current PDB.</summary>
 public sealed class OracleMetadataReader : CatalogSchemaMetadataReader, IUniqueConstraintMetadataReader
 {
-    protected override IReadOnlySet<SchemaFeature> UnsupportedFeatures { get; } = new HashSet<SchemaFeature>
-        { SchemaFeature.Defaults, SchemaFeature.Generation, SchemaFeature.Checks };
+    public OracleMetadataReader()
+        => UnsupportedFeatures = new HashSet<SchemaFeature> { SchemaFeature.Defaults, SchemaFeature.Generation, SchemaFeature.Checks };
+
+    /// <summary>Enables default discovery when the Oracle catalog exposes DATA_DEFAULT_VC.</summary>
+    public OracleMetadataReader(Version serverVersion) : this()
+    {
+        ArgumentNullException.ThrowIfNull(serverVersion);
+        if (serverVersion.Major >= 23)
+            UnsupportedFeatures = new HashSet<SchemaFeature> { SchemaFeature.Generation, SchemaFeature.Checks };
+    }
+
+    protected override IReadOnlySet<SchemaFeature> UnsupportedFeatures { get; }
 
     // Leave table selection and foreign-key dependency closure to SchemaInspector.
     protected override string TablesSql => """
@@ -78,6 +88,16 @@ public sealed class OracleMetadataReader : CatalogSchemaMetadataReader, IUniqueC
     protected override Task<List<CatalogRow>> ReadCatalogRowsAsync(DbConnection connection, string sql,
         DiscoveryOptions options, CancellationToken cancellationToken)
     {
+        if (sql == ColumnsSql && options.Features.Contains(SchemaFeature.Defaults)
+            && !UnsupportedFeatures.Contains(SchemaFeature.Defaults))
+        {
+            sql = sql.Replace("m.comments AS \"comment\"", """
+                m.comments AS "comment",
+                CASE WHEN c.default_length > 4000 OR c.default_on_null = 'YES' OR c.identity_column = 'YES'
+                     THEN '<unrepresentable Oracle default>' ELSE c.data_default_vc END AS default_expression
+                """, StringComparison.Ordinal);
+        }
+
         // Unscoped inspection describes application schemas. Explicit selections can still inspect system objects.
         if (options.Schemas.Count == 0 && options.Tables.Count == 0)
             return QueryAsync(connection,
@@ -154,8 +174,51 @@ public sealed class OracleMetadataReader : CatalogSchemaMetadataReader, IUniqueC
 
     protected override MetadataColumn MapCatalogColumn(CatalogRow row, DiscoveryOptions options,
         Action<SchemaFeature, string> diagnose)
-        => base.MapCatalogColumn(row, options, (feature, message) =>
-            diagnose(feature, $"Oracle column '{row.Text("column_name")}' ({row.Text("type_name")}): {message}"));
+    {
+        void Diagnose(SchemaFeature feature, string message)
+            => diagnose(feature, $"Oracle column '{row.Text("column_name")}' ({row.Text("type_name")}): {message}");
+
+        if (!options.Features.Contains(SchemaFeature.Defaults) || row.Text("default_expression") is not { } raw)
+            return base.MapCatalogColumn(row, options, Diagnose);
+
+        var type = row.Text("type_name");
+        var sql = raw.Trim();
+        var expression = (type, sql.ToUpperInvariant()) switch
+        {
+            ("TIMESTAMP(6)", "CURRENT_TIMESTAMP") => ColumnDefaultExpression.CurrentTimestamp(),
+            ("TIMESTAMP(6)", "SYS_EXTRACT_UTC(SYSTIMESTAMP)") => ColumnDefaultExpression.CurrentUtcTimestamp(),
+            ("DATE", "TRUNC(CURRENT_DATE)") => ColumnDefaultExpression.CurrentDate,
+            ("CHAR" or "VARCHAR2", "SYS_CONTEXT('USERENV','CURRENT_USER')") => ColumnDefaultExpression.CurrentUser,
+            ("CHAR" or "VARCHAR2", "SYS_CONTEXT('USERENV','SESSION_USER')") => ColumnDefaultExpression.SessionUser,
+            ("CHAR" or "VARCHAR2", "SYS_CONTEXT('USERENV','CURRENT_SCHEMA')") => ColumnDefaultExpression.CurrentSchema,
+            ("CHAR" or "VARCHAR2", "SYS_CONTEXT('USERENV','DB_NAME')") => ColumnDefaultExpression.CurrentDatabase,
+            ("RAW", "SYS_GUID()") when row.Int("data_length") == 16
+                => ColumnDefaultExpression.NewUuid(UuidRepresentation.Binary, UuidByteOrder.Network),
+            ("NUMBER", _) => ReadSequenceDefault(sql),
+            _ => null
+        };
+        if (expression is null)
+            return base.MapCatalogColumn(row, options, Diagnose);
+
+        var column = base.MapCatalogColumn(row.With(("default_expression", null)), options, Diagnose);
+        return column with
+        {
+            Default = expression,
+            Type = expression.Kind == ColumnDefaultKind.CurrentDate ? DbType.Date : column.Type
+        };
+    }
+
+    private static readonly Regex SequenceDefault = new(
+        "\\A\"(?<schema>[^\"]+)\"\\.\"(?<name>[^\"]+)\"\\.NEXTVAL\\z",
+        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant, TimeSpan.FromSeconds(1));
+
+    private static ColumnDefaultExpression? ReadSequenceDefault(string sql)
+    {
+        var match = SequenceDefault.Match(sql);
+        return match.Success
+            ? ColumnDefaultExpression.NextSequenceValue(new(match.Groups["name"].Value, match.Groups["schema"].Value))
+            : null;
+    }
 
     protected override MetadataTable MapTable(CatalogRow row, List<CatalogRow> columns, List<CatalogRow> keys,
         List<CatalogRow> indexes, List<CatalogRow> checks, DiscoveryOptions options, Action<SchemaFeature, string> diagnose)

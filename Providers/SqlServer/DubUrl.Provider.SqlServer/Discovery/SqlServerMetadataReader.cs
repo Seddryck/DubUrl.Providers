@@ -54,6 +54,45 @@ public sealed class SqlServerMetadataReader : CatalogSchemaMetadataReader, IUniq
             .ToHashSet(StringComparer.Ordinal).SetEquals(key.Select(part => part.Text("column_name")!));
     }
 
+    protected override MetadataColumn MapCatalogColumn(CatalogRow row, DiscoveryOptions options,
+        Action<SchemaFeature, string> diagnose)
+    {
+        if (!options.Features.Contains(SchemaFeature.Defaults))
+            return base.MapCatalogColumn(row, options, diagnose);
+
+        var type = row.Text("type_name");
+        var sql = row.Text("default_expression")?.Trim().ToUpperInvariant();
+        var expression = (type, sql) switch
+        {
+            ("nvarchar" or "nchar", "(USER_NAME())" or "(CURRENT_USER)") => ColumnDefaultExpression.CurrentUser,
+            ("nvarchar" or "nchar", "(ORIGINAL_LOGIN())") => ColumnDefaultExpression.SessionUser,
+            ("nvarchar" or "nchar", "(SCHEMA_NAME())") => ColumnDefaultExpression.CurrentSchema,
+            ("nvarchar" or "nchar", "(DB_NAME())") => ColumnDefaultExpression.CurrentDatabase,
+            ("uniqueidentifier", "(NEWID())") => ColumnDefaultExpression.NewUuid(UuidRepresentation.Native),
+            ("datetime2", "(SYSDATETIME())") when row.Int("scale") == 7 => ColumnDefaultExpression.CurrentTimestamp(),
+            ("datetimeoffset", "(SYSDATETIMEOFFSET())") when row.Int("scale") == 7 => ColumnDefaultExpression.CurrentTimestamp(),
+            ("datetime2", "(SYSUTCDATETIME())") when row.Int("scale") == 7 => ColumnDefaultExpression.CurrentUtcTimestamp(),
+            ("datetimeoffset", "(TODATETIMEOFFSET(SYSUTCDATETIME(),'+00:00'))") when row.Int("scale") == 7
+                => ColumnDefaultExpression.CurrentUtcTimestamp(),
+            ("date", "(CONVERT([DATE],SYSDATETIME()))") => ColumnDefaultExpression.CurrentDate,
+            ("time", "(CONVERT([TIME],SYSDATETIME()))") when row.Int("scale") == 7 => ColumnDefaultExpression.CurrentTime(),
+            _ => null
+        };
+        if (expression is null && type is "tinyint" or "smallint" or "int" or "bigint" or "decimal" or "numeric"
+            && row.Int("sequence_count") == 1 && row.Text("sequence_name") is { } name && row.Text("sequence_schema") is { } schema)
+        {
+            static string Quote(string part) => "[" + part.Replace("]", "]]", StringComparison.Ordinal) + "]";
+            var qualified = $"{Quote(schema)}.{Quote(name)}";
+            var database = row.Text("sequence_database");
+            if (string.Equals(sql, $"(NEXT VALUE FOR {qualified})", StringComparison.OrdinalIgnoreCase))
+                expression = ColumnDefaultExpression.NextSequenceValue(new(name, schema));
+            else if (database is not null && string.Equals(sql, $"(NEXT VALUE FOR {Quote(database)}.{qualified})", StringComparison.OrdinalIgnoreCase))
+                expression = ColumnDefaultExpression.NextSequenceValue(new(name, schema, database));
+        }
+        return expression is null ? base.MapCatalogColumn(row, options, diagnose)
+            : base.MapCatalogColumn(row.With(("default_expression", null)), options, diagnose) with { Default = expression };
+    }
+
     protected override MetadataColumn MapColumn(CatalogRow row)
     {
         var column = base.MapColumn(row);
@@ -72,11 +111,17 @@ public sealed class SqlServerMetadataReader : CatalogSchemaMetadataReader, IUniq
           CASE WHEN ty.name IN ('nvarchar','nchar') AND c.max_length>0 THEN c.max_length/2 ELSE c.max_length END AS length,
           c.precision,c.scale,dc.definition AS default_expression,
           CONVERT(bigint,ic.seed_value) AS identity_seed,CONVERT(bigint,ic.increment_value) AS identity_increment,
-          cc.definition AS generation_expression,cc.is_persisted AS stored,CONVERT(nvarchar(max),ep.value) AS comment
+          cc.definition AS generation_expression,cc.is_persisted AS stored,CONVERT(nvarchar(max),ep.value) AS comment,
+          seq.sequence_name,seq.sequence_schema,seq.sequence_count,DB_NAME() AS sequence_database
         FROM sys.tables t JOIN sys.schemas s ON s.schema_id=t.schema_id
         JOIN sys.columns c ON c.object_id=t.object_id JOIN sys.types ty ON ty.user_type_id=c.user_type_id
         LEFT JOIN sys.default_constraints dc ON dc.object_id=c.default_object_id
         LEFT JOIN sys.identity_columns ic ON ic.object_id=t.object_id AND ic.column_id=c.column_id
+        OUTER APPLY (
+          SELECT MIN(q.name) AS sequence_name,MIN(SCHEMA_NAME(q.schema_id)) AS sequence_schema,COUNT(*) AS sequence_count
+          FROM sys.sql_expression_dependencies d JOIN sys.objects q ON q.object_id=d.referenced_id AND q.type='SO'
+          WHERE d.referencing_id=dc.object_id
+        ) seq
         LEFT JOIN sys.computed_columns cc ON cc.object_id=t.object_id AND cc.column_id=c.column_id
         LEFT JOIN sys.extended_properties ep ON ep.major_id=t.object_id AND ep.minor_id=c.column_id AND ep.name='MS_Description' AND ep.class=1
         WHERE t.is_ms_shipped=0

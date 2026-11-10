@@ -25,7 +25,7 @@ namespace DubUrl.Provider.PostgreSql.Sql;
 [ParentLanguage<SqlLanguage>]
 public class CrateDbDialect : BaseDialect
 {
-    public override ISchemaSqlRenderer SchemaSqlRenderer => PostgreSqlSchemaSqlRenderer.Default;
+    public override ISchemaSqlRenderer SchemaSqlRenderer => CrateDbSchemaSqlRenderer.Default;
 
     public override DialectCapabilities Capabilities { get; } = CrateDbSchemaCapabilities.Create();
 

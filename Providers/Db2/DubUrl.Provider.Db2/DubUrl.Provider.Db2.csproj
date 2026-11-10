@@ -1,4 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup><Description>IBM DB2 dialect, mapping, and rewriting for DubUrl.</Description></PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="DubUrl.Schema" Version="$(SchemaPackageVersion)" />
+  </ItemGroup>
   <Import Project="..\..\Provider.Build.props" />
 </Project>

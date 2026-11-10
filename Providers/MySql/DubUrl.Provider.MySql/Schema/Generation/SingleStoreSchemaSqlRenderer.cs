@@ -1,3 +1,4 @@
+using DubUrl.Provider.MySql.Sql;
 using DubUrl.Querying.Dialects;
 using DubUrl.Schema;
 using DubUrl.Schema.Constraints;
@@ -5,10 +6,19 @@ using DubUrl.Schema.Renderers;
 
 namespace DubUrl.Provider.MySql.Schema.Generation;
 
-internal sealed class SingleStoreSchemaSqlRenderer : StandardSchemaSqlRenderer, ITableDescriptionSqlRenderer, ITableDefinitionSqlRenderer, IUniqueConstraintSqlRenderer
+internal sealed class SingleStoreSchemaSqlRenderer : StandardSchemaSqlRenderer, ITableDescriptionSqlRenderer, ITableDefinitionSqlRenderer, IUniqueConstraintSqlRenderer, IColumnDefaultSqlRenderer
 {
     internal static SingleStoreSchemaSqlRenderer Default { get; } = new();
     private SingleStoreSchemaSqlRenderer() : base(MySqlSchemaSqlRenderer.Default) { }
+
+    private static readonly Version TimestampDefaultBaseline = new(9, 1, 1);
+
+    public ColumnDefaultPlan? PlanColumnDefault(IDialect dialect, ColumnDefaultContext context)
+        => dialect is SingleStoreDialect { ServerVersion: { } version } && version >= TimestampDefaultBaseline
+            && context.Column.DefaultExpression is { Kind: ColumnDefaultKind.CurrentTimestamp, FractionalSecondsPrecision: null or 0 }
+            && context.Column.Type != System.Data.DbType.DateTimeOffset
+            && context.SqlType.ToUpperInvariant() is "DATETIME" or "TIMESTAMP"
+            ? new("CURRENT_TIMESTAMP") : null;
 
     public UniqueConstraintPlan? PlanUniqueConstraint(IDialect dialect, UniqueConstraintContext context)
     {

@@ -1,3 +1,4 @@
+using System.Data;
 using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
@@ -9,9 +10,53 @@ using DubUrl.Schema.Renderers;
 namespace DubUrl.Provider.DuckDb.Schema.Generation;
 
 /// <summary>DuckDB uses a dedicated sequence and nextval default for each portable identity column.</summary>
-internal sealed class DuckDbSchemaSqlRenderer : StandardSchemaSqlRenderer, ISequenceIdentitySqlRenderer, IUniqueConstraintSqlRenderer
+internal sealed class DuckDbSchemaSqlRenderer : StandardSchemaSqlRenderer, ISequenceIdentitySqlRenderer, IUniqueConstraintSqlRenderer, IColumnDefaultSqlRenderer
 {
     internal static DuckDbSchemaSqlRenderer Default { get; } = new();
+
+    internal const string UtcTimestamp = "timezone('UTC', CURRENT_TIMESTAMP)";
+
+    public ColumnDefaultPlan? PlanColumnDefault(IDialect dialect, ColumnDefaultContext context)
+    {
+        if (context.Column.DefaultExpression is not { FractionalSecondsPrecision: null or 6 } expression)
+            return null;
+        var type = context.SqlType.ToUpperInvariant();
+        var text = type.StartsWith("VARCHAR(", StringComparison.Ordinal) || type.StartsWith("CHAR(", StringComparison.Ordinal);
+        return expression.Kind switch
+        {
+            // DuckDB does not enforce a declared VARCHAR length.
+            ColumnDefaultKind.CurrentUser when text => new("CURRENT_USER", 1, false, ColumnDefaultKind.SessionUser),
+            ColumnDefaultKind.SessionUser when text => new("SESSION_USER", 1, false, ColumnDefaultKind.CurrentUser),
+            ColumnDefaultKind.CurrentSchema when text => new("current_schema()", 1, false),
+            ColumnDefaultKind.CurrentDatabase when text => new("current_database()", 1, false),
+            ColumnDefaultKind.NewUuid when type == "UUID" && expression.Representation == UuidRepresentation.Native
+                => new("uuid()", UuidSemantics: new(Version: 4)),
+            ColumnDefaultKind.NewUuid when text && expression.Representation == UuidRepresentation.CanonicalText
+                => new("CAST(uuid() AS VARCHAR)", UuidSemantics: new(Version: 4)),
+            ColumnDefaultKind.NextSequenceValue when expression.Sequence is { Schema: not null, Catalog: null } sequence
+                && IsSequenceType(type) && CanResolveSequenceName(sequence) => new(RenderSequenceDefault(dialect, sequence)),
+            ColumnDefaultKind.CurrentTimestamp when context.Column.Type != DbType.DateTimeOffset && type == "TIMESTAMP"
+                => new("CURRENT_TIMESTAMP"),
+            ColumnDefaultKind.CurrentUtcTimestamp when type == "TIMESTAMP" => new(UtcTimestamp),
+            ColumnDefaultKind.CurrentDate when type == "DATE" => new("CURRENT_DATE"),
+            ColumnDefaultKind.CurrentTime when type == "TIME" => new("LOCALTIME"),
+            _ => null
+        };
+    }
+
+    // DuckDB's nextval(string) qualified-name parser cannot encode an embedded double quote.
+    private static bool CanResolveSequenceName(DatabaseObjectName name)
+        => !name.Name.Contains('"') && name.Schema?.Contains('"') != true && name.Database?.Contains('"') != true;
+
+    private string RenderSequenceDefault(IDialect dialect, DatabaseObjectName sequence)
+    {
+        var name = RenderObjectName(dialect, sequence.Catalog, sequence.Database, sequence.Schema, sequence.Name);
+        return $"nextval('{name.Replace("'", "''", StringComparison.Ordinal)}')";
+    }
+
+    private static bool IsSequenceType(string type)
+        => type is "TINYINT" or "SMALLINT" or "INTEGER" or "BIGINT" or "DECIMAL"
+            || type.StartsWith("DECIMAL(", StringComparison.Ordinal);
 
     public UniqueConstraintPlan? PlanUniqueConstraint(IDialect dialect, UniqueConstraintContext context)
     {
@@ -83,10 +128,14 @@ internal sealed class DuckDbSchemaSqlRenderer : StandardSchemaSqlRenderer, ISequ
 
     private static string SequenceName(IDialect dialect, IdentityColumnContext column)
     {
-        // Length-prefixed components avoid collisions between names containing separators or dots.
-        var components = new[] { column.Table, column.Column };
-        var key = string.Concat(components.Select(part => part is null ? "-1:" : part.Length.ToString(CultureInfo.InvariantCulture) + ":" + part));
-        var name = "duburl_identity_" + Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(key))).ToLowerInvariant();
+        var name = IdentitySequenceName(column.Table, column.Column);
         return Default.RenderObjectName(dialect, column.Catalog, column.Database, column.Schema, name);
+    }
+
+    internal static string IdentitySequenceName(string table, string column)
+    {
+        // Length-prefixed components avoid collisions between names containing separators or dots.
+        var key = string.Concat(new[] { table, column }.Select(part => part.Length.ToString(CultureInfo.InvariantCulture) + ":" + part));
+        return "duburl_identity_" + Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(key))).ToLowerInvariant();
     }
 }

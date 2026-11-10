@@ -23,6 +23,19 @@ namespace DubUrl.Provider.FirebirdSql.Sql;
 [ParentLanguage<SqlLanguage>]
 public class FirebirdSqlDialect : BaseDialect
 {
+    internal Version? ServerVersion { get; private set; }
+
+    /// <summary>Sets the Firebird server version for typed column-default planning.</summary>
+    public FirebirdSqlDialect WithServerVersion(Version serverVersion)
+    {
+        ArgumentNullException.ThrowIfNull(serverVersion);
+        var dialect = (FirebirdSqlDialect)MemberwiseClone();
+        dialect.ServerVersion = serverVersion;
+        return dialect;
+    }
+
+    public override ISchemaSqlRenderer SchemaSqlRenderer => FirebirdColumnDefaults.Instance;
+
     public override DialectCapabilities Capabilities { get; } = new() { SupportsComments = true };
 
     internal FirebirdSqlDialect(ILanguage language, string[] aliases, IRenderer renderer, ICaster[] casters, IDbTypeMapper dbTypeMapper, ISqlFunctionMapper sqlFunctionMapper)

@@ -165,6 +165,7 @@ public sealed class MySqlDiscoveryTests
     {
         Execute("""
             CREATE TABLE limitations (title VARCHAR(40),stamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+              utc_day DATE DEFAULT (UTC_DATE()),
               CONSTRAINT prefix_key UNIQUE(title(8)));
             CREATE UNIQUE INDEX expression_key ON limitations ((upper(title)));
             """);
@@ -172,7 +173,8 @@ public sealed class MySqlDiscoveryTests
         var metadata = await reader.ReadAsync(connection, options);
         var table = metadata.Tables.Single(t => t.Identity == Name("limitations"));
         Assert.That(table.UniqueConstraints, Is.Empty);
-        Assert.That(table.Columns.Single(c => c.Name == "stamp").Default, Is.Null);
+        Assert.That(table.Columns.Single(c => c.Name == "stamp").Default, Is.EqualTo(ColumnDefaultExpression.CurrentTimestamp()));
+        Assert.That(table.Columns.Single(c => c.Name == "utc_day").Default, Is.Null);
         var diagnostics = metadata.Diagnostics.Where(d => d.Object == Name("limitations")).ToArray();
         Assert.That(diagnostics.Select(d => d.Feature), Is.EquivalentTo(new[] { SchemaFeature.UniqueConstraints, SchemaFeature.UniqueConstraints, SchemaFeature.Defaults }));
         Assert.That(diagnostics.All(d => d.Code == "SDI009" && d.Coverage == MetadataCoverage.Unrepresentable), Is.True);

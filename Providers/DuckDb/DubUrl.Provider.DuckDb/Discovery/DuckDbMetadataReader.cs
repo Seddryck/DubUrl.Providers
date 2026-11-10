@@ -1,4 +1,5 @@
 using DubUrl.Discovery;
+using DubUrl.Provider.DuckDb.Schema.Generation;
 using DubUrl.Schema;
 using DubUrl.Schema.Constraints;
 
@@ -45,7 +46,9 @@ public sealed class DuckDbMetadataReader : CatalogSchemaMetadataReader, IUniqueC
             var expression = DuckDbCatalogSql.GeneratedExpression(row.Text("table_sql") ?? "", row.Text("column_name")!);
             return expression is null ? row : row.With(("generation_expression", expression), ("default_expression", null), ("stored", false));
         }).ToList();
-        if (!options.Features.Contains(SchemaFeature.Generation)) return normalized;
+        var readGeneration = options.Features.Contains(SchemaFeature.Generation);
+        var readDefaults = options.Features.Contains(SchemaFeature.Defaults);
+        if (!readGeneration && !readDefaults) return normalized;
         // Read definitions and dependencies only; never call nextval/currval or advance a sequence.
         var sequences = await QueryAsync(connection, """
             SELECT s.sequence_oid,s.database_name,s.schema_name,s.sequence_name,s.start_value,s.increment_by,
@@ -62,11 +65,25 @@ public sealed class DuckDbMetadataReader : CatalogSchemaMetadataReader, IUniqueC
             var defaultSql = column.Text("default_expression");
             if (defaultSql is null || !DuckDbCatalogSql.UsesSequence(defaultSql)) continue;
             var sequence = resolved[i];
-            var eligible = IsEligibleIdentity(column, sequence, sequences, resolved, sequenceColumns);
-            var increment = sequence?.Long("increment_by");
-            normalized[i] = eligible
-                ? column.With(("identity_seed", sequence!.Long("start_value")), ("identity_increment", increment), ("default_expression", null))
-                : column.With(("generation_expression", "<unrepresentable sequence-backed identity>"), ("default_expression", null));
+            var eligible = sequence is not null
+                && sequence.Text("sequence_name") == DuckDbSchemaSqlRenderer.IdentitySequenceName(column.Text("table_name")!, column.Text("column_name")!)
+                && IsEligibleIdentity(column, sequence, sequences, resolved, sequenceColumns);
+            if (eligible)
+            {
+                normalized[i] = column.With(("identity_seed", sequence!.Long("start_value")),
+                    ("identity_increment", sequence.Long("increment_by")), ("default_expression", null));
+            }
+            else if (sequence is not null)
+            {
+                if (readDefaults)
+                    normalized[i] = column.With(("default_sequence_name", sequence.Text("sequence_name")),
+                        ("default_sequence_schema", sequence.Text("schema_name")));
+            }
+            else if (readGeneration)
+            {
+                normalized[i] = column.With(("generation_expression", "<unrepresentable sequence-backed identity>"),
+                    ("default_expression", null));
+            }
         }
         return normalized;
     }
@@ -93,11 +110,11 @@ public sealed class DuckDbMetadataReader : CatalogSchemaMetadataReader, IUniqueC
     {
         if (!DuckDbCatalogSql.TrySequence(column.Text("default_expression") ?? "", out var name)) return null;
         var matches = sequences.Where(sequence =>
-            sequence.Long("dependent_oid") == column.Long("table_oid")
-            && string.Equals(sequence.Text("sequence_name"), name!.Name, StringComparison.OrdinalIgnoreCase)
+            (name!.Schema is not null || sequence.Long("dependent_oid") == column.Long("table_oid"))
+            && string.Equals(sequence.Text("sequence_name"), name.Name, StringComparison.OrdinalIgnoreCase)
             && (name.Schema is null || string.Equals(sequence.Text("schema_name"), name.Schema, StringComparison.OrdinalIgnoreCase))
             && (name.Database is null || string.Equals(sequence.Text("database_name"), name.Database, StringComparison.OrdinalIgnoreCase))
-            && name.Catalog is null).ToArray();
+            && name.Catalog is null).DistinctBy(sequence => sequence.Long("sequence_oid")).ToArray();
         return matches.Length == 1 ? matches[0] : null;
     }
 
@@ -138,6 +155,40 @@ public sealed class DuckDbMetadataReader : CatalogSchemaMetadataReader, IUniqueC
           ON c.table_catalog=v.database_name AND c.table_schema=v.schema_name AND c.table_name=v.view_name
         WHERE NOT v.internal AND v.database_name=current_database()
         """;
+    protected override MetadataColumn MapCatalogColumn(CatalogRow row, DiscoveryOptions options,
+        Action<SchemaFeature, string> diagnose)
+    {
+        if (!options.Features.Contains(SchemaFeature.Defaults))
+            return base.MapCatalogColumn(row, options, diagnose);
+
+        var type = row.Text("type_name")?.ToUpperInvariant();
+        var sql = row.Text("default_expression")?.Trim().ToUpperInvariant();
+        var expression = (type, sql) switch
+        {
+            ("VARCHAR", "CURRENT_USER") => ColumnDefaultExpression.CurrentUser,
+            ("VARCHAR", "SESSION_USER") => ColumnDefaultExpression.SessionUser,
+            ("VARCHAR", "CURRENT_SCHEMA()") => ColumnDefaultExpression.CurrentSchema,
+            ("VARCHAR", "CURRENT_DATABASE()") => ColumnDefaultExpression.CurrentDatabase,
+            ("UUID", "UUID()") => ColumnDefaultExpression.NewUuid(UuidRepresentation.Native),
+            ("VARCHAR", "CAST(UUID() AS VARCHAR)") => ColumnDefaultExpression.NewUuid(UuidRepresentation.CanonicalText),
+            ("TIMESTAMP", "CURRENT_TIMESTAMP") => ColumnDefaultExpression.CurrentTimestamp(),
+            ("TIMESTAMP", var value) when value == DuckDbSchemaSqlRenderer.UtcTimestamp.ToUpperInvariant()
+                => ColumnDefaultExpression.CurrentUtcTimestamp(),
+            ("DATE", "CURRENT_DATE") => ColumnDefaultExpression.CurrentDate,
+            ("TIME", "LOCALTIME") => ColumnDefaultExpression.CurrentTime(),
+            _ => null
+        };
+        if (expression is null && row.Text("default_sequence_name") is { } sequence
+            && row.Text("default_sequence_schema") is { } schema)
+            expression = ColumnDefaultExpression.NextSequenceValue(new(sequence, schema));
+        if (expression is null)
+            return base.MapCatalogColumn(row, options, diagnose);
+        var column = base.MapCatalogColumn(row.With(("default_expression", null)), options, diagnose);
+        // VARCHAR length is not retained in the DuckDB catalog and does not constrain storage.
+        var length = type != "VARCHAR" ? column.Length : expression.Kind == ColumnDefaultKind.NewUuid ? 36 : 1;
+        return column with { Default = expression, Length = length };
+    }
+
     protected override MetadataColumn MapColumn(CatalogRow row)
     {
         var column = base.MapColumn(row);

@@ -21,5 +21,7 @@ public class PgsqlTypeMapper : AnsiTypeMapper
         AddOrReplace(DbType.String, "TEXT");
         AddOrReplace(DbType.AnsiString, "VARCHAR");
         AddOrReplace(DbType.Guid, "UUID");
+        AddOrReplace(DbType.DateTime2, "TIMESTAMP");
+        AddOrReplace(DbType.Time, "TIME");
     }
 }

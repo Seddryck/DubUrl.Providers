@@ -1,3 +1,4 @@
+using DubUrl.Provider.SqlServer.Sql;
 using DubUrl.Querying.Dialects;
 using DubUrl.Schema;
 using DubUrl.Schema.Constraints;
@@ -5,9 +6,47 @@ using DubUrl.Schema.Renderers;
 
 namespace DubUrl.Provider.SqlServer.Schema.Generation;
 
-internal sealed class TSqlSchemaSqlRenderer : StandardSchemaSqlRenderer, IUniqueConstraintSqlRenderer
+internal sealed class TSqlSchemaSqlRenderer : StandardSchemaSqlRenderer, IUniqueConstraintSqlRenderer, IColumnDefaultSqlRenderer
 {
     internal static TSqlSchemaSqlRenderer Default { get; } = new();
+
+    public ColumnDefaultPlan? PlanColumnDefault(IDialect dialect, ColumnDefaultContext context)
+    {
+        if (context.Column.DefaultExpression is not { FractionalSecondsPrecision: null or 7 } expression)
+            return null;
+        var type = context.SqlType.ToUpperInvariant();
+        var unicode = type.StartsWith("NVARCHAR(", StringComparison.Ordinal) || type.StartsWith("NCHAR(", StringComparison.Ordinal);
+        return expression.Kind switch
+        {
+            ColumnDefaultKind.CurrentUser when unicode => new("CURRENT_USER", 128, false),
+            ColumnDefaultKind.SessionUser when unicode => new("ORIGINAL_LOGIN()", 128, false),
+            ColumnDefaultKind.CurrentSchema when unicode => new("SCHEMA_NAME()", 128, false),
+            ColumnDefaultKind.CurrentDatabase when unicode => new("DB_NAME()", 128, false),
+            ColumnDefaultKind.NewUuid when type == "UNIQUEIDENTIFIER" && expression.Representation == UuidRepresentation.Native
+                => new("NEWID()"),
+            ColumnDefaultKind.NextSequenceValue when expression.Sequence is { Schema: not null, Catalog: null } sequence
+                && dialect is TSqlDialect { ServerVersion.Major: >= 11 }
+                && context.Table.Catalog is null && (sequence.Database is null || sequence.Database == context.Table.Database)
+                && IsSequenceType(type)
+                => new($"(NEXT VALUE FOR {RenderSequenceName(dialect, sequence)})"),
+            ColumnDefaultKind.CurrentTimestamp when type == "DATETIME2" => new("SYSDATETIME()"),
+            ColumnDefaultKind.CurrentTimestamp when type == "DATETIMEOFFSET" => new("SYSDATETIMEOFFSET()"),
+            ColumnDefaultKind.CurrentUtcTimestamp when type == "DATETIME2" => new("SYSUTCDATETIME()"),
+            ColumnDefaultKind.CurrentUtcTimestamp when type == "DATETIMEOFFSET"
+                => new("TODATETIMEOFFSET(SYSUTCDATETIME(), '+00:00')"),
+            ColumnDefaultKind.CurrentDate when type == "DATE" => new("CONVERT(date, SYSDATETIME())"),
+            ColumnDefaultKind.CurrentTime when type == "TIME" => new("CONVERT(time, SYSDATETIME())"),
+            _ => null
+        };
+    }
+
+    private string RenderSequenceName(IDialect dialect, DatabaseObjectName name)
+        => string.Join('.', new[] { name.Database, name.Schema, name.Name }.OfType<string>()
+            .Select(part => RenderIdentifier(dialect, part)));
+
+    private static bool IsSequenceType(string type)
+        => type is "TINYINT" or "SMALLINT" or "INT" or "INTEGER" or "BIGINT" or "DECIMAL" or "NUMERIC"
+            || type.StartsWith("DECIMAL(", StringComparison.Ordinal) || type.StartsWith("NUMERIC(", StringComparison.Ordinal);
 
     public UniqueConstraintPlan? PlanUniqueConstraint(IDialect dialect, UniqueConstraintContext context)
     {

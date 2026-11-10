@@ -20,6 +20,17 @@ namespace DubUrl.Provider.Oracle.Sql;
 [ParentLanguage<SqlLanguage>]
 public class OracleDialect : BaseDialect
 {
+    internal Version? ServerVersion { get; private set; }
+
+    /// <summary>Sets the Oracle server version for offline planning of version-dependent defaults.</summary>
+    public OracleDialect WithServerVersion(Version serverVersion)
+    {
+        ArgumentNullException.ThrowIfNull(serverVersion);
+        var dialect = (OracleDialect)MemberwiseClone();
+        dialect.ServerVersion = serverVersion;
+        return dialect;
+    }
+
     public override DialectCapabilities Capabilities { get; } = new()
     {
         SupportsComments = true,

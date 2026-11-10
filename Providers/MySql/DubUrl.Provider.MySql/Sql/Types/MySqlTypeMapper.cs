@@ -19,6 +19,7 @@ public class MySqlTypeMapper : AnsiTypeMapper
         AddOrReplace(DbType.Int32, "INT");
         AddOrReplace(DbType.String, "TEXT");
         AddOrReplace(DbType.DateTimeOffset, "DATETIME");
+        AddOrReplace(DbType.DateTime2, "DATETIME");
         AddOrReplace(DbType.AnsiString, "VARCHAR");
         AddOrReplace(DbType.Binary, "VARBINARY");
         AddOrReplace(DbType.Time, "TIME");

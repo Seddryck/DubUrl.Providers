@@ -20,5 +20,7 @@ public class FirebirdSqlTypeMapper : AnsiTypeMapper
         AddOrReplace(DbType.Decimal, "DECIMAL");
         AddOrReplace(DbType.AnsiString, "VARCHAR");
         AddOrReplace(DbType.Guid, "UUID");
+        AddOrReplace(DbType.Time, "TIME");
+        AddOrReplace(DbType.DateTime2, "TIMESTAMP");
     }
 }

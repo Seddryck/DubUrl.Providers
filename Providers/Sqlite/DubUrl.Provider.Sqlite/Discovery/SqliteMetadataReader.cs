@@ -1,4 +1,6 @@
+using System.Data;
 using DubUrl.Discovery;
+using DubUrl.Provider.Sqlite.Schema.Generation;
 using DubUrl.Schema;
 using DubUrl.Schema.Constraints;
 
@@ -9,6 +11,31 @@ public sealed class SqliteMetadataReader : CatalogSchemaMetadataReader, IUniqueC
 {
     public UniqueConstraintMetadata GetUniqueConstraintMetadata(MetadataTable table, MetadataKey key)
         => new(UniqueNullPolicy.NullsDistinct);
+
+    protected override MetadataColumn MapCatalogColumn(CatalogRow row, DiscoveryOptions options,
+        Action<SchemaFeature, string> diagnose)
+    {
+        if (!options.Features.Contains(SchemaFeature.Defaults))
+            return base.MapCatalogColumn(row, options, diagnose);
+
+        var type = row.Text("type_name")?.ToUpperInvariant();
+        var sql = row.Text("default_expression")?.Trim().ToUpperInvariant();
+        (ColumnDefaultExpression? Expression, DbType? Type) recognized = (type, sql) switch
+        {
+            ("TEXT", "CURRENT_TIMESTAMP") => (ColumnDefaultExpression.CurrentTimestamp(), DbType.DateTime),
+            ("TEXT", "DATETIME('NOW')" or "(DATETIME('NOW'))") => (ColumnDefaultExpression.CurrentUtcTimestamp(), DbType.DateTime),
+            ("TEXT", "CURRENT_DATE") => (ColumnDefaultExpression.CurrentDate, DbType.Date),
+            ("TIME" or "TEXT", "CURRENT_TIME") => (ColumnDefaultExpression.CurrentTime(), DbType.Time),
+            (var declared, var value) when declared?.StartsWith("TEXT(", StringComparison.Ordinal) == true
+                && value == SqliteSchemaSqlRenderer.UuidText.ToUpperInvariant()
+                => (ColumnDefaultExpression.NewUuid(UuidRepresentation.CanonicalText), DbType.String),
+            _ => (null, (DbType?)null)
+        };
+        var (expression, logicalType) = recognized;
+        return expression is null ? base.MapCatalogColumn(row, options, diagnose)
+            : base.MapCatalogColumn(row.With(("default_expression", null)), options, diagnose)
+                with { Default = expression, Type = logicalType };
+    }
 
     public override void ConfigureOwnedConnection(System.Data.Common.DbConnection connection)
     {

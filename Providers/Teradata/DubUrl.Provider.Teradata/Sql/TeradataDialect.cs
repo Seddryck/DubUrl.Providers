@@ -13,12 +13,23 @@ using System.Threading.Tasks;
 
 namespace DubUrl.Provider.Teradata.Sql;
 
-[DbTypeMapper<AnsiTypeMapper>]
+[DbTypeMapper<TeradataColumnDefaultTypeMapper>]
 [SqlFunctionMapper<AnsiFunctionMapper>]
 [Renderer<AnsiRenderer>()]
 [ParentLanguage<SqlLanguage>]
 public class TeradataDialect : BaseDialect
 {
+    internal Version? VantageVersion { get; private set; }
+
+    /// <summary>Qualifies typed defaults against the documented Teradata Vantage syntax.</summary>
+    public TeradataDialect WithVantageColumnDefaults(Version serverVersion)
+    {
+        ArgumentNullException.ThrowIfNull(serverVersion);
+        var dialect = (TeradataDialect)MemberwiseClone();
+        dialect.VantageVersion = serverVersion;
+        return dialect;
+    }
+
     public override ISchemaSqlRenderer SchemaSqlRenderer => TeradataSchemaSqlRenderer.Default;
     public override DialectCapabilities Capabilities { get; } = new()
     {

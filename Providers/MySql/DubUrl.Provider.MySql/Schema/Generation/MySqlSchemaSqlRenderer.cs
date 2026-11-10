@@ -1,12 +1,62 @@
+using DubUrl.Provider.MySql.Sql;
 using DubUrl.Querying.Dialects;
+using DubUrl.Schema;
 using DubUrl.Schema.Constraints;
 using DubUrl.Schema.Renderers;
 
 namespace DubUrl.Provider.MySql.Schema.Generation;
 
-internal sealed class MySqlSchemaSqlRenderer : StandardSchemaSqlRenderer, IUniqueConstraintSqlRenderer
+internal sealed class MySqlSchemaSqlRenderer : StandardSchemaSqlRenderer, IUniqueConstraintSqlRenderer, IColumnDefaultSqlRenderer
 {
     internal static MySqlSchemaSqlRenderer Default { get; } = new();
+
+    private static readonly Version ExpressionDefaultVersion = new(8, 0, 13);
+    private static readonly Version UserDefaultVersion = new(8, 0, 34);
+    private static readonly Version MariaDbExpressionDefaultVersion = new(10, 2, 1);
+    private static readonly Version MariaDbSequenceVersion = new(10, 3, 0);
+
+    public ColumnDefaultPlan? PlanColumnDefault(IDialect dialect, ColumnDefaultContext context)
+    {
+        if (dialect is not MySqlDialect mysql
+            || context.Column.Type == System.Data.DbType.DateTimeOffset
+            || context.Column.DefaultExpression is not { FractionalSecondsPrecision: null or 0 } expression)
+            return null;
+
+        var mariaDb = mysql.MariaDbVersion >= MariaDbExpressionDefaultVersion;
+        var mySql = mysql.InnoDbVersion >= ExpressionDefaultVersion;
+        if (!mariaDb && !mySql)
+            return null;
+
+        var type = context.SqlType.ToUpperInvariant();
+        var userDefaults = mariaDb || mysql.InnoDbVersion >= UserDefaultVersion;
+        var text = type.StartsWith("VARCHAR(", StringComparison.Ordinal) || type.StartsWith("CHAR(", StringComparison.Ordinal);
+        return expression.Kind switch
+        {
+            ColumnDefaultKind.CurrentUser when text && userDefaults => new("(CURRENT_USER())", 288, false),
+            ColumnDefaultKind.SessionUser when text && userDefaults => new("(SESSION_USER())", 288, false),
+            ColumnDefaultKind.CurrentSchema when text => new("(SCHEMA())", 64, true, ColumnDefaultKind.CurrentDatabase),
+            ColumnDefaultKind.CurrentDatabase when text => new("(DATABASE())", 64, true, ColumnDefaultKind.CurrentSchema),
+            ColumnDefaultKind.NewUuid when text && expression.Representation == UuidRepresentation.CanonicalText
+                => new("(UUID())"),
+            ColumnDefaultKind.NewUuid when mySql && type is "BINARY(16)" or "VARBINARY(16)"
+                && expression.Representation == UuidRepresentation.Binary && expression.ByteOrder == UuidByteOrder.Network
+                => new("(UUID_TO_BIN(UUID()))"),
+            ColumnDefaultKind.NextSequenceValue when mysql.MariaDbVersion >= MariaDbSequenceVersion
+                && expression.Sequence is { Catalog: null, Schema: null, Database: not null } sequence && IsSequenceType(type)
+                => new($"(NEXT VALUE FOR {QuoteSequencePart(sequence.Database)}.{QuoteSequencePart(sequence.Name)})"),
+            ColumnDefaultKind.CurrentTimestamp when type is "DATETIME" or "TIMESTAMP" => new("CURRENT_TIMESTAMP"),
+            ColumnDefaultKind.CurrentUtcTimestamp when type == "DATETIME" => new("(UTC_TIMESTAMP())"),
+            ColumnDefaultKind.CurrentDate when type == "DATE" => new("(CURRENT_DATE)"),
+            ColumnDefaultKind.CurrentTime when type == "TIME" => new("(CURRENT_TIME)"),
+            _ => null
+        };
+    }
+
+    private static string QuoteSequencePart(string part) => "`" + part.Replace("`", "``", StringComparison.Ordinal) + "`";
+
+    private static bool IsSequenceType(string type)
+        => type is "TINYINT" or "SMALLINT" or "INT" or "INTEGER" or "BIGINT" or "DECIMAL"
+            || type.StartsWith("DECIMAL(", StringComparison.Ordinal);
 
     public UniqueConstraintPlan? PlanUniqueConstraint(IDialect dialect, UniqueConstraintContext context)
     {
