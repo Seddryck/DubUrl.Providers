@@ -26,6 +26,17 @@ internal static class DuckDbStructuredTypes
     };
 
     internal const int MaxDepth = 64;
+    internal const int MaxVectorDimensions = 100_000;
+
+    internal static bool IsVectorElement(DbType type)
+        => type is DbType.SByte or DbType.Byte or DbType.Int16 or DbType.UInt16 or DbType.Int32 or DbType.UInt32
+            or DbType.Int64 or DbType.UInt64 or DbType.Single or DbType.Double;
+
+    internal static string? RenderVector(VectorType vector, string column)
+        => vector.Dimensions <= MaxVectorDimensions && IsVectorElement(vector.ElementType)
+            ? FormattableString.Invariant(
+                $"{Scalars[vector.ElementType]}[{vector.Dimensions}] CHECK (system.main.list_count({column}) = {vector.Dimensions})")
+            : null;
 
     internal static string? Render(StructuredColumnType type)
         => type.Storage switch

@@ -17,8 +17,18 @@ internal sealed class DuckDbSchemaSqlRenderer : StandardSchemaSqlRenderer, ISequ
     internal const string UtcTimestamp = "timezone('UTC', CURRENT_TIMESTAMP)";
 
     public string? RenderStructuredType(IDialect dialect, StructuredColumnTypeContext context)
-        => context.IsKey || context.Column.Generation is not null ? null
-            : DuckDbStructuredTypes.Render(context.Type);
+    {
+        if (context.IsKey || context.Column.Generation is not null)
+            return null;
+        if (context.Type is { Storage: StructuredStorage.Native, Shape: VectorType vector })
+            return context.Column.DefaultValue is null or DBNull
+                ? DuckDbStructuredTypes.RenderVector(vector, RenderIdentifier(dialect, context.Column.Name)) : null;
+        return DuckDbStructuredTypes.Render(context.Type);
+    }
+
+    public override string RenderIdentifier(IDialect dialect, string name)
+        => name.Contains('"') ? "\"" + name.Replace("\"", "\"\"", StringComparison.Ordinal) + "\""
+            : base.RenderIdentifier(dialect, name);
 
     public ColumnDefaultPlan? PlanColumnDefault(IDialect dialect, ColumnDefaultContext context)
     {

@@ -5,6 +5,7 @@ using DubUrl.Provider.DuckDb.Discovery;
 using DubUrl.Provider.DuckDb.Sql;
 using DubUrl.Providers.QA.Contracts.Schema;
 using DubUrl.Querying.Dialects;
+using DubUrl.Schema.Constraints;
 using NUnit.Framework;
 using static DubUrl.Providers.QA.Contracts.Schema.TypedDefaultChecks;
 
@@ -57,6 +58,54 @@ public sealed class StructuredTypeTests
             new(shape, StructuredStorage.Native), "to_json(v)",
             """{'select, "value"': [1, NULL], 'detail': NULL}""", """{"select, \"value\"":[1,null],"detail":null}""",
             """{'select, "value"': [], 'detail': NULL}""", """{"select, \"value\"":[],"detail":null}""");
+    }
+
+    [Test]
+    public async Task VectorsRoundTripAndPreserveIndependentChecks()
+    {
+        using var connection = new DuckDBConnection("DataSource=:memory:");
+        await connection.OpenAsync();
+        var type = new StructuredColumnType(new VectorType(DbType.Single, 3), StructuredStorage.Native);
+        const string quoted = "\"vector\"\"value\"";
+        var schema = new DubUrl.Schema.Schema([new Table(new DatabaseObjectName("vector_values", "main"),
+            [new Column("id", DbType.Int32), new Column("vector\"value", type, constraints: [new NullableConstraint()])],
+            [new CheckConstraint(new ColumnIdentityExpression("id"), ">", new ValueExpression(0))])]);
+        var renderer = new SchemaScriptRenderer(Dialect());
+        Execute(connection, renderer.Plan(schema).Single().CommandText);
+        Execute(connection, "INSERT INTO main.vector_values VALUES (1, [1.25,-2.5,3.5]), (2, NULL)");
+        Assert.That(Scalar(connection, $"SELECT to_json({quoted}) FROM main.vector_values WHERE id=1"), Is.EqualTo("[1.25,-2.5,3.5]"));
+        Assert.That(Scalar(connection, $"SELECT to_json({quoted}) FROM main.vector_values WHERE id=2"), Is.EqualTo(DBNull.Value));
+        Assert.That(Scalar(connection, $"SELECT array_distance({quoted}, [1.25,-2.5,3.5]::FLOAT[3]) FROM main.vector_values WHERE id=1"),
+            Is.EqualTo(0f));
+        Assert.Catch<DuckDBException>(() => Execute(connection, "INSERT INTO main.vector_values VALUES (3, [1,2])"));
+        Assert.Catch<DuckDBException>(() => Execute(connection, "INSERT INTO main.vector_values VALUES (3, [])"));
+        Assert.Catch<DuckDBException>(() => Execute(connection, "INSERT INTO main.vector_values VALUES (3, [1,NULL,3])"));
+        Assert.Catch<DuckDBException>(() => Execute(connection, $"UPDATE main.vector_values SET {quoted}=[1,2,NULL] WHERE id=1"));
+
+        var result = await new SchemaInspector().InspectAsync(connection, new DuckDbMetadataReader(), new()
+        {
+            Tables = [new("vector_values", "main")],
+            Features = [SchemaFeature.Tables, SchemaFeature.Columns, SchemaFeature.Checks]
+        });
+        Assert.That(result.IsComplete, Is.True, string.Join(", ", result.Diagnostics.Select(item => item.Message)));
+        var discovered = result.Schema!.Tables.Values.Single();
+        Assert.That(discovered.Columns["vector\"value"].StructuredType, Is.EqualTo(type));
+        Assert.That(discovered.Constraints.OfType<CheckConstraint>().Single().Operator, Is.EqualTo(">"));
+        var script = renderer.Plan(result.Schema).Single().CommandText;
+        Assert.That(script.Split("list_count", StringSplitOptions.None), Has.Length.EqualTo(2));
+        Execute(connection, "DROP TABLE main.vector_values");
+        Execute(connection, script);
+    }
+
+    [TestCase(DbType.Int64, "[1,-2,3]", "[1,-2,3]")]
+    [TestCase(DbType.Double, "[1.125,-2.25,3.5]", "[1.125,-2.25,3.5]")]
+    public async Task OtherNumericVectorsRoundTrip(DbType component, string value, string expected)
+    {
+        using var connection = new DuckDBConnection("DataSource=:memory:");
+        await connection.OpenAsync();
+        var type = new StructuredColumnType(new VectorType(component, 3), StructuredStorage.Native);
+        await StructuredTypeChecks.VerifyAsync(connection, Dialect(), new DuckDbMetadataReader(), new("vector_values", "main"),
+            type, "to_json(v)", value, expected, invalid: "[1,NULL,3]");
     }
 
     [Test]

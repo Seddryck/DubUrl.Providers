@@ -1,5 +1,6 @@
 using System.Text;
 using System.Data;
+using System.Globalization;
 using DubUrl.Discovery;
 using DubUrl.Provider.DuckDb.Schema.Generation;
 using DubUrl.Schema;
@@ -17,6 +18,44 @@ internal static class DuckDbCatalogSql
 
     private static readonly IReadOnlyDictionary<string, DbType> StructuredScalars = DuckDbStructuredTypes.Scalars
         .ToDictionary(pair => pair.Value, pair => pair.Key, StringComparer.OrdinalIgnoreCase);
+
+    internal static VectorType? FixedVector(string? sql)
+    {
+        if (sql is null || !sql.EndsWith(']') || sql.EndsWith("[]", StringComparison.Ordinal))
+            return null;
+        var tokens = Tokenize(sql);
+        return tokens.Count == 4 && !tokens[0].Quoted && !tokens[0].Literal
+            && StructuredScalars.TryGetValue(tokens[0].Value, out var element) && DuckDbStructuredTypes.IsVectorElement(element)
+            && tokens[1].Is("[") && tokens[3].Is("]") && ReadDimension(tokens[2]) is { } dimensions
+            ? new(element, dimensions) : null;
+    }
+
+    internal static bool IsVectorCheck(string sql, string column, int dimensions)
+    {
+        var tokens = Tokenize(sql);
+        var start = 0;
+        var end = tokens.Count;
+        while (end - start > 1 && tokens[start].Is("(") && Closing(tokens, start) == end - 1)
+        {
+            start++;
+            end--;
+        }
+
+        // Require the built-in macro's qualified name. An unqualified macro can be shadowed.
+        return end - start == 10 && SameIdentifier(tokens[start], "system") && tokens[start + 1].Is(".")
+            && SameIdentifier(tokens[start + 2], "main") && tokens[start + 3].Is(".")
+            && SameIdentifier(tokens[start + 4], "list_count") && tokens[start + 5].Is("(")
+            && SameIdentifier(tokens[start + 6], column) && tokens[start + 7].Is(")")
+            && tokens[start + 8].Is("=") && ReadDimension(tokens[start + 9]) == dimensions;
+    }
+
+    private static bool SameIdentifier(Token token, string name)
+        => token.Identifier && DuckDbStructuredTypes.FoldName(token.Value) == DuckDbStructuredTypes.FoldName(name);
+
+    private static int? ReadDimension(Token token)
+        => !token.Quoted && !token.Literal
+            && int.TryParse(token.Value, NumberStyles.None, CultureInfo.InvariantCulture, out var value)
+            && value is > 0 and <= DuckDbStructuredTypes.MaxVectorDimensions ? value : null;
 
     public static StructuredColumnMetadata? StructuredType(string sql)
     {
