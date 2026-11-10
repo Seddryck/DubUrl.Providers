@@ -15,6 +15,7 @@ namespace DubUrl.Provider.Oracle.Discovery;
 public sealed class OracleMetadataReader : CatalogSchemaMetadataReader, IUniqueConstraintMetadataReader, IStructuredColumnMetadataReader
 {
     private readonly ConditionalWeakTable<MetadataColumn, StructuredColumnMetadata> structuredTypes = new();
+    private readonly ConditionalWeakTable<CatalogRow, OracleNamedTypeMetadata> namedTypes = new();
 
     public async Task<StructuredSchemaMetadata> ReadWithStructuredTypesAsync(DbConnection connection,
         DiscoveryOptions options, CancellationToken cancellationToken)
@@ -54,11 +55,12 @@ public sealed class OracleMetadataReader : CatalogSchemaMetadataReader, IUniqueC
 
     protected override string ColumnsSql => """
         SELECT c.owner AS schema_name, c.table_name, c.column_name, c.column_id AS ordinal,
-          c.data_type AS type_name, c.data_type_owner AS type_owner, c.char_used,
+          c.data_type AS type_name, c.data_type_owner AS type_owner, c.data_type_mod AS type_modifier, dt.typecode AS named_kind, c.char_used,
           c.char_length, c.data_length, c.data_precision AS "precision", c.data_scale AS scale,
           CASE c.nullable WHEN 'Y' THEN 1 WHEN 'N' THEN 0 END AS nullable, m.comments AS "comment"
         FROM all_tab_columns c
         JOIN all_tables t ON t.owner = c.owner AND t.table_name = c.table_name
+        LEFT JOIN all_types dt ON dt.owner = c.data_type_owner AND dt.type_name = c.data_type
         LEFT JOIN all_col_comments m ON m.owner = c.owner AND m.table_name = c.table_name AND m.column_name = c.column_name
         """;
 
@@ -122,7 +124,36 @@ public sealed class OracleMetadataReader : CatalogSchemaMetadataReader, IUniqueC
         var rows = await ReadScopedRowsAsync(connection, sql, options, cancellationToken).ConfigureAwait(false);
         if (columns && rows.Any(IsStructuredColumn))
             await ReadStructuredModifiersAsync(connection, options, rows, cancellationToken).ConfigureAwait(false);
+        if (columns)
+            await ReadNamedTypesAsync(connection, rows, cancellationToken).ConfigureAwait(false);
         return rows;
+    }
+
+    private async Task ReadNamedTypesAsync(DbConnection connection, List<CatalogRow> rows, CancellationToken cancellationToken)
+    {
+        var named = rows.Where(row => row.Text("type_owner") is not null && row.Text("named_kind") is "OBJECT" or "COLLECTION").ToArray();
+        if (named.Length == 0)
+            return;
+
+        List<CatalogRow> members;
+        try
+        {
+            members = await QueryAsync(connection, OracleNamedTypeCatalog.Sql, cancellationToken).ConfigureAwait(false);
+        }
+        catch (DbException)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            foreach (var row in named)
+                namedTypes.Add(row, new(new(null, MetadataCoverage.Inaccessible)));
+            return;
+        }
+
+        var catalog = new OracleNamedTypeCatalog(members);
+        foreach (var row in named)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            namedTypes.Add(row, catalog.Decode(row.Text("type_owner")!, row.Text("type_name")!, row.Text("type_modifier")));
+        }
     }
 
     private Task<List<CatalogRow>> ReadScopedRowsAsync(DbConnection connection, string sql,
@@ -237,6 +268,9 @@ public sealed class OracleMetadataReader : CatalogSchemaMetadataReader, IUniqueC
         var column = base.MapColumn(row);
         if (IsStructuredColumn(row))
             return column with { Type = DbType.Object, Length = null, Precision = null, Scale = null };
+        if (namedTypes.TryGetValue(row, out var named) && row.Text("type_owner") is { } owner && row.Text("type_name") is { } name)
+            return Native(column, OracleNamedType.QualifiedName(owner, name), DbType.Object)
+                with { Length = named.Capacity, Precision = null, Scale = null };
         if (row.Text("type_owner") is not null) return column with { Type = null };
 
         return row.Text("type_name") switch
@@ -282,7 +316,7 @@ public sealed class OracleMetadataReader : CatalogSchemaMetadataReader, IUniqueC
         void Diagnose(SchemaFeature feature, string message)
             => diagnose(feature, $"Oracle column '{row.Text("column_name")}' ({row.Text("type_name")}): {message}");
 
-        if (DecodeStructuredType(row) is { } structured)
+        if ((namedTypes.TryGetValue(row, out var named) ? named.Structured : DecodeStructuredType(row)) is { } structured)
         {
             var mapped = base.MapCatalogColumn(row, options, Diagnose);
             structuredTypes.Add(mapped, structured);

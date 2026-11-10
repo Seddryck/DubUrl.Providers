@@ -13,8 +13,12 @@ internal sealed class OracleSchemaSqlRenderer : StandardSchemaSqlRenderer, IUniq
 
     public string? RenderStructuredType(IDialect dialect, StructuredColumnTypeContext context)
     {
-        if (dialect is not OracleDialect { ServerVersion: { } version } oracle
-            || context.IsKey || context.Column.Generation is not null)
+        if (dialect is not OracleDialect oracle || context.IsKey || context.Column.Generation is not null)
+            return null;
+
+        if (context.Type is { Storage: StructuredStorage.Native, Shape: ArrayType or StructType })
+            return oracle.ResolveNamedType(context.Type.Shape);
+        if (oracle.ServerVersion is not { } version)
             return null;
 
         var compatible = oracle.CompatibilityVersion ?? version;
