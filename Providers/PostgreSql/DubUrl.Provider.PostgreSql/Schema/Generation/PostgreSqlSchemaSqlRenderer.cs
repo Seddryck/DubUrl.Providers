@@ -26,9 +26,15 @@ internal class PostgreSqlSchemaSqlRenderer : StandardSchemaSqlRenderer
         => $"{expression} ~ {pattern}";
 }
 
-internal class PgsqlSchemaSqlRenderer : PostgreSqlSchemaSqlRenderer, IUniqueConstraintSqlRenderer, IColumnDefaultSqlRenderer
+internal class PgsqlSchemaSqlRenderer : PostgreSqlSchemaSqlRenderer, IUniqueConstraintSqlRenderer, IColumnDefaultSqlRenderer, IStructuredColumnSqlRenderer
 {
     internal new static PgsqlSchemaSqlRenderer Default { get; } = new();
+
+    public string? RenderStructuredType(IDialect dialect, StructuredColumnTypeContext context)
+        => dialect is DubUrl.Provider.PostgreSql.Sql.PgsqlDialect
+            && !context.IsKey && context.Column.Generation is null
+            && context.Type is { Storage: StructuredStorage.Json, Shape: JsonType }
+            ? "JSONB" : null;
 
     public virtual ColumnDefaultPlan? PlanColumnDefault(IDialect dialect, ColumnDefaultContext context)
     {

@@ -10,11 +10,15 @@ using DubUrl.Schema.Renderers;
 namespace DubUrl.Provider.DuckDb.Schema.Generation;
 
 /// <summary>DuckDB uses a dedicated sequence and nextval default for each portable identity column.</summary>
-internal sealed class DuckDbSchemaSqlRenderer : StandardSchemaSqlRenderer, ISequenceIdentitySqlRenderer, IUniqueConstraintSqlRenderer, IColumnDefaultSqlRenderer
+internal sealed class DuckDbSchemaSqlRenderer : StandardSchemaSqlRenderer, ISequenceIdentitySqlRenderer, IUniqueConstraintSqlRenderer, IColumnDefaultSqlRenderer, IStructuredColumnSqlRenderer
 {
     internal static DuckDbSchemaSqlRenderer Default { get; } = new();
 
     internal const string UtcTimestamp = "timezone('UTC', CURRENT_TIMESTAMP)";
+
+    public string? RenderStructuredType(IDialect dialect, StructuredColumnTypeContext context)
+        => context.IsKey || context.Column.Generation is not null ? null
+            : DuckDbStructuredTypes.Render(context.Type);
 
     public ColumnDefaultPlan? PlanColumnDefault(IDialect dialect, ColumnDefaultContext context)
     {
@@ -68,16 +72,13 @@ internal sealed class DuckDbSchemaSqlRenderer : StandardSchemaSqlRenderer, ISequ
         // DuckDB generates native constraint names. A separate index preserves a custom name,
         // but DuckDB only accepts a native UNIQUE constraint as a foreign-key target.
         var table = context.Table.Identity;
-        var generatedName = $"{table.Name}_{string.Join('_', key.Columns.Select(column => LowerAscii(column.Name)))}_key";
+        var generatedName = $"{table.Name}_{string.Join('_', key.Columns.Select(column => DuckDbStructuredTypes.FoldName(column.Name)))}_key";
         if (key.Name is null || key.Name == generatedName)
             return new NativeUniqueConstraintPlan(key.NullPolicy, true);
 
         return new UniqueIndexPlan(key.NullPolicy, false,
             [new(new DatabaseObjectName(key.Name, table.Schema, table.Database, table.Catalog))]);
     }
-
-    private static string LowerAscii(string name)
-        => new(name.Select(character => character is >= 'A' and <= 'Z' ? char.ToLowerInvariant(character) : character).ToArray());
 
     public override bool RenderForeignKeysInline(IDialect dialect) => true;
     public override bool RequiresForeignKeyDependencyOrder => true;

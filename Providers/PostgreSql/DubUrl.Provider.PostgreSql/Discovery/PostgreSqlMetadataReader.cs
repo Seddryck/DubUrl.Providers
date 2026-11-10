@@ -1,4 +1,5 @@
 using System.Text.RegularExpressions;
+using System.Data.Common;
 using DubUrl.Discovery;
 using System.Runtime.CompilerServices;
 using DubUrl.Schema;
@@ -7,9 +8,24 @@ using DubUrl.Schema.Constraints;
 namespace DubUrl.Provider.PostgreSql.Discovery;
 
 /// <summary>PostgreSQL catalog metadata. PostgreSQL-compatible protocols are not automatically opted in.</summary>
-public sealed class PostgreSqlMetadataReader : CatalogSchemaMetadataReader, IUniqueConstraintMetadataReader
+public sealed class PostgreSqlMetadataReader : CatalogSchemaMetadataReader, IUniqueConstraintMetadataReader, IStructuredColumnMetadataReader
 {
     private readonly ConditionalWeakTable<MetadataKey, UniqueConstraintMetadata> nullPolicies = new();
+
+    public async Task<StructuredSchemaMetadata> ReadWithStructuredTypesAsync(DbConnection connection,
+        DiscoveryOptions options, CancellationToken cancellationToken)
+    {
+        var metadata = await ReadAsync(connection, options, cancellationToken).ConfigureAwait(false);
+        var types = new Dictionary<StructuredColumnIdentity, StructuredColumnMetadata>();
+        foreach (var table in metadata.Tables)
+        foreach (var column in table.Columns)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (column.NativeType == "jsonb")
+                types.Add(new(table.Identity, column.Name), new(new(new JsonType(), StructuredStorage.Json), MetadataCoverage.Available));
+        }
+        return new(metadata, types);
+    }
 
     public UniqueConstraintMetadata GetUniqueConstraintMetadata(MetadataTable table, MetadataKey key)
         => nullPolicies.TryGetValue(key, out var policy) ? policy : new(UniqueNullPolicy.NullsDistinct);

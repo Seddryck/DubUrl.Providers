@@ -1,3 +1,6 @@
+using System.Data;
+using System.Data.Common;
+using System.Runtime.CompilerServices;
 using DubUrl.Discovery;
 using DubUrl.Provider.DuckDb.Schema.Generation;
 using DubUrl.Schema;
@@ -5,8 +8,25 @@ using DubUrl.Schema.Constraints;
 
 namespace DubUrl.Provider.DuckDb.Discovery;
 
-public sealed class DuckDbMetadataReader : CatalogSchemaMetadataReader, IUniqueConstraintMetadataReader
+public sealed class DuckDbMetadataReader : CatalogSchemaMetadataReader, IUniqueConstraintMetadataReader, IStructuredColumnMetadataReader
 {
+    private readonly ConditionalWeakTable<MetadataColumn, StructuredColumnMetadata> structuredTypes = new();
+
+    public async Task<StructuredSchemaMetadata> ReadWithStructuredTypesAsync(DbConnection connection,
+        DiscoveryOptions options, CancellationToken cancellationToken)
+    {
+        var metadata = await ReadAsync(connection, options, cancellationToken).ConfigureAwait(false);
+        var types = new Dictionary<StructuredColumnIdentity, StructuredColumnMetadata>();
+        foreach (var table in metadata.Tables)
+        foreach (var column in table.Columns)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (structuredTypes.TryGetValue(column, out var type))
+                types.Add(new(table.Identity, column.Name), type);
+        }
+        return new(metadata, types);
+    }
+
     public UniqueConstraintMetadata GetUniqueConstraintMetadata(MetadataTable table, MetadataKey key)
         => new(UniqueNullPolicy.NullsDistinct);
 
@@ -158,6 +178,14 @@ public sealed class DuckDbMetadataReader : CatalogSchemaMetadataReader, IUniqueC
     protected override MetadataColumn MapCatalogColumn(CatalogRow row, DiscoveryOptions options,
         Action<SchemaFeature, string> diagnose)
     {
+        if (row.Text("type_name") is { } name && DuckDbCatalogSql.StructuredType(name) is { } structured)
+        {
+            // The shared catalog mapper handles defaults and generation. Structured evidence supplies the type.
+            var mapped = base.MapCatalogColumn(row.With(("structured", true)), options, diagnose);
+            structuredTypes.Add(mapped, structured);
+            return mapped;
+        }
+
         if (!options.Features.Contains(SchemaFeature.Defaults))
             return base.MapCatalogColumn(row, options, diagnose);
 
@@ -192,6 +220,8 @@ public sealed class DuckDbMetadataReader : CatalogSchemaMetadataReader, IUniqueC
     protected override MetadataColumn MapColumn(CatalogRow row)
     {
         var column = base.MapColumn(row);
+        if (row.Bool("structured") == true)
+            return column with { Type = DbType.Object, Length = null, Precision = null, Scale = null };
         return column.Type == System.Data.DbType.AnsiString ? column with { Type = System.Data.DbType.String } : column;
     }
 }

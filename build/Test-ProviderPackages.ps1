@@ -4,7 +4,9 @@ param(
     [string] $Version,
 
     [Parameter(Mandatory)]
-    [string] $NuGetDirectory
+    [string] $NuGetDirectory,
+
+    [switch] $ForPublish
 )
 
 $ErrorActionPreference = 'Stop'
@@ -73,7 +75,13 @@ foreach ($package in $packages) {
         }
         $reader = [IO.StreamReader]::new($archive.GetEntry("$($package.Id).nuspec").Open())
         try { [xml] $specification = $reader.ReadToEnd() } finally { $reader.Dispose() }
-        $dependencies = @($specification.SelectNodes("//*[local-name()='dependency']") | ForEach-Object { $_.id })
+        $dependencyNodes = @($specification.SelectNodes("//*[local-name()='dependency']"))
+        $dependencies = @($dependencyNodes | ForEach-Object { $_.id })
+        if ($ForPublish) {
+            Assert-Condition (@($dependencyNodes | Where-Object {
+                $_.id -eq 'DubUrl.Schema' -and $_.version -match 'schema-qa\.build'
+            }).Count -eq 0) "Package '$($package.Id)' requires a published Schema package with structured column types."
+        }
         Assert-Condition ('DubUrl.Core' -notin $dependencies) "Package '$($package.Id)' depends on the retired DubUrl.Core package."
         if ($package.Id -eq 'DubUrl') {
             Assert-Condition (@($dependencies | Where-Object { $_ -like 'DubUrl.Provider.*' }).Count -eq 0) 'DubUrl must not bring provider implementations.'

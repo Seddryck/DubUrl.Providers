@@ -65,7 +65,7 @@ jobs:
           path: artifacts/nuget
       - name: Validate downloaded package set
         shell: pwsh
-        run: ./build/Test-ProviderPackages.ps1 -Version $env:PROVIDER_PACKAGE_VERSION -NuGetDirectory artifacts/nuget
+        run: ./build/Test-ProviderPackages.ps1 -Version $env:PROVIDER_PACKAGE_VERSION -NuGetDirectory artifacts/nuget -ForPublish
       - name: Exchange GitHub identity for a NuGet API key
         id: nuget-login
         uses: NuGet/login@8d196754b4036150537f80ac539e15c2f1028841
