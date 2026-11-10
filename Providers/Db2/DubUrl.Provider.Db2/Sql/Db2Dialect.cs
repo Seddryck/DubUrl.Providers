@@ -12,7 +12,7 @@ using System.Threading.Tasks;
 
 namespace DubUrl.Provider.Db2.Sql;
 
-[DbTypeMapper<AnsiTypeMapper>]
+[DbTypeMapper<Db2ColumnDefaultTypeMapper>]
 [SqlFunctionMapper<AnsiFunctionMapper>]
 [Renderer<AnsiRenderer>()]
 [ReturnCaster<DateTimeCaster<DateOnly>>]
@@ -20,6 +20,19 @@ namespace DubUrl.Provider.Db2.Sql;
 [ParentLanguage<SqlLanguage>]
 public class Db2Dialect : BaseDialect
 {
+    internal Version? LuwVersion { get; private set; }
+
+    /// <summary>Qualifies typed defaults for Db2 LUW. Db2 for i and z/OS use separate rules.</summary>
+    public Db2Dialect WithLuwColumnDefaults(Version serverVersion)
+    {
+        ArgumentNullException.ThrowIfNull(serverVersion);
+        var dialect = (Db2Dialect)MemberwiseClone();
+        dialect.LuwVersion = serverVersion;
+        return dialect;
+    }
+
+    public override ISchemaSqlRenderer SchemaSqlRenderer => Db2ColumnDefaults.Instance;
+
     public override DialectCapabilities Capabilities { get; } = new() { SupportsComments = true };
 
     internal Db2Dialect(ILanguage language, string[] aliases, IRenderer renderer, ICaster[] casters, IDbTypeMapper dbTypeMapper, ISqlFunctionMapper sqlFunctionMapper)

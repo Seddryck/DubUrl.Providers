@@ -9,7 +9,7 @@ using DubUrl.Provider.MySql.Sql;
 namespace DubUrl.Provider.MySql.Discovery;
 
 /// <summary>Read-only MySQL 8 catalog discovery. Compatible protocols are deliberately not opted in.</summary>
-public sealed class MySqlMetadataReader : CatalogSchemaMetadataReader, IUniqueConstraintMetadataReader
+public class MySqlMetadataReader : CatalogSchemaMetadataReader, IUniqueConstraintMetadataReader
 {
     public UniqueConstraintMetadata GetUniqueConstraintMetadata(MetadataTable table, MetadataKey key)
         => new(UniqueNullPolicy.NullsDistinct);
@@ -76,9 +76,14 @@ public sealed class MySqlMetadataReader : CatalogSchemaMetadataReader, IUniqueCo
         var rows = await base.ReadCatalogRowsAsync(connection, sql, options, cancellationToken).ConfigureAwait(false);
         if (sql != ColumnsSql) return rows;
         // COLUMN_DEFAULT contains unquoted literal text; DEFAULT_GENERATED distinguishes SQL expressions.
-        return rows.Select(row => row.Text("default_expression") is { } value
+        return rows.Select(NormalizeDefault).ToList();
+    }
+
+    protected virtual CatalogRow NormalizeDefault(CatalogRow row)
+    {
+        return row.Text("default_expression") is { } value
             && !(row.Text("extra") ?? "").Contains("DEFAULT_GENERATED", StringComparison.Ordinal)
-            ? row.With(("default_expression", "'" + value.Replace("'", "''", StringComparison.Ordinal) + "'")) : row).ToList();
+            ? row.With(("default_expression", "'" + value.Replace("'", "''", StringComparison.Ordinal) + "'")) : row;
     }
 
     protected override MetadataColumn MapColumn(CatalogRow row)
@@ -95,6 +100,7 @@ public sealed class MySqlMetadataReader : CatalogSchemaMetadataReader, IUniqueCo
             "char" => column with { Type = DbType.StringFixedLength },
             "binary" => column with { NativeType = "BINARY", NativeDialect = typeof(MySqlDialect) },
             "datetime" => column with { NativeType = "DATETIME", NativeDialect = typeof(MySqlDialect) },
+            "varbinary" => column with { Type = DbType.Binary },
             "bit" when native != "bit(1)" => column with { Type = null },
             "bit" => column with { NativeType = "BIT", NativeDialect = typeof(MySqlDialect) },
             "text" => column with { Type = DbType.String, Length = null },
@@ -104,9 +110,39 @@ public sealed class MySqlMetadataReader : CatalogSchemaMetadataReader, IUniqueCo
         };
     }
 
+    protected virtual ColumnDefaultExpression? ReadDefault(CatalogRow row)
+        => (row.Text("extra") ?? "").Contains("DEFAULT_GENERATED", StringComparison.Ordinal)
+            ? RecognizeDefault(row) : null;
+
+    protected static ColumnDefaultExpression? RecognizeDefault(CatalogRow row)
+    {
+        var sql = row.Text("default_expression")?.Trim().ToUpperInvariant();
+        return (row.Text("type_name"), sql) switch
+        {
+            ("varchar" or "char", "CURRENT_USER()") => ColumnDefaultExpression.CurrentUser,
+            ("varchar" or "char", "SESSION_USER()" or "USER()") => ColumnDefaultExpression.SessionUser,
+            ("varchar" or "char", "SCHEMA()") => ColumnDefaultExpression.CurrentSchema,
+            ("varchar" or "char", "DATABASE()") => ColumnDefaultExpression.CurrentDatabase,
+            ("varchar" or "char", "UUID()") => ColumnDefaultExpression.NewUuid(UuidRepresentation.CanonicalText),
+            ("binary" or "varbinary", "UUID_TO_BIN(UUID())") => ColumnDefaultExpression.NewUuid(UuidRepresentation.Binary, UuidByteOrder.Network),
+            ("timestamp", "CURRENT_TIMESTAMP" or "CURRENT_TIMESTAMP()") when row.Int("temporal_precision") == 0
+                => ColumnDefaultExpression.CurrentTimestamp(),
+            ("datetime", "CURRENT_TIMESTAMP" or "CURRENT_TIMESTAMP()") when row.Int("temporal_precision") == 0
+                => ColumnDefaultExpression.CurrentTimestamp(),
+            ("datetime", "UTC_TIMESTAMP()") when row.Int("temporal_precision") == 0
+                => ColumnDefaultExpression.CurrentUtcTimestamp(),
+            ("date", "CURDATE()" or "CURRENT_DATE" or "CURRENT_DATE()") => ColumnDefaultExpression.CurrentDate,
+            ("time", "CURTIME()" or "CURRENT_TIME" or "CURRENT_TIME()") when row.Int("temporal_precision") == 0
+                => ColumnDefaultExpression.CurrentTime(),
+            _ => null
+        };
+    }
+
     protected override MetadataColumn MapCatalogColumn(CatalogRow row, DiscoveryOptions options, Action<SchemaFeature, string> diagnose)
     {
-        var column = base.MapCatalogColumn(row, options, diagnose);
+        var expression = options.Features.Contains(SchemaFeature.Defaults) ? ReadDefault(row) : null;
+        var column = expression is null ? base.MapCatalogColumn(row, options, diagnose)
+            : base.MapCatalogColumn(row.With(("default_expression", null)), options, diagnose) with { Default = expression };
         if (row.Int("temporal_precision") > 0)
             diagnose(SchemaFeature.Columns, "Fractional temporal precision cannot be represented by the current column facets.");
         if (options.Features.Contains(SchemaFeature.Generation) && (row.Text("extra") ?? "").Contains("on update", StringComparison.OrdinalIgnoreCase))

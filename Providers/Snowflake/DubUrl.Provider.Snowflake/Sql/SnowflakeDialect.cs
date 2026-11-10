@@ -13,12 +13,22 @@ using System.Threading.Tasks;
 
 namespace DubUrl.Provider.Snowflake.Sql;
 
-[DbTypeMapper<AnsiTypeMapper>]
+[DbTypeMapper<SnowflakeColumnDefaultTypeMapper>]
 [SqlFunctionMapper<AnsiFunctionMapper>]
 [Renderer<AnsiRenderer>()]
 [ParentLanguage<SqlLanguage>]
 public class SnowflakeDialect : BaseDialect
 {
+    internal bool UsesStandardTableDefaults { get; private set; }
+
+    /// <summary>Opts into the documented defaults for Snowflake standard tables.</summary>
+    public SnowflakeDialect WithStandardTableDefaults()
+    {
+        var dialect = (SnowflakeDialect)MemberwiseClone();
+        dialect.UsesStandardTableDefaults = true;
+        return dialect;
+    }
+
     public override ISchemaSqlRenderer SchemaSqlRenderer => SnowflakeSchemaSqlRenderer.Default;
     public override DialectCapabilities Capabilities { get; } = new()
     {

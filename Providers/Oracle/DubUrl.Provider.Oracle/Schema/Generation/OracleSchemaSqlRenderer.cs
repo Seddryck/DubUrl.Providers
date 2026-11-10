@@ -1,12 +1,54 @@
+using System.Data;
+using DubUrl.Provider.Oracle.Sql;
 using DubUrl.Querying.Dialects;
+using DubUrl.Schema;
 using DubUrl.Schema.Constraints;
 using DubUrl.Schema.Renderers;
 
 namespace DubUrl.Provider.Oracle.Schema.Generation;
 
-internal sealed class OracleSchemaSqlRenderer : StandardSchemaSqlRenderer, IUniqueConstraintSqlRenderer
+internal sealed class OracleSchemaSqlRenderer : StandardSchemaSqlRenderer, IUniqueConstraintSqlRenderer, IColumnDefaultSqlRenderer, IColumnDefinitionSqlRenderer
 {
     internal static OracleSchemaSqlRenderer Default { get; } = new();
+
+    public ColumnDefinitionPlan? RenderColumnDefinition(IDialect dialect, ColumnDefinitionContext column)
+        => column.DefaultExpression is { } value && column.Generation is null
+            ? new($"{column.Type} DEFAULT {value}", ColumnDefinitionClauses.Default) : null;
+
+    public ColumnDefaultPlan? PlanColumnDefault(IDialect dialect, ColumnDefaultContext context)
+    {
+        if (context.Column.Type == DbType.DateTimeOffset
+            || context.Column.DefaultExpression is not { FractionalSecondsPrecision: null or 6 } expression)
+            return null;
+
+        var type = context.SqlType.ToUpperInvariant();
+        var text = type.StartsWith("VARCHAR2(", StringComparison.Ordinal) || type.StartsWith("VARCHAR(", StringComparison.Ordinal)
+            || type.StartsWith("CHAR(", StringComparison.Ordinal);
+        return expression.Kind switch
+        {
+            ColumnDefaultKind.CurrentTimestamp when type == "TIMESTAMP" => new("CURRENT_TIMESTAMP"),
+            ColumnDefaultKind.CurrentDate when type == "DATE" => new("TRUNC(CURRENT_DATE)"),
+            ColumnDefaultKind.CurrentUtcTimestamp when type == "TIMESTAMP" => new("SYS_EXTRACT_UTC(SYSTIMESTAMP)"),
+            ColumnDefaultKind.CurrentUser when text => new("SYS_CONTEXT('USERENV','CURRENT_USER')", 128, false),
+            ColumnDefaultKind.SessionUser when text => new("SYS_CONTEXT('USERENV','SESSION_USER')", 128, false),
+            ColumnDefaultKind.CurrentSchema when text => new("SYS_CONTEXT('USERENV','CURRENT_SCHEMA')", 128, false),
+            ColumnDefaultKind.CurrentDatabase when text => new("SYS_CONTEXT('USERENV','DB_NAME')", 8, false),
+            ColumnDefaultKind.NewUuid when type == "RAW(16)" && expression.Representation == UuidRepresentation.Binary
+                && expression.ByteOrder == UuidByteOrder.Network
+                => new("SYS_GUID()"),
+            ColumnDefaultKind.NextSequenceValue when dialect is OracleDialect { ServerVersion.Major: >= 12 }
+                && expression.Sequence is { Catalog: null, Database: null, Schema: not null } sequence
+                && !sequence.Schema.Contains('"') && !sequence.Name.Contains('"') && IsSequenceType(type)
+                => new($"{QuoteSequencePart(sequence.Schema)}.{QuoteSequencePart(sequence.Name)}.NEXTVAL"),
+            _ => null
+        };
+    }
+
+    private static string QuoteSequencePart(string part) => "\"" + part.Replace("\"", "\"\"", StringComparison.Ordinal) + "\"";
+
+    private static bool IsSequenceType(string type)
+        => type is "NUMBER" or "INTEGER" or "SMALLINT" or "BIGINT" or "DECIMAL"
+            || type.StartsWith("NUMBER(", StringComparison.Ordinal) || type.StartsWith("DECIMAL(", StringComparison.Ordinal);
 
     public UniqueConstraintPlan? PlanUniqueConstraint(IDialect dialect, UniqueConstraintContext context)
     {

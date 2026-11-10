@@ -25,6 +25,17 @@ public class SingleStoreDialect : BaseDialect
 {
     public override ISchemaSqlRenderer SchemaSqlRenderer => SingleStoreSchemaSqlRenderer.Default;
 
+    internal Version? ServerVersion { get; private set; }
+
+    /// <summary>Sets the SingleStore server version for typed column-default planning.</summary>
+    public SingleStoreDialect WithServerVersion(Version serverVersion)
+    {
+        ArgumentNullException.ThrowIfNull(serverVersion);
+        var dialect = (SingleStoreDialect)MemberwiseClone();
+        dialect.ServerVersion = serverVersion;
+        return dialect;
+    }
+
     public override DialectCapabilities Capabilities { get; } = SingleStoreSchemaCapabilities.Create();
 
     internal SingleStoreDialect(ILanguage language, string[] aliases, IRenderer renderer, ICaster[] casters, IDbTypeMapper dbTypeMapper, ISqlFunctionMapper sqlFunctionMapper)

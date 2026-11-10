@@ -26,6 +26,17 @@ public class PgsqlDialect : BaseDialect
 {
     public override ISchemaSqlRenderer SchemaSqlRenderer => PgsqlSchemaSqlRenderer.Default;
 
+    internal Version? ServerVersion { get; private set; }
+
+    /// <summary>Sets the PostgreSQL server version for offline planning of version-dependent defaults.</summary>
+    public PgsqlDialect WithServerVersion(Version serverVersion)
+    {
+        ArgumentNullException.ThrowIfNull(serverVersion);
+        var dialect = (PgsqlDialect)MemberwiseClone();
+        dialect.ServerVersion = serverVersion;
+        return dialect;
+    }
+
     public override DialectCapabilities Capabilities { get; } = PgsqlSchemaCapabilities.Create();
 
     internal PgsqlDialect(ILanguage language, string[] aliases, IRenderer renderer, ICaster[] casters, IDbTypeMapper dbTypeMapper, ISqlFunctionMapper sqlFunctionMapper)

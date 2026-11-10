@@ -28,6 +28,17 @@ public class TSqlDialect : BaseDialect
 {
     public override ISchemaSqlRenderer SchemaSqlRenderer => TSqlSchemaSqlRenderer.Default;
 
+    internal Version? ServerVersion { get; private set; }
+
+    /// <summary>Sets the SQL Server version for offline planning of version-dependent defaults.</summary>
+    public TSqlDialect WithServerVersion(Version serverVersion)
+    {
+        ArgumentNullException.ThrowIfNull(serverVersion);
+        var dialect = (TSqlDialect)MemberwiseClone();
+        dialect.ServerVersion = serverVersion;
+        return dialect;
+    }
+
     public override DialectCapabilities Capabilities { get; } = TSqlSchemaCapabilities.Create();
 
     internal TSqlDialect(ILanguage language, string[] aliases, IRenderer renderer, ICaster[] casters, IDbTypeMapper dbTypeMapper, ISqlFunctionMapper sqlFunctionMapper)

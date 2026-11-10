@@ -10,6 +10,6 @@ internal static class CrateDbSchemaCapabilities
             ObjectNames = ObjectNameParts.Name | ObjectNameParts.Schema,
             SupportsRegularExpressionChecks = true,
             SupportsComments = true,
-            NativeTypes = new HashSet<string>(["JSON", "OBJECT", "GEO_POINT", "GEO_SHAPE"], StringComparer.OrdinalIgnoreCase),
+            NativeTypes = new HashSet<string>(["JSON", "OBJECT", "GEO_POINT", "GEO_SHAPE", "TIMESTAMP WITHOUT TIME ZONE", "BIGINT"], StringComparer.OrdinalIgnoreCase),
         };
 }

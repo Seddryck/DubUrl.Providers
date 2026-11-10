@@ -27,6 +27,29 @@ public class MySqlDialect : BaseDialect
 {
     public override ISchemaSqlRenderer SchemaSqlRenderer => MySqlSchemaSqlRenderer.Default;
 
+    internal Version? InnoDbVersion { get; private set; }
+    internal Version? MariaDbVersion { get; private set; }
+
+    /// <summary>Qualifies typed column defaults for an actual MySQL server whose DDL session uses InnoDB.</summary>
+    public MySqlDialect WithInnoDbDefaults(Version serverVersion)
+    {
+        ArgumentNullException.ThrowIfNull(serverVersion);
+        var dialect = (MySqlDialect)MemberwiseClone();
+        dialect.InnoDbVersion = serverVersion;
+        dialect.MariaDbVersion = null;
+        return dialect;
+    }
+
+    /// <summary>Qualifies typed defaults for MariaDB independently of MySQL's InnoDB capabilities.</summary>
+    public MySqlDialect WithMariaDbDefaults(Version serverVersion)
+    {
+        ArgumentNullException.ThrowIfNull(serverVersion);
+        var dialect = (MySqlDialect)MemberwiseClone();
+        dialect.InnoDbVersion = null;
+        dialect.MariaDbVersion = serverVersion;
+        return dialect;
+    }
+
     public override DialectCapabilities Capabilities { get; } = MysqlSchemaCapabilities.Create();
 
     internal MySqlDialect(ILanguage language, string[] aliases, IRenderer renderer, ICaster[] casters, IDbTypeMapper dbTypeMapper, ISqlFunctionMapper sqlFunctionMapper)
