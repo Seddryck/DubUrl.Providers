@@ -1,12 +1,16 @@
 [CmdletBinding()]
 param(
     [ValidatePattern('^[0-9a-f]{40}$')]
-    # Pin the merged structured type contract until a published Schema package includes it.
-    [string] $SourceCommit = '3a95dfd69d8203ca8ff00719b36d2b2e2c81c050',
+    [string] $SourceCommit,
     [string] $DubUrlVersion = '0.60.0'
 )
 
 $ErrorActionPreference = 'Stop'
+if (-not $SourceCommit) {
+    Write-Host 'Using published Schema packages.'
+    return
+}
+
 $root = Split-Path $PSScriptRoot
 $source = Join-Path $root 'artifacts/schema-source'
 $feed = Join-Path $root 'artifacts/schema-feed'

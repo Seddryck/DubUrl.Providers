@@ -2,14 +2,13 @@
 
 Provider implementation packages, database-free unit tests, and real database QA for DubUrl.
 
-The projects under Providers use released DubUrl Core packages. Until a published Schema package includes the structured type contract, initialize the pinned local Schema feed in the same PowerShell session before building or testing:
+The projects under Providers use released DubUrl Core packages and DubUrl.Schema 0.104.0. Use the following commands to build and test.
 
-    ./build/Initialize-SchemaQa.ps1
     dotnet build DubUrl.Providers.slnx
     dotnet test QA/DubUrl.Providers.Testing
     dotnet test DubUrl.BulkCopy.Testing
 
-The provider unit suite compiles the tests alongside their owning provider and runs without a database. Schema source-compatibility QA can select another commit with `./build/Initialize-SchemaQa.ps1 -SourceCommit <sha>`.
+The provider unit suite compiles the tests alongside their owning provider and runs without a database. Schema source-compatibility QA can opt into a local package with `./build/Initialize-SchemaQa.ps1 -SourceCommit <sha>` before building in the same PowerShell session.
 
 The shared live fixtures are in QA/DubUrl.Provider.QA. Their four namespaces are Schema, Connection, BulkCopy, and Query under DubUrl.Providers.QA.Contracts. Concrete fixtures supply their real driver, SQL, and expected behavior. Engine regressions live in Specific subfolders.
 
