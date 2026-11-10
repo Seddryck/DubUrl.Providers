@@ -15,6 +15,11 @@ internal class PostgreSqlSchemaSqlRenderer : StandardSchemaSqlRenderer
 
     public override bool SupportsCommentRendering => true;
 
+    public override string RenderIdentifier(IDialect dialect, string name)
+        => name.Contains('"') ? QuoteIdentifier(name) : base.RenderIdentifier(dialect, name);
+
+    internal static string QuoteIdentifier(string name) => "\"" + name.Replace("\"", "\"\"", StringComparison.Ordinal) + "\"";
+
     public override string RenderObjectName(IDialect dialect, string? catalog, string? database, string? schema, string name)
     {
         RejectQualifier(catalog, "Catalog", dialect);
@@ -26,9 +31,21 @@ internal class PostgreSqlSchemaSqlRenderer : StandardSchemaSqlRenderer
         => $"{expression} ~ {pattern}";
 }
 
-internal class PgsqlSchemaSqlRenderer : PostgreSqlSchemaSqlRenderer, IUniqueConstraintSqlRenderer, IColumnDefaultSqlRenderer
+internal class PgsqlSchemaSqlRenderer : PostgreSqlSchemaSqlRenderer, IUniqueConstraintSqlRenderer, IColumnDefaultSqlRenderer, IStructuredColumnSqlRenderer
 {
     internal new static PgsqlSchemaSqlRenderer Default { get; } = new();
+
+    public virtual string? RenderStructuredType(IDialect dialect, StructuredColumnTypeContext context)
+        => dialect is PgsqlDialect postgres && !context.IsKey && context.Column.Generation is null
+            ? context.Type switch
+            {
+                { Storage: StructuredStorage.Json, Shape: JsonType } => "JSONB",
+                { Storage: StructuredStorage.Native, Shape: ArrayType array } when context.Column.DefaultValue is null or DBNull
+                    => PostgreSqlArrayType.Render(array, context.Column.Name),
+                { Storage: StructuredStorage.Native, Shape: StructType composite } => postgres.ResolveCompositeType(composite),
+                _ => null
+            }
+            : null;
 
     public virtual ColumnDefaultPlan? PlanColumnDefault(IDialect dialect, ColumnDefaultContext context)
     {
@@ -97,6 +114,11 @@ internal class PgsqlSchemaSqlRenderer : PostgreSqlSchemaSqlRenderer, IUniqueCons
 internal sealed class CockRoachSchemaSqlRenderer : PgsqlSchemaSqlRenderer
 {
     internal new static CockRoachSchemaSqlRenderer Default { get; } = new();
+
+    public override string? RenderStructuredType(IDialect dialect, StructuredColumnTypeContext context)
+        => dialect is CockRoachDialect cockroach && !context.IsKey && context.Column.Generation is null
+            ? CockroachStructuredTypes.Render(context.Type, cockroach.ServerVersion)
+            : null;
 
     public override ColumnDefaultPlan? PlanColumnDefault(IDialect dialect, ColumnDefaultContext context)
     {

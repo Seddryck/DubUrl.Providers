@@ -7,6 +7,7 @@ namespace DubUrl.Provider.MariaDb.QA.Query;
 public sealed class MariaDbProviderTests : ProviderContract
 {
     protected override string ConnectionUrl => MariaDbTestDatabase.ConnectionUrl;
+    protected override bool SupportsSchemaDiscovery => true;
     protected override string SelectFirstCustomerSql => "select FullName from Customer where CustomerId=1";
     protected override string SelectCustomerByIdSql => "select FullName from Customer where CustomerId=@CustId";
     protected override string SelectCustomerByPositionSql => "select FullName from Customer where CustomerId=?";

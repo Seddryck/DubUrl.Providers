@@ -9,8 +9,26 @@ using DubUrl.Provider.MySql.Sql;
 namespace DubUrl.Provider.MySql.Discovery;
 
 /// <summary>Read-only MySQL 8 catalog discovery. Compatible protocols are deliberately not opted in.</summary>
-public class MySqlMetadataReader : CatalogSchemaMetadataReader, IUniqueConstraintMetadataReader
+public class MySqlMetadataReader : CatalogSchemaMetadataReader, IUniqueConstraintMetadataReader, IStructuredColumnMetadataReader
 {
+    public async Task<StructuredSchemaMetadata> ReadWithStructuredTypesAsync(DbConnection connection,
+        DiscoveryOptions options, CancellationToken cancellationToken)
+    {
+        var metadata = await ReadAsync(connection, options, cancellationToken).ConfigureAwait(false);
+        var types = new Dictionary<StructuredColumnIdentity, StructuredColumnMetadata>();
+        foreach (var table in metadata.Tables)
+        foreach (var column in table.Columns)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (GetStructuredType(column) is { } type)
+                types.Add(new(table.Identity, column.Name), type);
+        }
+        return new(metadata, types);
+    }
+
+    protected virtual StructuredColumnMetadata? GetStructuredType(MetadataColumn column)
+        => column.NativeType == "JSON" ? new(new(new JsonType(), StructuredStorage.Json), MetadataCoverage.Available) : null;
+
     public UniqueConstraintMetadata GetUniqueConstraintMetadata(MetadataTable table, MetadataKey key)
         => new(UniqueNullPolicy.NullsDistinct);
 
@@ -21,7 +39,7 @@ public class MySqlMetadataReader : CatalogSchemaMetadataReader, IUniqueConstrain
         """;
     protected override string ColumnsSql => """
         SELECT TABLE_SCHEMA AS database_name,TABLE_NAME AS table_name,COLUMN_NAME AS column_name,
-          ORDINAL_POSITION AS ordinal,DATA_TYPE AS type_name,COLUMN_TYPE AS native_type_name,
+          ORDINAL_POSITION AS ordinal,DATA_TYPE AS type_name,COLUMN_TYPE AS native_type_name,COLLATION_NAME AS collation_name,
           IS_NULLABLE AS nullable,CASE WHEN DATA_TYPE IN ('char','varchar','binary','varbinary') THEN CHARACTER_MAXIMUM_LENGTH END AS length,
           NUMERIC_PRECISION AS `precision`,NUMERIC_SCALE AS scale,DATETIME_PRECISION AS temporal_precision,COLUMN_DEFAULT AS default_expression,
           EXTRA AS extra,NULLIF(GENERATION_EXPRESSION,'') AS generation_expression,

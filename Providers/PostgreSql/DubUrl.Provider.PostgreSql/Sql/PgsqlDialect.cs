@@ -8,6 +8,7 @@ using DubUrl.Querying.Dialects.Casters;
 using DubUrl.Querying.Dialects.Functions;
 using DubUrl.Querying.Dialects.Renderers;
 using DubUrl.Querying.TypeMapping;
+using DubUrl.Schema;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -27,6 +28,33 @@ public class PgsqlDialect : BaseDialect
     public override ISchemaSqlRenderer SchemaSqlRenderer => PgsqlSchemaSqlRenderer.Default;
 
     internal Version? ServerVersion { get; private set; }
+    private IReadOnlyList<PostgreSqlCompositeType> CompositeTypes { get; set; } = [];
+
+    /// <summary>Binds a portable struct shape to a named PostgreSQL composite. Register nested types first.</summary>
+    public PgsqlDialect WithCompositeType(DatabaseObjectName name, StructType shape)
+    {
+        ArgumentNullException.ThrowIfNull(name);
+        ArgumentNullException.ThrowIfNull(shape);
+        var existing = CompositeTypes.FirstOrDefault(type => type.Name == name || type.Shape == shape);
+        if (existing is not null)
+            return existing.Name == name && existing.Shape == shape ? this
+                : throw new ArgumentException("Each composite name and shape must have a single binding.");
+
+        var type = PostgreSqlCompositeType.Create(name, shape, FindCompositeType);
+        var dialect = (PgsqlDialect)MemberwiseClone();
+        dialect.CompositeTypes = [.. CompositeTypes, type];
+        return dialect;
+    }
+
+    /// <summary>Returns CREATE TYPE statements for provisioning the registered composites in dependency order.</summary>
+    public IReadOnlyList<string> RenderCompositeTypeDefinitions()
+        => CompositeTypes.Select(type => type.Definition).ToArray();
+
+    internal string? ResolveCompositeType(StructType shape)
+        => FindCompositeType(shape)?.SqlName;
+
+    private PostgreSqlCompositeType? FindCompositeType(StructType shape)
+        => CompositeTypes.FirstOrDefault(type => type.Shape == shape);
 
     /// <summary>Sets the PostgreSQL server version for offline planning of version-dependent defaults.</summary>
     public PgsqlDialect WithServerVersion(Version serverVersion)

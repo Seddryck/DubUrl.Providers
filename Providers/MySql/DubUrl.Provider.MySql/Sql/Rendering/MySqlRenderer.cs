@@ -16,8 +16,15 @@ internal class MySqlRenderer : AnsiRenderer
         : base(new ValueFormatter()
                     .With(new FunctionFormatter<TimeSpan>("TIME", new IntervalAsTimeFormatter()))
               , new NullFormatter()
-              , new IdentifierBacktickFormatter()) { }
+              , new MySqlIdentifierFormatter()) { }
 
     protected MySqlRenderer(BaseValueFormatter value)
-        : base(value, new NullFormatter(), new IdentifierBacktickFormatter()) { }
+        : base(value, new NullFormatter(), new MySqlIdentifierFormatter()) { }
+}
+
+internal sealed class MySqlIdentifierFormatter : IIdentifierFormatter
+{
+    public string Format(string value) => "`" + value.Replace("`", "``", StringComparison.Ordinal) + "`";
+
+    public string Format(object value) => Format((string)value);
 }

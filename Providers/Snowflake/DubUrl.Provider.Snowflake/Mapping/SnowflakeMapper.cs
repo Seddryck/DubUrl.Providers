@@ -12,6 +12,7 @@ using System.Threading.Tasks;
 
 namespace DubUrl.Provider.Snowflake.Mapping;
 
+[DubUrl.Discovery.SchemaDiscovery(typeof(DubUrl.Provider.Snowflake.Discovery.SnowflakeMetadataReader))]
 [Mapper<SnowflakeDatabase, PositionalNamedParametrizer>(
     "Snowflake.Data"
 )]

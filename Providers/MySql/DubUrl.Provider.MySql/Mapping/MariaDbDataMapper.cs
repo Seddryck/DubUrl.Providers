@@ -15,6 +15,7 @@ namespace DubUrl.Provider.MySql.Mapping;
 
 [AlternativeMapper<MariaDbDatabase, NamedParametrizer>("MySql.Data")]
 [ConnectionConfiguration(Pooling = "Pooling", MinPoolSize = "Minimum Pool Size", MaxPoolSize = "Maximum Pool Size", ConnectionTimeout = "Connection Timeout", CommandTimeout = "Default Command Timeout", MaxLifetime = "Connection Lifetime", Tls = "ConnectorNet", TimeZone = "sql:mysql")]
+[DubUrl.Discovery.SchemaDiscovery(typeof(DubUrl.Provider.MySql.Discovery.MariaDbMetadataReader))]
 public class MariaDbDataRewriter : MySqlDataMapper
 {
     public MariaDbDataRewriter(DbConnectionStringBuilder csb, IDialect dialect, IParametrizer parametrizer)

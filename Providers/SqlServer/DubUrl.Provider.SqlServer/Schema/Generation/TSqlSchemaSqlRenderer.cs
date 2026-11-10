@@ -1,3 +1,4 @@
+using System.Data;
 using DubUrl.Provider.SqlServer.Sql;
 using DubUrl.Querying.Dialects;
 using DubUrl.Schema;
@@ -6,9 +7,29 @@ using DubUrl.Schema.Renderers;
 
 namespace DubUrl.Provider.SqlServer.Schema.Generation;
 
-internal sealed class TSqlSchemaSqlRenderer : StandardSchemaSqlRenderer, IUniqueConstraintSqlRenderer, IColumnDefaultSqlRenderer
+internal sealed class TSqlSchemaSqlRenderer : StandardSchemaSqlRenderer, IUniqueConstraintSqlRenderer, IColumnDefaultSqlRenderer, IStructuredColumnSqlRenderer
 {
     internal static TSqlSchemaSqlRenderer Default { get; } = new();
+    internal const int NativeStructuredVersion = 17;
+    internal const int MaxVectorDimensions = 1998;
+
+    public string? RenderStructuredType(IDialect dialect, StructuredColumnTypeContext context)
+    {
+        if (context.IsKey || context.Column.Generation is not null)
+            return null;
+
+        var nativeTypes = dialect is TSqlDialect { ServerVersion.Major: >= NativeStructuredVersion };
+        return context.Type switch
+        {
+            { Storage: StructuredStorage.JsonText, Shape: JsonType } => "NVARCHAR(MAX)",
+            { Storage: StructuredStorage.Json, Shape: JsonType } when nativeTypes => "JSON",
+            { Storage: StructuredStorage.Native, Shape: VectorType { ElementType: DbType.Single,
+                Dimensions: <= MaxVectorDimensions } vector } when nativeTypes && context.Column.DefaultValue is null
+                && !context.Column.Constraints.Any(constraint => constraint is CheckConstraint or MembershipCheckConstraint or RegexCheckConstraint)
+                => FormattableString.Invariant($"VECTOR({vector.Dimensions})"),
+            _ => null
+        };
+    }
 
     public ColumnDefaultPlan? PlanColumnDefault(IDialect dialect, ColumnDefaultContext context)
     {

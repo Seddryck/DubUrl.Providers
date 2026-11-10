@@ -14,7 +14,7 @@ internal static class OracleTestDatabase
         return connection;
     }
 
-    public static OracleTestSchema CreateSchema()
+    public static OracleTestSchema CreateSchema(bool createTypes = false)
     {
         using var admin = Open();
         var name = "DUBURL_QA_" + Guid.NewGuid().ToString("N")[..16].ToUpperInvariant();
@@ -30,6 +30,8 @@ internal static class OracleTestDatabase
         try
         {
             QaSql.Execute(admin, $"GRANT CREATE SESSION, CREATE TABLE, CREATE VIEW TO {name}");
+            if (createTypes)
+                QaSql.Execute(admin, $"GRANT CREATE TYPE TO {name}");
             return schema;
         }
         catch

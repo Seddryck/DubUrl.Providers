@@ -1,7 +1,10 @@
 using System.Data;
 using System.Data.Common;
+using System.Globalization;
+using System.Runtime.CompilerServices;
 using System.Text.RegularExpressions;
 using DubUrl.Discovery;
+using DubUrl.Provider.Oracle.Schema.Generation;
 using DubUrl.Provider.Oracle.Sql;
 using DubUrl.Schema;
 using DubUrl.Schema.Constraints;
@@ -9,8 +12,26 @@ using DubUrl.Schema.Constraints;
 namespace DubUrl.Provider.Oracle.Discovery;
 
 /// <summary>Read-only discovery of Oracle objects visible to the connected user in the current PDB.</summary>
-public sealed class OracleMetadataReader : CatalogSchemaMetadataReader, IUniqueConstraintMetadataReader
+public sealed class OracleMetadataReader : CatalogSchemaMetadataReader, IUniqueConstraintMetadataReader, IStructuredColumnMetadataReader
 {
+    private readonly ConditionalWeakTable<MetadataColumn, StructuredColumnMetadata> structuredTypes = new();
+    private readonly ConditionalWeakTable<CatalogRow, OracleNamedTypeMetadata> namedTypes = new();
+
+    public async Task<StructuredSchemaMetadata> ReadWithStructuredTypesAsync(DbConnection connection,
+        DiscoveryOptions options, CancellationToken cancellationToken)
+    {
+        var metadata = await ReadAsync(connection, options, cancellationToken).ConfigureAwait(false);
+        var types = new Dictionary<StructuredColumnIdentity, StructuredColumnMetadata>();
+        foreach (var table in metadata.Tables)
+        foreach (var column in table.Columns)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (structuredTypes.TryGetValue(column, out var type))
+                types.Add(new(table.Identity, column.Name), type);
+        }
+        return new(metadata, types);
+    }
+
     public OracleMetadataReader()
         => UnsupportedFeatures = new HashSet<SchemaFeature> { SchemaFeature.Defaults, SchemaFeature.Generation, SchemaFeature.Checks };
 
@@ -34,11 +55,12 @@ public sealed class OracleMetadataReader : CatalogSchemaMetadataReader, IUniqueC
 
     protected override string ColumnsSql => """
         SELECT c.owner AS schema_name, c.table_name, c.column_name, c.column_id AS ordinal,
-          c.data_type AS type_name, c.data_type_owner AS type_owner, c.char_used,
+          c.data_type AS type_name, c.data_type_owner AS type_owner, c.data_type_mod AS type_modifier, dt.typecode AS named_kind, c.char_used,
           c.char_length, c.data_length, c.data_precision AS "precision", c.data_scale AS scale,
           CASE c.nullable WHEN 'Y' THEN 1 WHEN 'N' THEN 0 END AS nullable, m.comments AS "comment"
         FROM all_tab_columns c
         JOIN all_tables t ON t.owner = c.owner AND t.table_name = c.table_name
+        LEFT JOIN all_types dt ON dt.owner = c.data_type_owner AND dt.type_name = c.data_type
         LEFT JOIN all_col_comments m ON m.owner = c.owner AND m.table_name = c.table_name AND m.column_name = c.column_name
         """;
 
@@ -85,10 +107,11 @@ public sealed class OracleMetadataReader : CatalogSchemaMetadataReader, IUniqueC
         LEFT JOIN all_tab_columns c ON c.owner = v.owner AND c.table_name = v.view_name
         """;
 
-    protected override Task<List<CatalogRow>> ReadCatalogRowsAsync(DbConnection connection, string sql,
+    protected override async Task<List<CatalogRow>> ReadCatalogRowsAsync(DbConnection connection, string sql,
         DiscoveryOptions options, CancellationToken cancellationToken)
     {
-        if (sql == ColumnsSql && options.Features.Contains(SchemaFeature.Defaults)
+        var columns = sql == ColumnsSql;
+        if (columns && options.Features.Contains(SchemaFeature.Defaults)
             && !UnsupportedFeatures.Contains(SchemaFeature.Defaults))
         {
             sql = sql.Replace("m.comments AS \"comment\"", """
@@ -98,6 +121,44 @@ public sealed class OracleMetadataReader : CatalogSchemaMetadataReader, IUniqueC
                 """, StringComparison.Ordinal);
         }
 
+        var rows = await ReadScopedRowsAsync(connection, sql, options, cancellationToken).ConfigureAwait(false);
+        if (columns && rows.Any(IsStructuredColumn))
+            await ReadStructuredModifiersAsync(connection, options, rows, cancellationToken).ConfigureAwait(false);
+        if (columns)
+            await ReadNamedTypesAsync(connection, rows, cancellationToken).ConfigureAwait(false);
+        return rows;
+    }
+
+    private async Task ReadNamedTypesAsync(DbConnection connection, List<CatalogRow> rows, CancellationToken cancellationToken)
+    {
+        var named = rows.Where(row => row.Text("type_owner") is not null && row.Text("named_kind") is "OBJECT" or "COLLECTION").ToArray();
+        if (named.Length == 0)
+            return;
+
+        List<CatalogRow> members;
+        try
+        {
+            members = await QueryAsync(connection, OracleNamedTypeCatalog.Sql, cancellationToken).ConfigureAwait(false);
+        }
+        catch (DbException)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            foreach (var row in named)
+                namedTypes.Add(row, new(new(null, MetadataCoverage.Inaccessible)));
+            return;
+        }
+
+        var catalog = new OracleNamedTypeCatalog(members);
+        foreach (var row in named)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            namedTypes.Add(row, catalog.Decode(row.Text("type_owner")!, row.Text("type_name")!, row.Text("type_modifier")));
+        }
+    }
+
+    private Task<List<CatalogRow>> ReadScopedRowsAsync(DbConnection connection, string sql,
+        DiscoveryOptions options, CancellationToken cancellationToken)
+    {
         // Unscoped inspection describes application schemas. Explicit selections can still inspect system objects.
         if (options.Schemas.Count == 0 && options.Tables.Count == 0)
             return QueryAsync(connection,
@@ -117,6 +178,78 @@ public sealed class OracleMetadataReader : CatalogSchemaMetadataReader, IUniqueC
         return QueryAsync(connection, $"SELECT * FROM ({sql}) WHERE schema_name IN ({binds})", cancellationToken, parameters);
     }
 
+    private async Task ReadStructuredModifiersAsync(DbConnection connection, DiscoveryOptions options,
+        List<CatalogRow> rows, CancellationToken cancellationToken)
+    {
+        // Dictionary columns differ across releases. Older catalogs still identify the base types.
+        try
+        {
+            var fields = await QueryAsync(connection, """
+                SELECT column_name FROM all_tab_columns WHERE owner = 'SYS' AND table_name = 'ALL_TAB_COLUMNS'
+                    AND column_name IN ('VECTOR_INFO', 'JSON_MODIFIER')
+                """, cancellationToken).ConfigureAwait(false);
+            var vector = fields.Any(field => field.Text("column_name") == "VECTOR_INFO") ? "vector_info" : "NULL AS vector_info";
+            var json = fields.Any(field => field.Text("column_name") == "JSON_MODIFIER") ? "json_modifier" : "NULL AS json_modifier";
+            if (fields.Count == 0)
+                return;
+
+            var modifiers = await ReadScopedRowsAsync(connection, $"""
+                SELECT owner AS schema_name, table_name, column_name, {vector}, {json}
+                FROM all_tab_columns WHERE data_type IN ('JSON', 'VECTOR') AND data_type_owner IS NULL
+                """, options, cancellationToken).ConfigureAwait(false);
+            var byColumn = modifiers.ToDictionary(row => (Identity(row), row.Text("column_name")));
+            for (var i = 0; i < rows.Count; i++)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                var row = rows[i];
+                if (IsStructuredColumn(row) && byColumn.TryGetValue((Identity(row), row.Text("column_name")), out var evidence))
+                    rows[i] = row.With(("vector_info", evidence.Text("vector_info")), ("json_modifier", evidence.Text("json_modifier")));
+            }
+        }
+        catch (DbException)
+        {
+            for (var i = 0; i < rows.Count; i++)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                if (IsStructuredColumn(rows[i]))
+                    rows[i] = rows[i].With(("structured_inaccessible", true));
+            }
+        }
+    }
+
+    private static bool IsStructuredColumn(CatalogRow row)
+        => row.Text("type_owner") is null && row.Text("type_name") is "JSON" or "VECTOR";
+
+    private static readonly Regex VectorInfo = new(
+        @"\AVECTOR\(\s*(?<size>[0-9]+)\s*,\s*(?<format>INT8|FLOAT32|FLOAT64)\s*(?:,\s*DENSE\s*)?\)\z",
+        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.NonBacktracking, TimeSpan.FromSeconds(1));
+
+    internal static StructuredColumnMetadata? DecodeStructuredType(CatalogRow row)
+    {
+        if (!IsStructuredColumn(row))
+            return null;
+        if (row.Bool("structured_inaccessible") == true)
+            return new(null, MetadataCoverage.Inaccessible);
+
+        if (row.Text("type_name") == "JSON")
+        {
+            var modifier = row.Text("json_modifier");
+            return modifier is null || modifier.Replace(" ", "", StringComparison.Ordinal) == "JSON()"
+                ? new(new(new JsonType(), StructuredStorage.Json), MetadataCoverage.Available)
+                : new(null, MetadataCoverage.Unrepresentable);
+        }
+
+        var match = VectorInfo.Match(row.Text("vector_info") ?? "");
+        if (match.Success && int.TryParse(match.Groups["size"].Value, NumberStyles.None, CultureInfo.InvariantCulture, out var size)
+            && size is > 0 and <= OracleStructuredTypes.MaxVectorDimensions)
+        {
+            var element = OracleStructuredTypes.VectorFormats.Single(item =>
+                item.Value.Equals(match.Groups["format"].Value, StringComparison.OrdinalIgnoreCase)).Key;
+            return new(new(new VectorType(element, size), StructuredStorage.Native), MetadataCoverage.Available);
+        }
+        return new(null, MetadataCoverage.Unrepresentable);
+    }
+
     public UniqueConstraintMetadata GetUniqueConstraintMetadata(MetadataTable table, MetadataKey key)
     {
         var nullableMembers = table.Columns.Count(column => key.Columns.Contains(column.Name) && column.Nullable == true);
@@ -133,6 +266,11 @@ public sealed class OracleMetadataReader : CatalogSchemaMetadataReader, IUniqueC
     protected override MetadataColumn MapColumn(CatalogRow row)
     {
         var column = base.MapColumn(row);
+        if (IsStructuredColumn(row))
+            return column with { Type = DbType.Object, Length = null, Precision = null, Scale = null };
+        if (namedTypes.TryGetValue(row, out var named) && row.Text("type_owner") is { } owner && row.Text("type_name") is { } name)
+            return Native(column, OracleNamedType.QualifiedName(owner, name), DbType.Object)
+                with { Length = named.Capacity, Precision = null, Scale = null };
         if (row.Text("type_owner") is not null) return column with { Type = null };
 
         return row.Text("type_name") switch
@@ -177,6 +315,13 @@ public sealed class OracleMetadataReader : CatalogSchemaMetadataReader, IUniqueC
     {
         void Diagnose(SchemaFeature feature, string message)
             => diagnose(feature, $"Oracle column '{row.Text("column_name")}' ({row.Text("type_name")}): {message}");
+
+        if ((namedTypes.TryGetValue(row, out var named) ? named.Structured : DecodeStructuredType(row)) is { } structured)
+        {
+            var mapped = base.MapCatalogColumn(row, options, Diagnose);
+            structuredTypes.Add(mapped, structured);
+            return mapped;
+        }
 
         if (!options.Features.Contains(SchemaFeature.Defaults) || row.Text("default_expression") is not { } raw)
             return base.MapCatalogColumn(row, options, Diagnose);

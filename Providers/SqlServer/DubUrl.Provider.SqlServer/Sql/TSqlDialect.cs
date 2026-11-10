@@ -30,7 +30,7 @@ public class TSqlDialect : BaseDialect
 
     internal Version? ServerVersion { get; private set; }
 
-    /// <summary>Sets the SQL Server version for offline planning of version-dependent defaults.</summary>
+    /// <summary>Sets the SQL Server version for offline planning of version-dependent schema features.</summary>
     public TSqlDialect WithServerVersion(Version serverVersion)
     {
         ArgumentNullException.ThrowIfNull(serverVersion);

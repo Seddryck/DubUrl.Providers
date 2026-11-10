@@ -1,21 +1,41 @@
 using System.Data;
 using System.Data.Common;
+using System.Runtime.CompilerServices;
 using System.Text.RegularExpressions;
 using DubUrl.Discovery;
 using DubUrl.Schema;
 using DubUrl.Schema.Constraints;
 using DubUrl.Provider.MySql.Sql;
+using DubUrl.Provider.MySql.Schema.Generation;
 
 namespace DubUrl.Provider.MySql.Discovery;
 
 /// <summary>Read-only SingleStore metadata. Foreign keys and checks are not enforced by this engine.</summary>
-public sealed class SingleStoreMetadataReader : ISchemaMetadataReader, IUniqueConstraintMetadataReader
+public sealed class SingleStoreMetadataReader : IStructuredColumnMetadataReader, IUniqueConstraintMetadataReader
 {
     public UniqueConstraintMetadata GetUniqueConstraintMetadata(MetadataTable table, MetadataKey key)
         => new(UniqueNullPolicy.NullsDistinct);
 
     private readonly CatalogReader reader = new();
     public IReadOnlyDictionary<SchemaFeature, MetadataCoverage> Capabilities => reader.Capabilities;
+
+    public async Task<StructuredSchemaMetadata> ReadWithStructuredTypesAsync(DbConnection connection,
+        DiscoveryOptions options, CancellationToken cancellationToken)
+    {
+        var metadata = await ReadAsync(connection, options, cancellationToken).ConfigureAwait(false);
+        var types = new Dictionary<StructuredColumnIdentity, StructuredColumnMetadata>();
+        foreach (var table in metadata.Tables)
+        foreach (var column in table.Columns)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (reader.Vectors.TryGetValue(column, out var vector))
+                types.Add(new(table.Identity, column.Name), vector);
+            else if (column.NativeType == "JSON")
+                types.Add(new(table.Identity, column.Name), new(new(new JsonType(), StructuredStorage.Json), MetadataCoverage.Available));
+        }
+        return new(metadata, types);
+    }
+
 
     public async Task<SchemaMetadata> ReadAsync(DbConnection connection, DiscoveryOptions options, CancellationToken cancellationToken = default)
     {
@@ -64,6 +84,8 @@ public sealed class SingleStoreMetadataReader : ISchemaMetadataReader, IUniqueCo
     }
     private sealed class CatalogReader : CatalogSchemaMetadataReader
     {
+        internal ConditionalWeakTable<MetadataColumn, StructuredColumnMetadata> Vectors { get; } = new();
+
         protected override IReadOnlySet<SchemaFeature> UnsupportedFeatures { get; } = new HashSet<SchemaFeature>
             { SchemaFeature.ForeignKeys, SchemaFeature.Checks };
         protected override string TablesSql => """
@@ -130,6 +152,15 @@ public sealed class SingleStoreMetadataReader : ISchemaMetadataReader, IUniqueCo
         protected override MetadataColumn MapCatalogColumn(CatalogRow row, DiscoveryOptions options,
             Action<SchemaFeature, string> diagnose)
         {
+            var native = row.Text("column_type");
+            if (row.Text("type_name")?.Equals("vector", StringComparison.OrdinalIgnoreCase) == true
+                || native?.StartsWith("vector(", StringComparison.OrdinalIgnoreCase) == true)
+            {
+                var column = base.MapCatalogColumn(row.With(("structured_vector", true), ("length", null)), options, diagnose);
+                Vectors.Add(column, SingleStoreVectorType.Decode(native ?? ""));
+                return column;
+            }
+
             if (options.Features.Contains(SchemaFeature.Defaults)
                 && row.Text("column_type") is "datetime" or "timestamp"
                 && row.Text("default_expression")?.ToUpperInvariant() is "CURRENT_TIMESTAMP" or "CURRENT_TIMESTAMP()" or "NOW()")
@@ -142,6 +173,8 @@ public sealed class SingleStoreMetadataReader : ISchemaMetadataReader, IUniqueCo
         protected override MetadataColumn MapColumn(CatalogRow row)
         {
             var column = base.MapColumn(row);
+            if (row.Bool("structured_vector") == true)
+                return column with { Type = DbType.Object, Length = null, Precision = null, Scale = null };
             // Do not narrow unsigned ranges into signed portable columns.
             if (row.Text("column_type")?.Contains("unsigned", StringComparison.OrdinalIgnoreCase) == true)
                 return column with { Type = null };

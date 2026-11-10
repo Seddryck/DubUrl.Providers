@@ -1,3 +1,6 @@
+using System.Data;
+using System.Data.Common;
+using System.Runtime.CompilerServices;
 using DubUrl.Discovery;
 using DubUrl.Provider.DuckDb.Schema.Generation;
 using DubUrl.Schema;
@@ -5,10 +8,43 @@ using DubUrl.Schema.Constraints;
 
 namespace DubUrl.Provider.DuckDb.Discovery;
 
-public sealed class DuckDbMetadataReader : CatalogSchemaMetadataReader, IUniqueConstraintMetadataReader
+public sealed class DuckDbMetadataReader : CatalogSchemaMetadataReader, IUniqueConstraintMetadataReader, IStructuredColumnMetadataReader
 {
+    private readonly ConditionalWeakTable<MetadataColumn, StructuredColumnMetadata> structuredTypes = new();
+
+    public async Task<StructuredSchemaMetadata> ReadWithStructuredTypesAsync(DbConnection connection,
+        DiscoveryOptions options, CancellationToken cancellationToken)
+    {
+        var metadata = await ReadAsync(connection, options, cancellationToken).ConfigureAwait(false);
+        var types = new Dictionary<StructuredColumnIdentity, StructuredColumnMetadata>();
+        foreach (var table in metadata.Tables)
+        foreach (var column in table.Columns)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (structuredTypes.TryGetValue(column, out var type))
+                types.Add(new(table.Identity, column.Name), type);
+        }
+        return new(metadata, types);
+    }
+
     public UniqueConstraintMetadata GetUniqueConstraintMetadata(MetadataTable table, MetadataKey key)
         => new(UniqueNullPolicy.NullsDistinct);
+
+    protected override MetadataTable MapTable(CatalogRow row, List<CatalogRow> columnRows, List<CatalogRow> keyRows,
+        List<CatalogRow> indexRows, List<CatalogRow> checkRows, DiscoveryOptions options, Action<SchemaFeature, string> diagnose)
+    {
+        if (checkRows.Count > 0)
+        {
+            var identity = Identity(row);
+            var vectorChecks = columnRows.Where(column => Identity(column) == identity && column.Text("vector_check") is not null)
+                .Select(column => (column.Long("vector_check_index"), column.Text("vector_check"))).ToHashSet();
+            // The vector renderer recreates its component check. Keep independent checks.
+            if (vectorChecks.Count > 0)
+                checkRows = checkRows.Where(check => Identity(check) != identity
+                    || !vectorChecks.Contains((check.Long("constraint_index"), check.Text("expression")))).ToList();
+        }
+        return base.MapTable(row, columnRows, keyRows, indexRows, checkRows, options, diagnose);
+    }
 
     protected override string TablesSql => """
         SELECT schema_name,table_name,comment FROM duckdb_tables() WHERE NOT internal AND database_name=current_database()
@@ -46,6 +82,7 @@ public sealed class DuckDbMetadataReader : CatalogSchemaMetadataReader, IUniqueC
             var expression = DuckDbCatalogSql.GeneratedExpression(row.Text("table_sql") ?? "", row.Text("column_name")!);
             return expression is null ? row : row.With(("generation_expression", expression), ("default_expression", null), ("stored", false));
         }).ToList();
+        await ReadVectorChecksAsync(connection, normalized, cancellationToken).ConfigureAwait(false);
         var readGeneration = options.Features.Contains(SchemaFeature.Generation);
         var readDefaults = options.Features.Contains(SchemaFeature.Defaults);
         if (!readGeneration && !readDefaults) return normalized;
@@ -86,6 +123,43 @@ public sealed class DuckDbMetadataReader : CatalogSchemaMetadataReader, IUniqueC
             }
         }
         return normalized;
+    }
+
+    private static async Task ReadVectorChecksAsync(DbConnection connection, List<CatalogRow> columns, CancellationToken cancellationToken)
+    {
+        var vectors = columns.Select((row, index) => (Index: index, Type: DuckDbCatalogSql.FixedVector(row.Text("type_name"))))
+            .Where(item => item.Type is not null).ToArray();
+        if (vectors.Length == 0)
+            return;
+
+        List<CatalogRow> checks;
+        try
+        {
+            checks = await QueryAsync(connection, """
+                SELECT schema_name,table_name,constraint_index,expression,constraint_column_names[1] AS column_name
+                FROM duckdb_constraints()
+                WHERE constraint_type='CHECK' AND database_name=current_database() AND len(constraint_column_names)=1
+                """, cancellationToken).ConfigureAwait(false);
+        }
+        catch (DbException)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            foreach (var vector in vectors)
+                columns[vector.Index] = columns[vector.Index].With(("vector_check_inaccessible", true));
+            return;
+        }
+
+        var byColumn = checks.ToLookup(check => (Identity(check), check.Text("column_name")));
+        foreach (var (index, vector) in vectors)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var row = columns[index];
+            var name = row.Text("column_name")!;
+            var check = byColumn[(Identity(row), name)].FirstOrDefault(candidate => candidate.Text("expression") is { } expression
+                && DuckDbCatalogSql.IsVectorCheck(expression, name, vector!.Dimensions));
+            if (check is not null)
+                columns[index] = row.With(("vector_check", check.Text("expression")), ("vector_check_index", check.Long("constraint_index")));
+        }
     }
 
     private static List<CatalogRow> NormalizeIndexes(List<CatalogRow> rows, CancellationToken cancellationToken)
@@ -145,7 +219,7 @@ public sealed class DuckDbMetadataReader : CatalogSchemaMetadataReader, IUniqueC
     }
 
     protected override string ChecksSql => """
-        SELECT schema_name,table_name,constraint_name AS check_name,expression FROM duckdb_constraints()
+        SELECT schema_name,table_name,constraint_index,constraint_name AS check_name,expression FROM duckdb_constraints()
         WHERE constraint_type='CHECK' AND database_name=current_database()
         """;
     protected override string ViewsSql => """
@@ -158,6 +232,18 @@ public sealed class DuckDbMetadataReader : CatalogSchemaMetadataReader, IUniqueC
     protected override MetadataColumn MapCatalogColumn(CatalogRow row, DiscoveryOptions options,
         Action<SchemaFeature, string> diagnose)
     {
+        if (row.Text("type_name") is { } name && DuckDbCatalogSql.StructuredType(name) is { } structured)
+        {
+            if (row.Text("vector_check") is not null && DuckDbCatalogSql.FixedVector(name) is { } vector)
+                structured = new(new(vector, StructuredStorage.Native), MetadataCoverage.Available);
+            else if (row.Bool("vector_check_inaccessible") == true)
+                structured = new(null, MetadataCoverage.Inaccessible);
+            // The shared catalog mapper handles defaults and generation. Structured evidence supplies the type.
+            var mapped = base.MapCatalogColumn(row.With(("structured", true)), options, diagnose);
+            structuredTypes.Add(mapped, structured);
+            return mapped;
+        }
+
         if (!options.Features.Contains(SchemaFeature.Defaults))
             return base.MapCatalogColumn(row, options, diagnose);
 
@@ -192,6 +278,8 @@ public sealed class DuckDbMetadataReader : CatalogSchemaMetadataReader, IUniqueC
     protected override MetadataColumn MapColumn(CatalogRow row)
     {
         var column = base.MapColumn(row);
+        if (row.Bool("structured") == true)
+            return column with { Type = DbType.Object, Length = null, Precision = null, Scale = null };
         return column.Type == System.Data.DbType.AnsiString ? column with { Type = System.Data.DbType.String } : column;
     }
 }

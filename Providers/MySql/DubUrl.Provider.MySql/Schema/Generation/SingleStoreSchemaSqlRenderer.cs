@@ -6,12 +6,30 @@ using DubUrl.Schema.Renderers;
 
 namespace DubUrl.Provider.MySql.Schema.Generation;
 
-internal sealed class SingleStoreSchemaSqlRenderer : StandardSchemaSqlRenderer, ITableDescriptionSqlRenderer, ITableDefinitionSqlRenderer, IUniqueConstraintSqlRenderer, IColumnDefaultSqlRenderer
+internal sealed class SingleStoreSchemaSqlRenderer : StandardSchemaSqlRenderer, ITableDescriptionSqlRenderer, ITableDefinitionSqlRenderer, IUniqueConstraintSqlRenderer, IColumnDefaultSqlRenderer, IStructuredColumnSqlRenderer
 {
     internal static SingleStoreSchemaSqlRenderer Default { get; } = new();
     private SingleStoreSchemaSqlRenderer() : base(MySqlSchemaSqlRenderer.Default) { }
 
     private static readonly Version TimestampDefaultBaseline = new(9, 1, 1);
+    private static readonly Version VectorBaseline = new(8, 5);
+
+    public string? RenderStructuredType(IDialect dialect, StructuredColumnTypeContext context)
+    {
+        if (dialect is not SingleStoreDialect singleStore
+            || context.IsKey || context.Column.Generation is not null
+            || context.PhysicalOptions?.ShardKey?.Contains(context.Column.Name, StringComparer.OrdinalIgnoreCase) == true
+            || context.PhysicalOptions?.SortKey?.Any(column => column.Name.Equals(context.Column.Name, StringComparison.OrdinalIgnoreCase)) == true)
+            return null;
+
+        return context.Type switch
+        {
+            { Storage: StructuredStorage.Json, Shape: JsonType } => "JSON COLLATE utf8mb4_bin",
+            { Storage: StructuredStorage.Native, Shape: VectorType vector } when singleStore.ServerVersion >= VectorBaseline
+                => SingleStoreVectorType.Render(vector),
+            _ => null
+        };
+    }
 
     public ColumnDefaultPlan? PlanColumnDefault(IDialect dialect, ColumnDefaultContext context)
         => dialect is SingleStoreDialect { ServerVersion: { } version } && version >= TimestampDefaultBaseline

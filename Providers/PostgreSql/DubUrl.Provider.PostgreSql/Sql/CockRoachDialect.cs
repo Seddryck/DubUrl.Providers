@@ -28,6 +28,17 @@ public class CockRoachDialect : BaseDialect
 
     public override DialectCapabilities Capabilities { get; } = CockRoachSchemaCapabilities.Create();
 
+    internal Version? ServerVersion { get; private set; }
+
+    /// <summary>Qualifies version-dependent structured column types.</summary>
+    public CockRoachDialect WithServerVersion(Version serverVersion)
+    {
+        ArgumentNullException.ThrowIfNull(serverVersion);
+        var dialect = (CockRoachDialect)MemberwiseClone();
+        dialect.ServerVersion = serverVersion;
+        return dialect;
+    }
+
     internal CockRoachDialect(ILanguage language, string[] aliases, IRenderer renderer, ICaster[] casters, IDbTypeMapper dbTypeMapper, ISqlFunctionMapper sqlFunctionMapper)
         : base(language, aliases, renderer, casters, dbTypeMapper, sqlFunctionMapper) { }
 }

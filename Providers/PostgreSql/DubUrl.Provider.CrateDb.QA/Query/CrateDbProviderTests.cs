@@ -6,6 +6,7 @@ namespace DubUrl.Provider.CrateDb.QA.Query;
 [TestFixture, Category("CrateDB")]
 public sealed class CrateDbProviderTests : ProviderContract
 {
+    protected override bool SupportsSchemaDiscovery => true;
     protected override string ConnectionUrl => "cratedb://crate@localhost:5432/crate?SSL Mode=Disable&Pooling=false&No Reset On Close=true";
     protected override string CliTableName => "doc.\"Customer\"";
     protected override string SelectFirstCustomerSql => "select \"FullName\" from doc.\"Customer\" where \"CustomerId\"=1";

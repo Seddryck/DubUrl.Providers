@@ -6,9 +6,21 @@ using DubUrl.Schema.Renderers;
 
 namespace DubUrl.Provider.MySql.Schema.Generation;
 
-internal sealed class MySqlSchemaSqlRenderer : StandardSchemaSqlRenderer, IUniqueConstraintSqlRenderer, IColumnDefaultSqlRenderer
+internal sealed class MySqlSchemaSqlRenderer : StandardSchemaSqlRenderer, IUniqueConstraintSqlRenderer, IColumnDefaultSqlRenderer, IStructuredColumnSqlRenderer
 {
     internal static MySqlSchemaSqlRenderer Default { get; } = new();
+
+    public string? RenderStructuredType(IDialect dialect, StructuredColumnTypeContext context)
+    {
+        if (dialect is not MySqlDialect mysql || context.IsKey || context.Column.Generation is not null)
+            return null;
+        if (mysql.MariaDbVersion is { } version && context.Column.DefaultValue is null or DBNull)
+            return MariaDbStructuredTypes.Render(version, context.Type);
+
+        return mysql.InnoDbVersion?.Major >= 8 && context.Column.DefaultValue is null
+            && context.Type is { Storage: StructuredStorage.Json, Shape: JsonType }
+            ? "JSON" : null;
+    }
 
     private static readonly Version ExpressionDefaultVersion = new(8, 0, 13);
     private static readonly Version UserDefaultVersion = new(8, 0, 34);

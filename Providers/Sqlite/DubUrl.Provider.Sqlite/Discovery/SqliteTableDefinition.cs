@@ -1,3 +1,6 @@
+using DubUrl.Provider.Sqlite.Schema.Generation;
+using DubUrl.Schema;
+
 namespace DubUrl.Provider.Sqlite.Discovery;
 
 /// <summary>Extracts expression boundaries, never interprets catalog SQL as portable SQL.</summary>
@@ -5,6 +8,7 @@ internal sealed class SqliteTableDefinition
 {
     // PRAGMA preserves declaration spelling. SQLite does not fold non-ASCII case pairs.
     internal Dictionary<string, string> Generated { get; } = new(StringComparer.Ordinal);
+    internal Dictionary<string, StructuredStorage> JsonColumns { get; } = new(StringComparer.Ordinal);
     internal List<(string? Name, string Expression)> Checks { get; } = [];
 
     internal static SqliteTableDefinition Parse(string? sql)
@@ -44,7 +48,12 @@ internal sealed class SqliteTableDefinition
                 if (end == tokens.Count) return;
                 var expression = ExpressionText(tokens, i + 2, end);
                 if (token.Keyword("CHECK"))
-                    result.Checks.Add((ConstraintName(tokens, i), expression));
+                {
+                    if (ReadJsonStorage(tokens, i, end) is { } storage)
+                        result.JsonColumns[tokens[0].Identifier] = storage;
+                    else
+                        result.Checks.Add((ConstraintName(tokens, i), expression));
+                }
                 else result.Generated[tokens[0].Identifier] = expression;
                 i = end;
                 continue;
@@ -52,6 +61,27 @@ internal sealed class SqliteTableDefinition
             if (token.Text == "(") depth++;
             if (token.Text == ")") depth--;
         }
+    }
+
+    private static StructuredStorage? ReadJsonStorage(List<Token> tokens, int check, int end)
+    {
+        // Recognize the exact inline storage check emitted by the renderer.
+        if (check != 2 || !tokens[0].Text.StartsWith('"'))
+            return null;
+        StructuredStorage? storage = tokens[1].Keyword("TEXT") ? StructuredStorage.JsonText
+            : tokens[1].Keyword("BLOB") ? StructuredStorage.Binary : null;
+        if (storage is not { } representation)
+            return null;
+        var expected = Tokenize(SqliteJsonStorage.Check(tokens[0].Text, representation));
+        if (expected.Count != end - check - 2)
+            return null;
+        for (var i = 0; i < expected.Count; i++)
+        {
+            var actual = tokens[check + 2 + i];
+            if (expected[i].Quoted ? expected[i].Text != actual.Text : !actual.Keyword(expected[i].Text))
+                return null;
+        }
+        return representation;
     }
 
     private static bool IsExpressionStart(List<Token> tokens, int index)

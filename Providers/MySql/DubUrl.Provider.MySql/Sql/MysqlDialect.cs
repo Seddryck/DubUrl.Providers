@@ -40,7 +40,7 @@ public class MySqlDialect : BaseDialect
         return dialect;
     }
 
-    /// <summary>Qualifies typed defaults for MariaDB independently of MySQL's InnoDB capabilities.</summary>
+    /// <summary>Qualifies typed defaults and structured columns for MariaDB independently of MySQL capabilities.</summary>
     public MySqlDialect WithMariaDbDefaults(Version serverVersion)
     {
         ArgumentNullException.ThrowIfNull(serverVersion);
