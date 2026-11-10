@@ -16,14 +16,19 @@ internal sealed class SingleStoreSchemaSqlRenderer : StandardSchemaSqlRenderer, 
 
     public string? RenderStructuredType(IDialect dialect, StructuredColumnTypeContext context)
     {
-        if (dialect is not SingleStoreDialect { ServerVersion: { } version } || version < VectorBaseline
+        if (dialect is not SingleStoreDialect singleStore
             || context.IsKey || context.Column.Generation is not null
-            || context.PhysicalOptions?.ShardKey?.Contains(context.Column.Name) == true
-            || context.PhysicalOptions?.SortKey?.Any(column => column.Name == context.Column.Name) == true)
+            || context.PhysicalOptions?.ShardKey?.Contains(context.Column.Name, StringComparer.OrdinalIgnoreCase) == true
+            || context.PhysicalOptions?.SortKey?.Any(column => column.Name.Equals(context.Column.Name, StringComparison.OrdinalIgnoreCase)) == true)
             return null;
 
-        return context.Type is { Storage: StructuredStorage.Native, Shape: VectorType vector }
-            ? SingleStoreVectorType.Render(vector) : null;
+        return context.Type switch
+        {
+            { Storage: StructuredStorage.Json, Shape: JsonType } => "JSON COLLATE utf8mb4_bin",
+            { Storage: StructuredStorage.Native, Shape: VectorType vector } when singleStore.ServerVersion >= VectorBaseline
+                => SingleStoreVectorType.Render(vector),
+            _ => null
+        };
     }
 
     public ColumnDefaultPlan? PlanColumnDefault(IDialect dialect, ColumnDefaultContext context)

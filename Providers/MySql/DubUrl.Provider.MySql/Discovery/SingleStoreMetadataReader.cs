@@ -30,6 +30,8 @@ public sealed class SingleStoreMetadataReader : IStructuredColumnMetadataReader,
             cancellationToken.ThrowIfCancellationRequested();
             if (reader.Vectors.TryGetValue(column, out var vector))
                 types.Add(new(table.Identity, column.Name), vector);
+            else if (column.NativeType == "JSON")
+                types.Add(new(table.Identity, column.Name), new(new(new JsonType(), StructuredStorage.Json), MetadataCoverage.Available));
         }
         return new(metadata, types);
     }

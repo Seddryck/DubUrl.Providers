@@ -73,6 +73,22 @@ public class StructuredColumnTypeTests
     }
 
     [Test]
+    public void SingleStorePlansNativeJsonWithoutVectorVersionQualification()
+    {
+        var dialect = Dialect<SingleStoreDialect>();
+        var shape = new JsonType(new StructType([new("field", Integer, false)]));
+        var json = new StructuredColumnType(shape, StructuredStorage.Json);
+
+        Assert.That(Plan(dialect, json), Does.Contain("JSON COLLATE utf8mb4_bin"));
+        Assert.That(() => Plan(dialect, json, constraints: [new PrimaryKeyConstraint()]),
+            Throws.TypeOf<NotSupportedException>());
+        Assert.That(() => Plan(dialect, new(shape, StructuredStorage.JsonText)),
+            Throws.TypeOf<NotSupportedException>());
+        Assert.That(() => Plan(dialect, new(new VectorType(DbType.Single, 3), StructuredStorage.Native)),
+            Throws.TypeOf<NotSupportedException>());
+    }
+
+    [Test]
     public void SingleStoreValidatesDimensionsAndComponentTypes()
     {
         var dialect = Dialect<SingleStoreDialect>().WithServerVersion(new(9, 1));
