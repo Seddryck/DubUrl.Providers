@@ -134,7 +134,7 @@ public sealed class MySqlDiscoveryTests
     }
 
     [Test]
-    public async Task ScalarTypesAndVirtualGeneration_RoundTripWithoutChangingNativeTypes()
+    public async Task ScalarTypesJsonAndVirtualGeneration_RoundTripWithoutChangingNativeTypes()
     {
         Execute("""
             CREATE TABLE scalars (small TINYINT DEFAULT -2,flag BIT(1),fixed CHAR(12),payload VARBINARY(20),
@@ -152,7 +152,9 @@ public sealed class MySqlDiscoveryTests
         Assert.That(columns[^1].Generation!.Stored, Is.False);
         var dialects = new DialectRegistryBuilder();
         dialects.AddDialect<MySqlDialect>(["mysql"]);
-        var script = new SchemaScriptRenderer(dialects.Build().Get<MySqlDialect>()).Render(first.Schema!);
+        var version = Version.Parse(connection.ServerVersion.Split('-')[0]);
+        var dialect = dialects.Build().Get<MySqlDialect>().WithInnoDbDefaults(version);
+        var script = new SchemaScriptRenderer(dialect).Render(first.Schema!);
         Execute("DROP TABLE scalars");
         Execute(script);
         var after = await reader.ReadAsync(connection, options);
