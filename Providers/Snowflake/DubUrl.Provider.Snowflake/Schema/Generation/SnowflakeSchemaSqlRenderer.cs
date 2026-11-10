@@ -6,9 +6,13 @@ using DubUrl.Schema.Renderers;
 
 namespace DubUrl.Provider.Snowflake.Schema.Generation;
 
-internal sealed class SnowflakeSchemaSqlRenderer : StandardSchemaSqlRenderer, IColumnDefaultSqlRenderer
+internal sealed class SnowflakeSchemaSqlRenderer : StandardSchemaSqlRenderer, IColumnDefaultSqlRenderer, IStructuredColumnSqlRenderer
 {
     internal static SnowflakeSchemaSqlRenderer Default { get; } = new();
+
+    public string? RenderStructuredType(IDialect dialect, StructuredColumnTypeContext context)
+        => context.IsKey || context.Column.Generation is not null ? null : SnowflakeStructuredTypes.Render(context.Type);
+
     public ColumnDefaultPlan? PlanColumnDefault(IDialect dialect, ColumnDefaultContext context)
     {
         if (dialect is not SnowflakeDialect { UsesStandardTableDefaults: true }

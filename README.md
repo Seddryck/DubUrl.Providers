@@ -24,7 +24,7 @@ Schema QA verifies each required shared scenario passed exactly once. See QA/Sch
 
 Every active provider QA job requires a passing live connection lifecycle, customer query, schema discovery capability check, and bulk-copy capability check. Native bulk-copy adapters also inherit the live row and null round trip. Schema providers continue to run the seven full schema suites with the mandatory scenario manifest.
 
-Live QA is disabled for Snowflake, Teradata, and SSAS Tabular and Multidimensional. SSAS keeps its named checks for its package and manifest checks only.
+CI live QA is disabled for Snowflake, Teradata, and SSAS Tabular and Multidimensional. SSAS keeps its named checks for its package and manifest checks only.
 The required Apache Drill QA check builds the provider and validates its manifest. Live ODBC QA requires an authenticated driver distribution and is excluded on public runners.
 
 The published [DubUrl.ProviderTesting 0.60.0 package](https://www.nuget.org/packages/DubUrl.ProviderTesting/0.60.0) remains available for compatibility. The internal DubUrl.Provider.QA project is not published.
@@ -46,9 +46,18 @@ Schema rendering uses the column's explicit `StructuredStorage`. The following t
 | Oracle 23.4+ native `VectorType` with `COMPATIBLE` at least 23.4 | `VECTOR(dimensions, format)` | Fixed dimensions and non-null components in `INT8`, `FLOAT32`, or `FLOAT64` | Fixed dense vectors when the catalog exposes their declaration |
 | DuckDB native `ArrayType`, `MapType`, and `StructType` | `type[]`, `MAP(key, value)`, and `STRUCT(...)` | Element types, struct fields, and non-null, unique map keys. List items, map values, and struct fields can be NULL. | Supported recursive shapes and field names |
 | SingleStore 8.5+ native `VectorType`, qualified with `WithServerVersion` | `VECTOR(dimensions, element)` | Fixed dimensions and numeric components | Dimensions and component type from the catalog |
+| Snowflake standard tables with `JsonType` and `Json` | `VARIANT` | Semi-structured storage. The caller supplies the JSON codec and validates the object shape. | VARIANT as arbitrary JSON storage |
+| Snowflake standard tables with native `ArrayType`, `MapType`, and `StructType` | Typed `ARRAY`, `MAP`, and `OBJECT` | Nested types, field order, and declared nested nullability. Map keys use text or supported integral types. | Full declarations from `DESCRIBE TABLE` where representable |
+| Snowflake standard tables with native `VectorType` | `VECTOR(INT\|FLOAT, dimensions)` | Fixed dimensions and signed int32 or float32 components | Dimensions and component type from the catalog |
 
 An optional JSON object shape describes the caller's data. Native JSON columns validate syntax within the engine's supported JSON values. The caller supplies any value codec. DuckDB native collections support reversible scalar leaves and unshaped nested JSON. Their DDL rejects required nested values and duplicate struct names under DuckDB's case-insensitive comparison. SingleStore qualifies signed integer and floating-point components up to 16,384 dimensions. SQL Server qualifies up to 1,998 single-precision vector dimensions.
 
 For Oracle, use `WithServerVersion(serverVersion, compatibilityVersion)` when the database's `COMPATIBLE` setting differs from the server release. The one-argument overload assumes they match. Oracle qualifies fixed dense vectors up to 65,535 dimensions. Flexible dimensions or formats, sparse storage, and binary vectors produce incomplete discovery diagnostics.
+
+Snowflake collection leaves support Boolean, text, date, double, and signed 16-, 32-, and 64-bit integers. Integral leaves use scale-zero `NUMBER` with declared precision. Vectors are supported as top-level columns up to 4,096 dimensions. Snowflake discovery covers standard tables, columns, and comments in the current database or the databases selected by the caller. Bare semi-structured arrays and objects, unsupported leaf declarations, and unavailable type details produce incomplete discovery diagnostics.
+
+Set `DUBURL_SNOWFLAKE_QA_CONNECTION_STRING` to a disposable Snowflake schema to run the opt-in round-trip test:
+
+    dotnet test QA/DubUrl.Providers.Testing -f net10.0 --filter "FullyQualifiedName=DubUrl.Provider.Snowflake.Tests.Schema.SnowflakeStructuredTypeLiveTests.AllFiveShapesRoundTrip"
 
 Use `SchemaInspector` with the registered provider reader to recover structured descriptors. Recognized types outside the model, such as DuckDB fixed arrays or SingleStore vectors with unrepresentable component types, produce an incomplete discovery diagnostic. Legacy scalar columns and native type hints retain their rendering path.
