@@ -20,11 +20,14 @@ public class MySqlMetadataReader : CatalogSchemaMetadataReader, IUniqueConstrain
         foreach (var column in table.Columns)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            if (column.NativeType == "JSON")
-                types.Add(new(table.Identity, column.Name), new(new(new JsonType(), StructuredStorage.Json), MetadataCoverage.Available));
+            if (GetStructuredType(column) is { } type)
+                types.Add(new(table.Identity, column.Name), type);
         }
         return new(metadata, types);
     }
+
+    protected virtual StructuredColumnMetadata? GetStructuredType(MetadataColumn column)
+        => column.NativeType == "JSON" ? new(new(new JsonType(), StructuredStorage.Json), MetadataCoverage.Available) : null;
 
     public UniqueConstraintMetadata GetUniqueConstraintMetadata(MetadataTable table, MetadataKey key)
         => new(UniqueNullPolicy.NullsDistinct);
@@ -36,7 +39,7 @@ public class MySqlMetadataReader : CatalogSchemaMetadataReader, IUniqueConstrain
         """;
     protected override string ColumnsSql => """
         SELECT TABLE_SCHEMA AS database_name,TABLE_NAME AS table_name,COLUMN_NAME AS column_name,
-          ORDINAL_POSITION AS ordinal,DATA_TYPE AS type_name,COLUMN_TYPE AS native_type_name,
+          ORDINAL_POSITION AS ordinal,DATA_TYPE AS type_name,COLUMN_TYPE AS native_type_name,COLLATION_NAME AS collation_name,
           IS_NULLABLE AS nullable,CASE WHEN DATA_TYPE IN ('char','varchar','binary','varbinary') THEN CHARACTER_MAXIMUM_LENGTH END AS length,
           NUMERIC_PRECISION AS `precision`,NUMERIC_SCALE AS scale,DATETIME_PRECISION AS temporal_precision,COLUMN_DEFAULT AS default_expression,
           EXTRA AS extra,NULLIF(GENERATION_EXPRESSION,'') AS generation_expression,

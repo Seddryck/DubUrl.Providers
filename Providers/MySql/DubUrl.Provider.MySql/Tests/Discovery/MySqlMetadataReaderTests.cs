@@ -19,9 +19,9 @@ public class MySqlMetadataReaderTests
 
     [TestCase(typeof(MariaDbConnectorMapper))]
     [TestCase(typeof(MariaDbDataRewriter))]
-    public void CompatibleProviders_DoNotInheritMySqlDiscovery(Type mapper)
-        => Assert.That((Attribute.GetCustomAttribute(mapper, typeof(SchemaDiscoveryAttribute)) as SchemaDiscoveryAttribute)?.Create().Reader,
-            Is.Not.TypeOf<MySqlMetadataReader>());
+    public void MariaDbMappers_RegisterTheirOwnReader(Type mapper)
+        => Assert.That(((SchemaDiscoveryAttribute)Attribute.GetCustomAttribute(mapper, typeof(SchemaDiscoveryAttribute))!).Create().Reader,
+            Is.TypeOf<MariaDbMetadataReader>());
 
     [Test]
     public async Task LiteralDefaultsAndFacets_AreTypedAndOrdered()
@@ -89,7 +89,7 @@ public class MySqlMetadataReaderTests
 
     private sealed class CatalogException() : DbException("sensitive");
 
-    private static DataTable Table(string[] columns, params object?[][] rows)
+    internal static DataTable Table(string[] columns, params object?[][] rows)
     {
         var table = new DataTable();
         foreach (var name in columns) table.Columns.Add(name, typeof(object));
@@ -97,10 +97,11 @@ public class MySqlMetadataReaderTests
         return table;
     }
 
-    private static Mock<DbConnection> Catalog(params DataTable[] tables)
+    internal static Mock<DbConnection> Catalog(params DataTable[] tables)
     {
         var queue = new Queue<DataTable>(tables);
         var connection = new Mock<DbConnection>();
+        connection.SetupGet(c => c.State).Returns(ConnectionState.Open);
         connection.Protected().Setup<DbCommand>("CreateDbCommand").Returns(() =>
         {
             var command = new Mock<DbCommand>();
