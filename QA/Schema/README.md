@@ -12,6 +12,8 @@ CI runs the database suites on .NET 10, including separate SQL Server 2022 and 2
 
 To use a deliberately configured disposable database without provisioning, run `dotnet test` directly and set the matching `DUBURL_*_QA_CONNECTION_STRING` variable. Discovery tests also require `DUBURL_POSTGRESQL_DISCOVERY_QA_CONNECTION_STRING` or `DUBURL_SQLSERVER_DISCOVERY_QA_CONNECTION_STRING`. The normal runner sets all required variables and fails on skips.
 
+The Oracle structured-type fixtures use the pinned Oracle Free image, including its vector and JSON modifier catalog fields. The disposable container provisions a default tablespace with automatic segment space management when the image's default lacks it.
+
 
 ## Mandatory shared provider tests
 

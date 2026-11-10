@@ -21,13 +21,24 @@ namespace DubUrl.Provider.Oracle.Sql;
 public class OracleDialect : BaseDialect
 {
     internal Version? ServerVersion { get; private set; }
+    internal Version? CompatibilityVersion { get; private set; }
 
-    /// <summary>Sets the Oracle server version for offline planning of version-dependent defaults.</summary>
+    /// <summary>Sets the server version for schema planning and assumes matching database compatibility.</summary>
     public OracleDialect WithServerVersion(Version serverVersion)
     {
         ArgumentNullException.ThrowIfNull(serverVersion);
         var dialect = (OracleDialect)MemberwiseClone();
         dialect.ServerVersion = serverVersion;
+        dialect.CompatibilityVersion = null;
+        return dialect;
+    }
+
+    /// <summary>Sets the server version and the database's configured COMPATIBLE value for schema planning.</summary>
+    public OracleDialect WithServerVersion(Version serverVersion, Version compatibilityVersion)
+    {
+        ArgumentNullException.ThrowIfNull(compatibilityVersion);
+        var dialect = WithServerVersion(serverVersion);
+        dialect.CompatibilityVersion = compatibilityVersion;
         return dialect;
     }
 

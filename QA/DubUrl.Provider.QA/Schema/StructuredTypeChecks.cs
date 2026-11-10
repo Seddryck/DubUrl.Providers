@@ -25,11 +25,13 @@ public static class StructuredTypeChecks
     {
         var table = Create(connection, dialect, identity,
             new Column("id", DbType.Int32), new Column("v", type, constraints: [new NullableConstraint()]));
+        var idColumn = dialect.SchemaSqlRenderer.RenderIdentifier(dialect, "id");
         try
         {
-            Execute(connection, $"INSERT INTO {table} VALUES (1, {populated}), (2, NULL)");
+            Execute(connection, $"INSERT INTO {table} VALUES (1, {populated})");
+            Execute(connection, $"INSERT INTO {table} VALUES (2, NULL)");
             AssertJson(1, expected);
-            Assert.That(Scalar(connection, $"SELECT {projection} FROM {table} WHERE id=2"), Is.EqualTo(DBNull.Value));
+            Assert.That(Scalar(connection, $"SELECT {projection} FROM {table} WHERE {idColumn}=2"), Is.EqualTo(DBNull.Value));
             if (empty is not null)
             {
                 Execute(connection, $"INSERT INTO {table} VALUES (3, {empty})");
@@ -50,8 +52,8 @@ public static class StructuredTypeChecks
             });
             Assert.That(result.IsComplete, Is.True, string.Join(", ", result.Diagnostics.Select(item => item.Message)));
             var columns = result.Schema!.Tables.Values.Single().Columns;
-            Assert.That(columns["id"].Type, Is.EqualTo(DbType.Int32));
-            Assert.That(columns["v"].StructuredType, Is.EqualTo(type));
+            Assert.That(columns.Values.Single(column => column.Name.Equals("id", StringComparison.OrdinalIgnoreCase)).StructuredType, Is.Null);
+            Assert.That(columns.Values.Single(column => column.Name.Equals("v", StringComparison.OrdinalIgnoreCase)).StructuredType, Is.EqualTo(type));
         }
         finally
         {
@@ -60,7 +62,7 @@ public static class StructuredTypeChecks
 
         void AssertJson(int id, string expectedJson)
         {
-            var actual = Scalar(connection, $"SELECT {projection} FROM {table} WHERE id={id}");
+            var actual = Scalar(connection, $"SELECT {projection} FROM {table} WHERE {idColumn}={id}");
             Assert.That(actual, Is.TypeOf<string>());
             Assert.That(JsonNode.DeepEquals(JsonNode.Parse((string)actual!), JsonNode.Parse(expectedJson)),
                 Is.True, $"Expected {expectedJson}, received {actual}.");

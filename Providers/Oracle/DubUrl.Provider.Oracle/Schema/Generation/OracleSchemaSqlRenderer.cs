@@ -7,9 +7,28 @@ using DubUrl.Schema.Renderers;
 
 namespace DubUrl.Provider.Oracle.Schema.Generation;
 
-internal sealed class OracleSchemaSqlRenderer : StandardSchemaSqlRenderer, IUniqueConstraintSqlRenderer, IColumnDefaultSqlRenderer, IColumnDefinitionSqlRenderer
+internal sealed class OracleSchemaSqlRenderer : StandardSchemaSqlRenderer, IUniqueConstraintSqlRenderer, IColumnDefaultSqlRenderer, IColumnDefinitionSqlRenderer, IStructuredColumnSqlRenderer
 {
     internal static OracleSchemaSqlRenderer Default { get; } = new();
+
+    public string? RenderStructuredType(IDialect dialect, StructuredColumnTypeContext context)
+    {
+        if (dialect is not OracleDialect { ServerVersion: { } version } oracle
+            || context.IsKey || context.Column.Generation is not null)
+            return null;
+
+        var compatible = oracle.CompatibilityVersion ?? version;
+        return context.Type switch
+        {
+            { Storage: StructuredStorage.Json, Shape: JsonType } when version.Major >= 21 && compatible.Major >= 20 => "JSON",
+            { Storage: StructuredStorage.Native, Shape: VectorType vector }
+                when version >= OracleStructuredTypes.VectorBaseline && compatible >= OracleStructuredTypes.VectorBaseline
+                    && context.Column.DefaultValue is null
+                    && !context.Column.Constraints.Any(constraint => constraint is CheckConstraint or MembershipCheckConstraint or RegexCheckConstraint)
+                => OracleStructuredTypes.RenderVector(vector),
+            _ => null
+        };
+    }
 
     public ColumnDefinitionPlan? RenderColumnDefinition(IDialect dialect, ColumnDefinitionContext column)
         => column.DefaultExpression is { } value && column.Generation is null

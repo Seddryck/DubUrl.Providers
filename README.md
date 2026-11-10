@@ -42,9 +42,13 @@ Schema rendering uses the column's explicit `StructuredStorage`. The following t
 | SQL Server `JsonType` with `JsonText` | `NVARCHAR(MAX)` | Unicode text storage | Ordinary text column |
 | SQL Server 2025+ `JsonType` with `Json`, qualified with `WithServerVersion` | `JSON` | JSON syntax with an object or array at the top level | Native JSON storage |
 | SQL Server 2025+ native `VectorType`, qualified with `WithServerVersion` | `VECTOR(dimensions)` | Fixed dimensions and 32-bit floating-point components | Dimensions and component type from the catalog |
+| Oracle 21c+ `JsonType` with `Json` and `COMPATIBLE` at least 20 | `JSON` | JSON syntax, including top-level scalars | Native JSON storage. JSON type modifiers produce an incomplete discovery diagnostic. |
+| Oracle 23.4+ native `VectorType` with `COMPATIBLE` at least 23.4 | `VECTOR(dimensions, format)` | Fixed dimensions and non-null components in `INT8`, `FLOAT32`, or `FLOAT64` | Fixed dense vectors when the catalog exposes their declaration |
 | DuckDB native `ArrayType`, `MapType`, and `StructType` | `type[]`, `MAP(key, value)`, and `STRUCT(...)` | Element types, struct fields, and non-null, unique map keys. List items, map values, and struct fields can be NULL. | Supported recursive shapes and field names |
 | SingleStore 8.5+ native `VectorType`, qualified with `WithServerVersion` | `VECTOR(dimensions, element)` | Fixed dimensions and numeric components | Dimensions and component type from the catalog |
 
 An optional JSON object shape describes the caller's data. Native JSON columns validate syntax within the engine's supported JSON values. The caller supplies any value codec. DuckDB native collections support reversible scalar leaves and unshaped nested JSON. Their DDL rejects required nested values and duplicate struct names under DuckDB's case-insensitive comparison. SingleStore qualifies signed integer and floating-point components up to 16,384 dimensions. SQL Server qualifies up to 1,998 single-precision vector dimensions.
+
+For Oracle, use `WithServerVersion(serverVersion, compatibilityVersion)` when the database's `COMPATIBLE` setting differs from the server release. The one-argument overload assumes they match. Oracle qualifies fixed dense vectors up to 65,535 dimensions. Flexible dimensions or formats, sparse storage, and binary vectors produce incomplete discovery diagnostics.
 
 Use `SchemaInspector` with the registered provider reader to recover structured descriptors. Recognized types outside the model, such as DuckDB fixed arrays or SingleStore vectors with unrepresentable component types, produce an incomplete discovery diagnostic. Legacy scalar columns and native type hints retain their rendering path.

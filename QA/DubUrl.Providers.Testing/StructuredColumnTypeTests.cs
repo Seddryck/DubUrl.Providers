@@ -4,6 +4,8 @@ using DubUrl.Provider.DuckDb.Discovery;
 using DubUrl.Provider.DuckDb.Sql;
 using DubUrl.Provider.MySql.Schema.Generation;
 using DubUrl.Provider.MySql.Sql;
+using DubUrl.Provider.Oracle.Discovery;
+using DubUrl.Provider.Oracle.Sql;
 using DubUrl.Provider.PostgreSql.Sql;
 using DubUrl.Provider.SqlServer.Discovery;
 using DubUrl.Provider.SqlServer.Sql;
@@ -122,6 +124,47 @@ public class StructuredColumnTypeTests
         Assert.That(result?.Coverage, Is.EqualTo(coverage));
         Assert.That(result?.Type?.Shape, Is.EqualTo(coverage == MetadataCoverage.Available ? new VectorType(DbType.Single, 3) : null));
         Assert.That(SqlServerMetadataReader.DecodeStructuredType(row.With(("user_defined", true))), Is.Null);
+    }
+
+    [TestCase(DbType.SByte, "INT8")]
+    [TestCase(DbType.Single, "FLOAT32")]
+    [TestCase(DbType.Double, "FLOAT64")]
+    public void OracleQualifiesFixedVectorsByVersionAndCompatibility(DbType elementType, string format)
+    {
+        var dialect = Dialect<OracleDialect>();
+        var vector = new StructuredColumnType(new VectorType(elementType, 65535), StructuredStorage.Native);
+        Assert.That(Plan(dialect.WithServerVersion(new(23, 4)), vector), Does.Contain($"VECTOR(65535, {format})"));
+        Assert.That(() => Plan(dialect.WithServerVersion(new(23, 26), new(23, 3)), vector), Throws.TypeOf<NotSupportedException>());
+        Assert.That(() => Plan(dialect.WithServerVersion(new(21, 0)), vector), Throws.TypeOf<NotSupportedException>());
+    }
+
+    [Test]
+    public void OracleQualifiesNativeJsonAndRejectsUnsupportedVectorDefinitions()
+    {
+        var dialect = Dialect<OracleDialect>();
+        var json = new StructuredColumnType(new JsonType(), StructuredStorage.Json);
+        Assert.That(Plan(dialect.WithServerVersion(new(21, 0), new(20, 0)), json), Does.Contain(" JSON"));
+        Assert.That(() => Plan(dialect, json), Throws.TypeOf<NotSupportedException>());
+        Assert.That(() => Plan(dialect.WithServerVersion(new(19, 0)), json), Throws.TypeOf<NotSupportedException>());
+        Assert.That(() => Plan(dialect.WithServerVersion(new(23, 26), new(19, 0)), json), Throws.TypeOf<NotSupportedException>());
+
+        var recent = dialect.WithServerVersion(new(23, 26));
+        var vector = new StructuredColumnType(new VectorType(DbType.Single, 3), StructuredStorage.Native);
+        Assert.That(() => Plan(recent, new(new VectorType(DbType.Single, 65536), StructuredStorage.Native)), Throws.TypeOf<NotSupportedException>());
+        Assert.That(() => Plan(recent, new(new VectorType(DbType.Byte, 3), StructuredStorage.Native)), Throws.TypeOf<NotSupportedException>());
+        Assert.That(() => Plan(recent, vector, defaultValue: DBNull.Value, constraints: [new NullableConstraint()]),
+            Throws.TypeOf<NotSupportedException>());
+    }
+
+    [Test]
+    public void OracleReportsMissingVectorDetailsWithoutGuessing()
+    {
+        var row = new CatalogRow(new Dictionary<string, object?> { ["type_name"] = "VECTOR" });
+        Assert.That(OracleMetadataReader.DecodeStructuredType(row),
+            Is.EqualTo(new StructuredColumnMetadata(null, MetadataCoverage.Unrepresentable)));
+        Assert.That(OracleMetadataReader.DecodeStructuredType(row.With(("structured_inaccessible", true))),
+            Is.EqualTo(new StructuredColumnMetadata(null, MetadataCoverage.Inaccessible)));
+        Assert.That(OracleMetadataReader.DecodeStructuredType(row.With(("type_owner", "USER_SCHEMA"))), Is.Null);
     }
 
     private static string Plan(IDialect dialect, StructuredColumnType type, object? defaultValue = null, IConstraint[]? constraints = null)
