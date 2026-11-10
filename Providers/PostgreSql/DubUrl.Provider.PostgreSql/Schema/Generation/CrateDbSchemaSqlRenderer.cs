@@ -1,14 +1,20 @@
 using System.Data;
 using System.Globalization;
 using DubUrl.Querying.Dialects;
+using DubUrl.Provider.PostgreSql.Sql;
 using DubUrl.Schema;
 using DubUrl.Schema.Renderers;
 
 namespace DubUrl.Provider.PostgreSql.Schema.Generation;
 
-internal sealed class CrateDbSchemaSqlRenderer : PostgreSqlSchemaSqlRenderer, IColumnDefaultSqlRenderer
+internal sealed class CrateDbSchemaSqlRenderer : PostgreSqlSchemaSqlRenderer, IColumnDefaultSqlRenderer, IStructuredColumnSqlRenderer
 {
     internal new static CrateDbSchemaSqlRenderer Default { get; } = new();
+
+    public string? RenderStructuredType(IDialect dialect, StructuredColumnTypeContext context)
+        => dialect is CrateDbDialect crate && !context.IsKey && context.Column.Generation is null
+            ? CrateDbStructuredTypes.Render(context.Type, crate.ServerVersion)
+            : null;
 
     public override string RenderColumnType(IDialect dialect, string type, int? length, int precision, int scale, bool nativeType)
         => type == "TEXT" && length > 0 ? "TEXT" : base.RenderColumnType(dialect, type, length, precision, scale, nativeType);

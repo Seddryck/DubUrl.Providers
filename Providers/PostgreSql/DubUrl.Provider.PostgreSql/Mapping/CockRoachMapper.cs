@@ -16,6 +16,7 @@ namespace DubUrl.Provider.PostgreSql.Mapping;
 
 [Mapper<CockRoachDatabase, NpgsqlParametrizer>("Npgsql")]
 [ConnectionConfiguration(ApplicationName = "Application Name", Pooling = "Pooling", MinPoolSize = "Minimum Pool Size", MaxPoolSize = "Maximum Pool Size", ConnectionTimeout = "Timeout", CommandTimeout = "Command Timeout", IdleTimeout = "Connection Idle Lifetime", MaxLifetime = "Connection Lifetime", TimeZone = "Timezone", Tls = "Npgsql")]
+[DubUrl.Discovery.SchemaDiscovery(typeof(DubUrl.Provider.PostgreSql.Discovery.CockroachMetadataReader))]
 public class CockRoachMapper : PostgresqlMapper
 {
     public CockRoachMapper(DbConnectionStringBuilder csb, IDialect dialect, IParametrizer parametrizer)

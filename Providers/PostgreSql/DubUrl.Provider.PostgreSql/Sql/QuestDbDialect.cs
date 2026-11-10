@@ -23,9 +23,20 @@ namespace DubUrl.Provider.PostgreSql.Sql;
 [ParentLanguage<SqlLanguage>]
 public class QuestDbDialect : BaseDialect
 {
-    public override ISchemaSqlRenderer SchemaSqlRenderer => PostgreSqlSchemaSqlRenderer.Default;
+    public override ISchemaSqlRenderer SchemaSqlRenderer => QuestDbSchemaSqlRenderer.Default;
 
     public override DialectCapabilities Capabilities { get; } = QuestDbSchemaCapabilities.Create();
+
+    internal Version? ServerVersion { get; private set; }
+
+    /// <summary>Qualifies version-dependent structured column types.</summary>
+    public QuestDbDialect WithServerVersion(Version serverVersion)
+    {
+        ArgumentNullException.ThrowIfNull(serverVersion);
+        var dialect = (QuestDbDialect)MemberwiseClone();
+        dialect.ServerVersion = serverVersion;
+        return dialect;
+    }
 
     internal QuestDbDialect(ILanguage language, string[] aliases, IRenderer renderer, ICaster[] casters, IDbTypeMapper dbTypeMapper, ISqlFunctionMapper sqlFunctionMapper)
         : base(language, aliases, renderer, casters, dbTypeMapper, sqlFunctionMapper) { }

@@ -29,6 +29,17 @@ public class CrateDbDialect : BaseDialect
 
     public override DialectCapabilities Capabilities { get; } = CrateDbSchemaCapabilities.Create();
 
+    internal Version? ServerVersion { get; private set; }
+
+    /// <summary>Qualifies version-dependent structured column types.</summary>
+    public CrateDbDialect WithServerVersion(Version serverVersion)
+    {
+        ArgumentNullException.ThrowIfNull(serverVersion);
+        var dialect = (CrateDbDialect)MemberwiseClone();
+        dialect.ServerVersion = serverVersion;
+        return dialect;
+    }
+
     internal CrateDbDialect(ILanguage language, string[] aliases, IRenderer renderer, ICaster[] casters, IDbTypeMapper dbTypeMapper, ISqlFunctionMapper sqlFunctionMapper)
        : base(language, aliases, renderer, casters, dbTypeMapper, sqlFunctionMapper) { }
 }

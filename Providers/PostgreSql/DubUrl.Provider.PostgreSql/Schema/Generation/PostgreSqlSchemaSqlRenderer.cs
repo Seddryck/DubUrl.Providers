@@ -30,7 +30,7 @@ internal class PgsqlSchemaSqlRenderer : PostgreSqlSchemaSqlRenderer, IUniqueCons
 {
     internal new static PgsqlSchemaSqlRenderer Default { get; } = new();
 
-    public string? RenderStructuredType(IDialect dialect, StructuredColumnTypeContext context)
+    public virtual string? RenderStructuredType(IDialect dialect, StructuredColumnTypeContext context)
         => dialect is DubUrl.Provider.PostgreSql.Sql.PgsqlDialect
             && !context.IsKey && context.Column.Generation is null
             && context.Type is { Storage: StructuredStorage.Json, Shape: JsonType }
@@ -103,6 +103,11 @@ internal class PgsqlSchemaSqlRenderer : PostgreSqlSchemaSqlRenderer, IUniqueCons
 internal sealed class CockRoachSchemaSqlRenderer : PgsqlSchemaSqlRenderer
 {
     internal new static CockRoachSchemaSqlRenderer Default { get; } = new();
+
+    public override string? RenderStructuredType(IDialect dialect, StructuredColumnTypeContext context)
+        => dialect is CockRoachDialect cockroach && !context.IsKey && context.Column.Generation is null
+            ? CockroachStructuredTypes.Render(context.Type, cockroach.ServerVersion)
+            : null;
 
     public override ColumnDefaultPlan? PlanColumnDefault(IDialect dialect, ColumnDefaultContext context)
     {

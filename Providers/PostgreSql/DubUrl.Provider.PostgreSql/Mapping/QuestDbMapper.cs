@@ -16,6 +16,7 @@ namespace DubUrl.Provider.PostgreSql.Mapping;
     "Npgsql"
 )]
 [ConnectionConfiguration(Pooling = "Pooling", MinPoolSize = "Minimum Pool Size", MaxPoolSize = "Maximum Pool Size", ConnectionTimeout = "Timeout", CommandTimeout = "Command Timeout", IdleTimeout = "Connection Idle Lifetime", MaxLifetime = "Connection Lifetime", Tls = "Npgsql")]
+[DubUrl.Discovery.SchemaDiscovery(typeof(DubUrl.Provider.PostgreSql.Discovery.QuestDbMetadataReader))]
 public class QuestDbMapper : PostgresqlMapper
 {
     public QuestDbMapper(DbConnectionStringBuilder csb, IDialect dialect, IParametrizer parametrizer)

@@ -14,6 +14,7 @@ namespace DubUrl.Provider.PostgreSql.Mapping;
 
 [Mapper<CrateDbDatabase, NpgsqlNamedParametrizer>("Npgsql")]
 [ConnectionConfiguration(Pooling = "Pooling", MinPoolSize = "Minimum Pool Size", MaxPoolSize = "Maximum Pool Size", ConnectionTimeout = "Timeout", CommandTimeout = "Command Timeout", IdleTimeout = "Connection Idle Lifetime", MaxLifetime = "Connection Lifetime", Tls = "Npgsql")]
+[DubUrl.Discovery.SchemaDiscovery(typeof(DubUrl.Provider.PostgreSql.Discovery.CrateDbMetadataReader))]
 public class CrateDbMapper : BaseMapper
 {
     public CrateDbMapper(DbConnectionStringBuilder csb, IDialect dialect, IParametrizer parametrizer)
