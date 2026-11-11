@@ -23,6 +23,7 @@ internal sealed class SparkTypeMapper : BaseTypeMapper
         AddOrReplace(DbType.AnsiStringFixedLength, "CHAR");
         AddOrReplace(DbType.Binary, "BINARY");
         AddOrReplace(DbType.Date, "DATE");
+        AddOrReplace(DbType.Time, "TIME");
         AddOrReplace(DbType.DateTime, "TIMESTAMP");
         AddOrReplace(DbType.DateTime2, "TIMESTAMP_NTZ");
         AddOrReplace(DbType.DateTimeOffset, "TIMESTAMP_LTZ");

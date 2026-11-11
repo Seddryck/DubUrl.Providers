@@ -50,6 +50,37 @@ internal static class SparkSchemaQa
         });
     }
 
+    internal static void Defaults(ConnectionUrl url)
+    {
+        WithScratch(url, (connection, catalog, schema) =>
+        {
+            var name = new DatabaseObjectName("column_defaults", schema, catalog: catalog);
+            var table = new Table(name,
+            [
+                new Column("id", DbType.Int32),
+                new Column("text", DbType.String, "Café's value"),
+                new Column("nil", DbType.Int32, DBNull.Value),
+                new NumericColumn("amount", DbType.Decimal, 10, 2, 1.25m),
+                new Column("local_stamp", DbType.DateTime2, defaultExpression: ColumnDefaultExpression.CurrentTimestamp(6)),
+                new Column("utc_stamp", DbType.DateTime2, defaultExpression: ColumnDefaultExpression.CurrentUtcTimestamp(6)),
+                new Column("local_date", DbType.Date, defaultExpression: ColumnDefaultExpression.CurrentDate),
+            ]);
+
+            Execute(connection, "SET TIME ZONE '+05:00'");
+            foreach (var command in new SchemaScriptRenderer(url.Dialect).Plan(new DubUrl.Schema.Schema([table])))
+                Execute(connection, command.CommandText);
+
+            var target = url.Dialect.SchemaSqlRenderer.RenderObjectName(url.Dialect, catalog, null, schema, table.Name);
+            Execute(connection, $"INSERT INTO {target} (id) VALUES (1)");
+            Execute(connection, $"INSERT INTO {target} (id, text, nil, amount) VALUES (2, NULL, 5, 2.00)");
+            Assert.That(Scalar(connection, $"SELECT COUNT(*) FROM {target} WHERE id = 1 AND text = 'Café\\'s value' " +
+                "AND nil IS NULL AND amount = 1.25 AND CAST(local_stamp AS DATE) = local_date " +
+                "AND timestampdiff(SECOND, utc_stamp, local_stamp) BETWEEN 17999 AND 18001"), Is.EqualTo(1));
+            Assert.That(Scalar(connection, $"SELECT COUNT(*) FROM {target} WHERE id = 2 AND text IS NULL " +
+                "AND nil = 5 AND amount = 2.00"), Is.EqualTo(1));
+        });
+    }
+
     internal static void WithScratch(ConnectionUrl url, Action<DbConnection, string, string> run)
     {
         DbProviderFactories.RegisterFactory("System.Data.Odbc", OdbcFactory.Instance);

@@ -19,6 +19,9 @@ public sealed class SparkOdbcTests : OdbcContract
     protected override bool SupportsParameters => false;
 
     [Test, Category("ODBC")]
+    public void EvaluateColumnDefaultsOnInsert() => SparkSchemaQa.Defaults(NativeSchemaUrl);
+
+    [Test, Category("ODBC")]
     public void RenderTablesWithFacetsAndComments() => SparkSchemaQa.Tables(NativeSchemaUrl, delta: false);
 
     [Test, Category("ODBC")]

@@ -1,4 +1,7 @@
+using System.Data;
 using System.Data.Odbc;
+using DubUrl.Provider.Spark.Sql;
+using DubUrl.Schema;
 using DubUrl.Authentication;
 using DubUrl.Provider.Spark.QA;
 using DubUrl.Providers.QA.Contracts.Connection;
@@ -15,6 +18,43 @@ public sealed class DatabricksOdbcTests : OdbcContract
         => base.CreateLiveConnectionUrl().WithAuthentication(DatabricksWarehouse.Authentication);
     protected override string SelectFirstCustomerSql => SparkOdbcCustomerQueries.First;
     protected override string SelectCustomerByIdSql => SparkOdbcCustomerQueries.ById;
+
+    [Test, Category("ODBC")]
+    public void ContextAndTimeDefaultsUseTheInsertSession()
+    {
+        var url = CreateLiveConnectionUrl();
+        SparkSchemaQa.WithScratch(url, (connection, catalog, schema) =>
+        {
+            var dialect = ((DatabricksSqlDialect)url.Dialect).WithTimeType();
+            var name = new DatabaseObjectName("context_defaults", schema, catalog: catalog);
+            var table = new Table(name,
+            [
+                new Column("id", DbType.Int32),
+                new VarLengthColumn("effective_user", DbType.String, 320, defaultExpression: ColumnDefaultExpression.CurrentUser),
+                new VarLengthColumn("session_identity", DbType.String, 320, defaultExpression: ColumnDefaultExpression.SessionUser),
+                new Column("clock", DbType.Time, defaultExpression: ColumnDefaultExpression.CurrentTime()),
+            ]);
+            foreach (var command in new SchemaScriptRenderer(dialect).Plan(new DubUrl.Schema.Schema([table])))
+                SparkSchemaQa.Execute(connection, command.CommandText);
+
+            var quote = dialect.SchemaSqlRenderer;
+            var target = quote.RenderObjectName(dialect, catalog, null, schema, table.Name);
+            SparkSchemaQa.Execute(connection, $"USE SCHEMA {quote.RenderIdentifier(dialect, schema)}");
+            SparkSchemaQa.Execute(connection, $"INSERT INTO {target} (id) VALUES (1)");
+            Assert.That(SparkSchemaQa.Scalar(connection, $"SELECT COUNT(*) FROM {target} WHERE " +
+                "effective_user = current_user() AND session_identity = session_user() AND clock IS NOT NULL"), Is.EqualTo(1));
+            foreach (var expression in new[] { ColumnDefaultExpression.CurrentSchema, ColumnDefaultExpression.CurrentDatabase })
+            {
+                var incompatible = new Table(name,
+                    [new VarLengthColumn("namespace", DbType.String, 255, defaultExpression: expression)]);
+                Assert.That(() => new SchemaScriptRenderer(dialect).Plan(new DubUrl.Schema.Schema([incompatible])),
+                    Throws.Exception.With.Message.Contains("captures namespace defaults before INSERT"));
+            }
+        });
+    }
+
+    [Test, Category("ODBC")]
+    public void EvaluateColumnDefaultsOnInsert() => SparkSchemaQa.Defaults(CreateLiveConnectionUrl());
 
     [Test, Category("ODBC")]
     public void RenderTablesWithFacetsAndComments() => SparkSchemaQa.Tables(CreateLiveConnectionUrl(), delta: true);

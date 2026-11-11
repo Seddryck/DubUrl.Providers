@@ -1,9 +1,10 @@
 using DubUrl.Querying.Dialects;
+using DubUrl.Schema.Renderers;
 
 namespace DubUrl.Provider.Spark.Sql;
 
 internal sealed class SparkSchemaSqlRenderer : StandardSchemaSqlRenderer, ITableDefinitionSqlRenderer,
-    IColumnDefinitionSqlRenderer, ITableDescriptionSqlRenderer
+    IColumnDefinitionSqlRenderer, ITableDescriptionSqlRenderer, IColumnDefaultSqlRenderer
 {
     public static new SparkSchemaSqlRenderer Instance { get; } = new();
 
@@ -17,6 +18,8 @@ internal sealed class SparkSchemaSqlRenderer : StandardSchemaSqlRenderer, ITable
 
     public override string RenderColumnType(IDialect dialect, string type, int? length, int precision, int scale, bool nativeType)
     {
+        if (type == "TIME" && dialect is DatabricksSqlDialect { SupportsTime: true } && length is null && precision == 0 && scale == 0)
+            return type;
         if (type == "DECIMAL" && length is null && precision is >= 1 and <= 38 && scale >= 0 && scale <= precision)
             return FormattableString.Invariant($"DECIMAL({precision}, {scale})");
         if (type is "CHAR" or "VARCHAR" && length is > 0 && precision == 0 && scale == 0)
@@ -38,11 +41,18 @@ internal sealed class SparkSchemaSqlRenderer : StandardSchemaSqlRenderer, ITable
         // Spark's built-in file tables do not enforce NOT NULL on writes.
         if (column.NotNullable && dialect is not DatabricksSqlDialect)
             throw new NotSupportedException("Spark's built-in table provider cannot enforce NOT NULL. Use a table provider that supports it.");
+        if (column.DefaultExpression is not null and not "NULL" && dialect is not DatabricksSqlDialect
+            && (column.Type.StartsWith("VARCHAR(", StringComparison.Ordinal) || column.Type.StartsWith("CHAR(", StringComparison.Ordinal)))
+            throw new NotSupportedException("Spark 3.5 cannot apply a non-NULL default to CHAR or VARCHAR. Use an unbounded string column.");
+
         var specification = column.Type + (column.NotNullable ? " NOT NULL" : "");
         if (column.Description is not null)
             specification += " COMMENT " + SparkStringFormatter.Quote(column.Description);
         return new(specification, ColumnDefinitionClauses.Nullability | ColumnDefinitionClauses.Comment);
     }
+
+    public ColumnDefaultPlan? PlanColumnDefault(IDialect dialect, ColumnDefaultContext context)
+        => SparkColumnDefaults.Plan(dialect, context);
 
     public string RenderTableDescription(IDialect dialect, SchemaSqlObjectName table, string description)
         => " COMMENT " + SparkStringFormatter.Quote(description);
@@ -71,33 +81,25 @@ internal sealed class SparkSchemaSqlRenderer : StandardSchemaSqlRenderer, ITable
 
     public override IReadOnlyList<SchemaSqlCommand> PlanCommands(IDialect dialect, IReadOnlyList<SchemaSqlCommand> statements)
     {
-        var provider = dialect is DatabricksSqlDialect ? " USING DELTA" : " USING PARQUET";
+        var delta = dialect is DatabricksSqlDialect;
         return statements.Select(command => command.Operation == SchemaSqlOperation.CreateTable
-            ? command with { CommandText = command.CommandText.Insert(ColumnListEnd(command.CommandText) + 1, provider) }
-            : command).ToArray();
+            ? command with { CommandText = AddTableProvider(command.CommandText, delta) } : command).ToArray();
     }
 
-    private static int ColumnListEnd(string sql)
+    private static string AddTableProvider(string sql, bool delta)
     {
-        var depth = 0;
-        var quote = '\0';
-        for (var i = 0; i < sql.Length; i++)
+        var tokens = SparkSqlSyntax.Tokenize(sql);
+        var end = tokens.FindIndex(token => token.Depth == 0 && token.Is(")"));
+        if (end < 0)
+            throw new InvalidOperationException("The CREATE TABLE command does not contain a complete column list.");
+        var result = sql.Insert(tokens[end].End, delta ? " USING DELTA" : " USING PARQUET");
+        if (delta && tokens.Take(end).Where((token, index) =>
+                token.Depth == 1 && token.Is("DEFAULT") && !tokens[index - 1].Is("BY")).Any())
         {
-            var character = sql[i];
-            if (quote != '\0')
-            {
-                if (quote == '\'' && character == '\\') i++;
-                else if (character == quote)
-                {
-                    if (i + 1 < sql.Length && sql[i + 1] == quote) i++;
-                    else quote = '\0';
-                }
-            }
-            else if (character is '\'' or '`') quote = character;
-            else if (character == '(') depth++;
-            else if (character == ')' && --depth == 0) return i;
+            var terminator = result.LastIndexOf(';');
+            result = result.Insert(terminator, " TBLPROPERTIES ('delta.feature.allowColumnDefaults' = 'supported')");
         }
-        throw new InvalidOperationException("The CREATE TABLE command does not contain a complete column list.");
+        return result;
     }
 
     public string RenderCreateIndex(IDialect dialect, IndexDefinitionContext index)

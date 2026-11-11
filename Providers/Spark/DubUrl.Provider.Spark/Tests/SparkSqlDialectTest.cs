@@ -140,6 +140,36 @@ public sealed class SparkSqlDialectTest
             Throws.TypeOf<NotSupportedException>());
 
 
+    [TestCase(false)]
+    [TestCase(true)]
+    public void DefaultsPreserveExplicitNullAndEnableTheDeltaFeatureOnlyWhenNeeded(bool delta)
+    {
+        var dialect = delta ? Databricks() : Spark();
+        var model = new DubUrl.Schema.Schema([new Table("t",
+        [
+            new Column("without_default", DbType.Int32),
+            new Column("with_null", DbType.Int32, DBNull.Value),
+            new Column("stamp", DbType.DateTime2, defaultExpression: ColumnDefaultExpression.CurrentUtcTimestamp(6)),
+        ])]);
+        var sql = new SchemaScriptRenderer(dialect).Plan(model).Single().CommandText;
+        Assert.That(sql, Does.Contain("with_null` INT DEFAULT NULL").And.Not.Contain("without_default` INT DEFAULT"));
+        Assert.That(sql, Does.Contain("unix_micros(current_timestamp())"));
+        Assert.That(sql.Contains("delta.feature.allowColumnDefaults", StringComparison.Ordinal), Is.EqualTo(delta));
+    }
+
+    [Test]
+    public void DatabricksTimeIsOptInAndNondeterministicUuidDefaultsAreRejected()
+    {
+        var time = new DubUrl.Schema.Schema([new Table("t",
+            [new Column("clock", DbType.Time, defaultExpression: ColumnDefaultExpression.CurrentTime())])]);
+        Assert.That(() => new SchemaScriptRenderer(Databricks()).Plan(time), Throws.Exception);
+        Assert.That(new SchemaScriptRenderer(Databricks().WithTimeType()).Plan(time).Single().CommandText,
+            Does.Contain("TIME DEFAULT current_time()"));
+        var uuid = new DubUrl.Schema.Schema([new Table("t",
+            [new VarLengthColumn("uuid", DbType.String, 36, defaultExpression: ColumnDefaultExpression.NewUuid(UuidRepresentation.CanonicalText))])]);
+        Assert.That(() => new SchemaScriptRenderer(Databricks()).Plan(uuid), Throws.Exception.With.Message.Contains("nondeterministic UUID"));
+    }
+
     private static SparkSqlDialect Spark() => DefaultRegistry.GetDialects("odbc+spark").Get<SparkSqlDialect>();
     private static DatabricksSqlDialect Databricks() => DefaultRegistry.GetDialects("odbc+databricks").Get<DatabricksSqlDialect>();
 }

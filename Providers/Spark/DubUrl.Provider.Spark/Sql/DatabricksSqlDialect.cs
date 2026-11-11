@@ -20,6 +20,16 @@ public sealed class DatabricksSqlDialect : SparkSqlDialect
         IDbTypeMapper dbTypeMapper, ISqlFunctionMapper sqlFunctionMapper)
         : base(language, aliases, renderer, casters, dbTypeMapper, sqlFunctionMapper) { }
 
+    internal bool SupportsTime { get; private set; }
+
+    /// <summary>Enables TIME for a warehouse or runtime that has been verified to support it.</summary>
+    public DatabricksSqlDialect WithTimeType()
+    {
+        var dialect = (DatabricksSqlDialect)MemberwiseClone();
+        dialect.SupportsTime = true;
+        return dialect;
+    }
+
     public override SparkSqlDialect WithCatalogRules(string catalog, SparkCatalogNameRules rules, bool isCurrent = false)
         => throw new NotSupportedException("Databricks SQL uses Unity Catalog naming rules.");
 

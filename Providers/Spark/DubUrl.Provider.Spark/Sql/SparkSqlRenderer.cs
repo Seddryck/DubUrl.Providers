@@ -4,7 +4,7 @@ using DubUrl.Querying.Dialects.Renderers;
 namespace DubUrl.Provider.Spark.Sql;
 
 internal sealed class SparkSqlRenderer() : AnsiRenderer(
-    new ValueFormatter().With<string>(new SparkStringFormatter()).With<char>(new SparkStringFormatter()),
+    new ValueFormatter().With<string>(new SparkStringFormatter()).With<char>(new SparkStringFormatter()).With(new SparkBinaryFormatter()),
     new NullFormatter(), new SparkIdentifierFormatter());
 
 internal sealed class SparkStringFormatter : IValueFormatter<string>, IValueFormatter<char>
@@ -19,6 +19,12 @@ internal sealed class SparkStringFormatter : IValueFormatter<string>, IValueForm
     public string Format(string value) => Quote(value);
     public string Format(char value) => Quote(value.ToString());
     public string Format(object value) => value is char character ? Format(character) : Format((string)value);
+}
+
+internal sealed class SparkBinaryFormatter : IValueFormatter<byte[]>
+{
+    public string Format(byte[] value) => $"X'{Convert.ToHexString(value)}'";
+    public string Format(object value) => Format((byte[])value);
 }
 
 internal sealed class SparkIdentifierFormatter : IIdentifierFormatter
