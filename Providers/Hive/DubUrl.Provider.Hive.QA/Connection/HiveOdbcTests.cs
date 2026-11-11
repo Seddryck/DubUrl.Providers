@@ -9,11 +9,10 @@ namespace DubUrl.Provider.Hive.QA.Connection;
 
 public sealed class HiveOdbcTests
 {
-    [TestCase(HiveQaDatabase.HiveEndpoint, TestName = "OpenHiveServer2")]
-    [TestCase(HiveQaDatabase.SparkEndpoint, TestName = "OpenSparkThriftServer")]
+    [Test]
     [Category("Live"), Category("ODBC")]
-    public void QueryThriftServer(string endpointVariable)
-        => OdbcSmokeTest.Verify(new ConnectionUrl(HiveQaDatabase.GetUrl(endpointVariable, useNativeQuery: true)), OdbcFactory.Instance);
+    public void OpenHiveServer2()
+        => OdbcSmokeTest.Verify(new ConnectionUrl(HiveQaDatabase.GetUrl(useNativeQuery: true)), OdbcFactory.Instance);
 
     [Test, Category("Live"), Category("ODBC")]
     public void ExecutesGeneratedHiveQlWithQuotedIdentifiers()
