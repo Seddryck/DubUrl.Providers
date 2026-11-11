@@ -9,6 +9,13 @@ public sealed class DatabricksOdbcTests
 {
     [Test, Category("Live"), Category("ODBC")]
     public void OpenFreeEditionWarehouse()
+        => OdbcSmokeTest.Verify(FreeEditionUrl(), OdbcFactory.Instance);
+
+    [Test, Category("Live"), Category("ODBC")]
+    public void CreateDescribeAndDropUnityCatalogTable()
+        => OdbcDdlTest.Verify(FreeEditionUrl(), OdbcFactory.Instance, "qa-table", "SeLeCt");
+
+    private static ConnectionUrl FreeEditionUrl()
     {
         var host = RequireVariable("DATABRICKS_HOST");
         var path = RequireVariable("DATABRICKS_HTTP_PATH");
@@ -21,9 +28,8 @@ public sealed class DatabricksOdbcTests
             || !path[warehousePrefix.Length..].All(char.IsAsciiLetterOrDigit))
             Assert.Fail("DATABRICKS_HTTP_PATH must be the warehouse HTTP path.");
 
-        var url = new ConnectionUrl($"odbc+databricks://{host}{path}?AuthMech=3")
+        return new ConnectionUrl($"odbc+databricks://{host}{path}?AuthMech=3")
             .WithAuthentication(ConnectionAuthentication.UsernamePassword("token", token));
-        OdbcSmokeTest.Verify(url, OdbcFactory.Instance);
     }
 
     private static string RequireVariable(string name)
