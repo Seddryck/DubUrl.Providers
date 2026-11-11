@@ -6,8 +6,10 @@ project_dir="$(dirname "$infrastructure_dir")"
 results_dir="$(pwd)/.test-results/hive"
 mkdir -p "$results_dir"
 
-: "${HIVE_ODBC_RPM:?Set HIVE_ODBC_RPM to the path to the Cloudera Hive 2.5.0.1001 RPM.}"
-rpm="$(realpath "$HIVE_ODBC_RPM")"
+: "${HIVE_ODBC_DEB:?Set HIVE_ODBC_DEB to the Cloudera Hive 2.10.1.1001-2 Debian package.}"
+: "${SPARK_HIVE_ODBC_RPM:?Set SPARK_HIVE_ODBC_RPM to the Cloudera Hive 2.5.0.1001 RPM.}"
+hive_package="$(realpath "$HIVE_ODBC_DEB")"
+spark_package="$(realpath "$SPARK_HIVE_ODBC_RPM")"
 driver_config="$(mktemp -d)"
 
 spark_compose="$infrastructure_dir/compose.yaml"
@@ -33,9 +35,6 @@ if [[ -f "$project_dir/DubUrl.Provider.Hive.QA.csproj" ]]; then
     adapter_dir="$project_dir/bin/Release/net10.0"
 fi
 
-source "$infrastructure_dir/configure-driver.sh" "$rpm" "$driver_config"
-printf '%s\n' 'ClouderaHiveODBC 2.5.0.1001-1.el6.x86_64' > "$results_dir/driver.txt"
-
 if ! "${compose[@]}" up --detach --wait --wait-timeout 180; then
     "${compose[@]}" logs --tail 100
     exit 1
@@ -55,6 +54,21 @@ export HIVE_ODBC_HTTP_ENDPOINT="$( "${compose[@]}" port hive-http 10001 )"
 export HIVE_ODBC_HTTPS_ENDPOINT="localhost:$( "${compose[@]}" port hive-https 10001 | cut -d: -f2 )"
 export HIVE_ODBC_TCPS_ENDPOINT="localhost:$( "${compose[@]}" port hive-tcps 10000 | cut -d: -f2 )"
 export HIVE_ODBC_TLS_CERT="$HIVE_QA_TLS_DIR/server/server-cert.pem"
-# The pinned legacy driver reads .cloudera.hiveodbc.ini from the test process's home directory.
-HOME="$driver_config" dotnet vstest "$adapter_dir/DubUrl.Provider.Hive.QA.dll" \
-    --TestAdapterPath:"$adapter_dir" --logger:'trx;LogFileName=hive.trx' --ResultsDirectory:"$results_dir"
+export HIVE_ODBC_HTTP_PASSWORD="$(openssl rand -hex 16)"
+
+run_tests() (
+    local target="$1" package="$2" filter="$3"
+    local config="$driver_config/$target"
+    mkdir "$config" || exit 1
+    source "$infrastructure_dir/configure-driver.sh" "$package" "$config" "$target" \
+        > "$results_dir/$target-driver.txt" || exit 1
+    # The legacy driver reads .cloudera.hiveodbc.ini from the test process's home.
+    HOME="$config" dotnet vstest "$adapter_dir/DubUrl.Provider.Hive.QA.dll" \
+        --TestAdapterPath:"$adapter_dir" --TestCaseFilter:"$filter" \
+        --logger:"trx;LogFileName=$target.trx" --ResultsDirectory:"$results_dir"
+)
+
+status=0
+run_tests hive "$hive_package" 'Name!=OpenSparkThriftServer' || status=1
+run_tests spark "$spark_package" 'Name=OpenSparkThriftServer' || status=1
+exit "$status"

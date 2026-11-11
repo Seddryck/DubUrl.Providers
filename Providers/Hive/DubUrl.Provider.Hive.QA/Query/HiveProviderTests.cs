@@ -6,6 +6,7 @@ namespace DubUrl.Provider.Hive.QA.Query;
 public sealed class HiveProviderTests : ProviderContract
 {
     protected override string ConnectionUrl => HiveQaDatabase.GetUrl();
+    protected override string AuthenticationConnectionUrl => HiveQaDatabase.GetLocation();
     protected override string SelectFirstCustomerSql => HiveQaDatabase.FirstCustomer;
     protected override string SelectCustomerByIdSql => HiveQaDatabase.CustomerById;
     protected override string SelectCustomerByPositionSql => HiveQaDatabase.CustomerById;
@@ -20,7 +21,4 @@ public sealed class HiveProviderTests : ProviderContract
     protected override bool SupportsNamedParameters => false; // ODBC uses positional ? markers.
     protected override bool SupportsTime => false; // HiveServer2 4.0.1 has no standalone TIME type.
     protected override bool SupportsInterval => false; // Hive's interval literal and returned text differ from the shared TimeSpan mapping.
-
-    // A DATE literal in the generated predicate makes the legacy driver return lowercase labels.
-    protected override bool SupportsTemplates => false;
 }

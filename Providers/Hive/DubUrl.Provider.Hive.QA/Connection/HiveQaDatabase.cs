@@ -10,9 +10,15 @@ internal static class HiveQaDatabase
     internal const string CustomerById = "select FullName from Customer where CustomerId=?";
 
     internal static string GetUrl(string endpointVariable = HiveEndpoint, bool useNativeQuery = false)
+        => $"{GetLocation(endpointVariable)}?ThriftTransport=0&AuthMech=0&UseNativeQuery={(useNativeQuery ? 1 : 0)}";
+
+    internal static string GetLocation(string endpointVariable = HiveEndpoint)
+        => $"odbc+hive://{ReadFixtureSetting(endpointVariable)}/default";
+
+    internal static string ReadFixtureSetting(string variable)
     {
-        var endpoint = Environment.GetEnvironmentVariable(endpointVariable);
-        Assert.That(endpoint, Is.Not.Null.And.Not.Empty, $"Set {endpointVariable} to the fixture's host:port.");
-        return $"odbc+hive://{endpoint}/default?ThriftTransport=0&UseNativeQuery={(useNativeQuery ? 1 : 0)}";
+        var value = Environment.GetEnvironmentVariable(variable);
+        Assert.That(value, Is.Not.Null.And.Not.Empty, $"Set {variable} for the Hive ODBC fixture.");
+        return value!;
     }
 }

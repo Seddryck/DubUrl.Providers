@@ -12,6 +12,7 @@ namespace DubUrl.Provider.Hive.Sql;
 [SqlFunctionMapper<AnsiFunctionMapper>]
 [Renderer<HiveRenderer>]
 [ReturnCaster<Parser<DateOnly>>]
+[ReturnCaster<DateTimeCaster<DateOnly>>]
 [ParentLanguage<SqlLanguage>]
 public sealed class HiveDialect : BaseDialect
 {

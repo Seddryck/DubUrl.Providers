@@ -30,16 +30,20 @@ jobs:
       - uses: actions/setup-dotnet@v6
         with:
           dotnet-version: '10.0.401'
-      - name: Prepare Linux driver prerequisites
+      - name: Prepare pinned Linux ODBC drivers
         run: |
           sudo apt-get update
           sudo apt-get install -y unixodbc odbcinst rpm2cpio cpio libsasl2-2
           curl --fail --silent --show-error --location --retry 3 \
+            https://downloads.cloudera.com/connectors/ClouderaHiveODBC-2.10.1.1001/Debian/clouderahiveodbc_2.10.1.1001-2_amd64.deb \
+            --output "$RUNNER_TEMP/cloudera-hive-odbc.deb"
+          curl --fail --silent --show-error --location --retry 3 \
             https://downloads.cloudera.com/connectors/hive-2.5.0.1001/Linux/EL6/ClouderaHiveODBC-2.5.0.1001-1.el6.x86_64.rpm \
-            --output "$RUNNER_TEMP/cloudera-hive-odbc.rpm"
-      - name: Run Hive ODBC smoke tests
+            --output "$RUNNER_TEMP/cloudera-spark-smoke-hive-odbc.rpm"
+      - name: Run Hive ODBC QA
         run: |
-          export HIVE_ODBC_RPM="$RUNNER_TEMP/cloudera-hive-odbc.rpm"
+          export HIVE_ODBC_DEB="$RUNNER_TEMP/cloudera-hive-odbc.deb"
+          export SPARK_HIVE_ODBC_RPM="$RUNNER_TEMP/cloudera-spark-smoke-hive-odbc.rpm"
           bash Providers/Hive/DubUrl.Provider.Hive.QA/infrastructure/run-qa.sh
       - uses: actions/upload-artifact@v7
         if: always()
