@@ -21,6 +21,9 @@ public sealed class DatabricksOdbcTests : OdbcContract
     protected override string SelectCustomerByIdSql => SparkOdbcCustomerQueries.ById;
 
     [Test, Category("ODBC")]
+    public void DeployProjectionViewsAndDiagnosePartialFailure() => SparkSchemaQa.ProjectionViews(CreateLiveConnectionUrl());
+
+    [Test, Category("ODBC")]
     public void InformationalKeysPreserveOrderAndAllowDuplicatesAndOrphans()
     {
         var url = CreateLiveConnectionUrl();

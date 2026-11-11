@@ -31,6 +31,7 @@ public class SparkSqlDialect : BaseDialect
     {
         ObjectNames = ObjectNameParts.Name | ObjectNameParts.Schema | ObjectNameParts.Catalog,
         SupportsComments = true,
+        SupportsViews = true,
     };
 
     internal SparkSqlDialect(ILanguage language, string[] aliases, IRenderer renderer, ICaster[] casters,

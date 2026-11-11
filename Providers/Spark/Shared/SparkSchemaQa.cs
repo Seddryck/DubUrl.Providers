@@ -81,6 +81,50 @@ internal static class SparkSchemaQa
         });
     }
 
+    internal static void ProjectionViews(ConnectionUrl url)
+    {
+        WithScratch(url, (connection, catalog, schema) =>
+        {
+            DatabaseObjectName Name(string name) => new(name, schema, catalog: catalog);
+            string SqlName(string name) => url.Dialect.SchemaSqlRenderer.RenderObjectName(url.Dialect, catalog, null, schema, name);
+            var source = Name("source_table");
+            var first = Name("first_view");
+            var second = Name("second_view");
+            DubUrl.Schema.Builders.ISchemaBuilder Build(DubUrl.Schema.Builders.ITableCollectionBuilder builder)
+                => builder.WithTables(tables => tables.Add(table => table.WithIdentity(source)
+                    .WithColumns(columns => columns.Add(column => column.WithName("item").WithType(DbType.String)))))
+                    .WithViews(views => views
+                        .Add(view => view.WithIdentity(second).From(first)
+                            .WithProjections(projections => projections.Add(projection => projection.WithColumn("folded"))))
+                        .Add(view => view.WithIdentity(first).From(source)
+                            .WithProjections(projections => projections
+                                .Add(projection => projection.WithFunction("Lower", new ColumnIdentityExpression("item")).As("folded"))
+                                .Add(projection => projection.WithValue("O'Brien;").As("literal")))));
+
+            url.DeploySchema(Build(new DubUrl.Schema.Builders.SchemaBuilder()).Build());
+            Execute(connection, $"INSERT INTO {SqlName(source.Name)} VALUES ('ABC')");
+            Assert.That(Scalar(connection, $"SELECT folded FROM {SqlName(second.Name)}"), Is.EqualTo("abc"));
+            Assert.That(Scalar(connection, $"SELECT literal FROM {SqlName(first.Name)}"), Is.EqualTo("O'Brien;"));
+
+            url.DeploySchema(Build, SchemaCreationOptions.DropIfExists);
+            // Spark can retain the old file listing on a session that read the pre-replacement table.
+            using (var replacement = (DbConnection)url.Open())
+                Assert.That(Scalar(replacement, $"SELECT COUNT(*) FROM {SqlName(second.Name)}"), Is.EqualTo(0));
+
+            var newTable = new Table(Name("created_before_error"), [new Column("id", DbType.Int32)]);
+            var alreadyExists = new Table(source, [new Column("item", DbType.String)]);
+            var afterFailure = new View(Name("after_failure"), new ViewQuery(newTable.Identity,
+                new ViewProjection(new ColumnIdentityExpression("id"))));
+            var failure = Assert.Catch<DbException>(() => url.DeploySchema(
+                new DubUrl.Schema.Schema([newTable, alreadyExists], [], [afterFailure])));
+            Assert.That(failure!.Data["SchemaCommandIndex"], Is.EqualTo(1));
+            Assert.That(failure.Data["SchemaCommandOperation"], Is.EqualTo("CreateTable"));
+            Assert.That(Scalar(connection, $"SELECT COUNT(*) FROM {SqlName(newTable.Name)}"), Is.EqualTo(0));
+            Assert.That(() => Scalar(connection, $"SELECT COUNT(*) FROM {SqlName(afterFailure.Name)}"),
+                Throws.InstanceOf<DbException>());
+        });
+    }
+
     internal static void WithScratch(ConnectionUrl url, Action<DbConnection, string, string> run)
     {
         DbProviderFactories.RegisterFactory("System.Data.Odbc", OdbcFactory.Instance);

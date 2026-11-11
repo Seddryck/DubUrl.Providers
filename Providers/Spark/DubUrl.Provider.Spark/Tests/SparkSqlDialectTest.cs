@@ -222,6 +222,25 @@ public sealed class SparkSqlDialectTest
             .And.Contain("UNIQUE (`code`) NOT ENFORCED NORELY"));
     }
 
+    [TestCase(false)]
+    [TestCase(true)]
+    public void ProjectionViewReplacementUsesDependencyOrder(bool delta)
+    {
+        var dialect = delta ? Databricks() : Spark();
+        var table = new Table("source_table", [new Column("item", DbType.String)]);
+        var first = new View("first_view", new ViewQuery(table.Identity,
+            new ViewProjection(new FunctionColumnIdentityExpression("Lower", "item"), "folded"),
+            new ViewProjection(new ValueExpression("O'Brien;"), "literal")));
+        var second = new View("second_view", new ViewQuery(first.Identity,
+            new ViewProjection(new ColumnIdentityExpression("folded"))));
+        var plan = new SchemaScriptRenderer(dialect, SchemaCreationOptions.DropIfExists)
+            .Plan(new DubUrl.Schema.Schema([table], [], [second, first]));
+        Assert.That(plan.Select(command => command.ObjectName),
+            Is.EqualTo(new[] { "second_view", "first_view", "source_table", "source_table", "first_view", "second_view" }));
+        Assert.That(plan[4].CommandText, Does.Contain("LOWER(`item`)").IgnoreCase
+            .And.Contain("'O\\'Brien;' AS `literal`"));
+    }
+
     private static SparkSqlDialect Spark() => DefaultRegistry.GetDialects("odbc+spark").Get<SparkSqlDialect>();
     private static DatabricksSqlDialect Databricks() => DefaultRegistry.GetDialects("odbc+databricks").Get<DatabricksSqlDialect>();
 }
