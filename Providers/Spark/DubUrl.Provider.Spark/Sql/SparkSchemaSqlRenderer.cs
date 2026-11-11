@@ -49,7 +49,10 @@ internal sealed class SparkSchemaSqlRenderer : StandardSchemaSqlRenderer, ITable
             { Expression: not null } generation => RenderGenerated(dialect, column.Type, generation.Expression, generation.Stored),
             _ => throw new NotSupportedException("A generated column requires an expression."),
         };
-        if (column.NotNullable)
+        var primary = column.PrimaryKeyColumns.Contains(column.Column, StringComparer.OrdinalIgnoreCase);
+        if (primary && column.Nullable)
+            throw new NotSupportedException("Databricks primary key columns cannot be nullable.");
+        if (column.NotNullable || primary)
             specification += " NOT NULL";
         if (column.Description is not null)
             specification += " COMMENT " + SparkStringFormatter.Quote(column.Description);
@@ -92,14 +95,56 @@ internal sealed class SparkSchemaSqlRenderer : StandardSchemaSqlRenderer, ITable
                 throw new ArgumentException($"Column '{column}' collides under the selected catalog's naming rules.", nameof(table));
         }
 
-        if (table.PrimaryKey is not null || table.UniqueKeys?.Count > 0 || table.Options is not null || table.Indexes?.Count > 0)
-            throw new NotSupportedException("Portable Spark SQL table definitions do not support keys, indexes, or physical options.");
-        return new("CREATE TABLE", []);
+        if (table.Options is not null || table.Indexes?.Count > 0)
+            throw new NotSupportedException("Spark SQL table definitions do not support indexes or physical options.");
+        if (table.PrimaryKey is null && table.UniqueKeys?.Count is not > 0)
+            return new("CREATE TABLE", []);
+
+        var databricks = RequireInformationalKeys(dialect, table.Table.Catalog);
+        if (table.UniqueKeys?.Count > 0 && !databricks.SupportsUniqueKeys)
+            throw new NotSupportedException("UNIQUE requires a Databricks target that supports informational UNIQUE constraints.");
+        var keys = new List<string>();
+        if (table.PrimaryKey is { } primary)
+            keys.Add(RenderKey(dialect, primary, "PRIMARY KEY"));
+        foreach (var key in table.UniqueKeys ?? [])
+            keys.Add(RenderKey(dialect, key, "UNIQUE"));
+        return new("CREATE TABLE", keys);
+    }
+
+    public override bool RequiresForeignKeyDependencyOrder => true;
+
+    public override string RenderForeignKeyTarget(IDialect dialect, SchemaSqlObjectName table, SchemaSqlObjectName target)
+    {
+        _ = RequireInformationalKeys(dialect, table.Catalog);
+        _ = RequireInformationalKeys(dialect, target.Catalog);
+        return base.RenderForeignKeyTarget(dialect, table, target);
+    }
+
+    private static DatabricksSqlDialect RequireInformationalKeys(IDialect dialect, string? catalog)
+    {
+        if (dialect is not DatabricksSqlDialect { SupportsInformationalKeys: true } databricks)
+            throw new NotSupportedException("Keys on Databricks are informational. Select WithInformationalKeys() on the Databricks dialect to accept this behavior.");
+        if (string.Equals(catalog, "hive_metastore", StringComparison.OrdinalIgnoreCase))
+            throw new NotSupportedException("Informational keys require Unity Catalog.");
+        return databricks;
+    }
+
+    private string RenderKey(IDialect dialect, SchemaKeyDefinition key, string kind)
+    {
+        var name = key.Name is null ? "" : $"CONSTRAINT {RenderIdentifier(dialect, key.Name)} ";
+        var columns = string.Join(", ", key.Columns.Select(column => RenderIdentifier(dialect, column)));
+        return $"{name}{kind} ({columns}) NOT ENFORCED NORELY";
     }
 
     public override IReadOnlyList<SchemaSqlCommand> PlanCommands(IDialect dialect, IReadOnlyList<SchemaSqlCommand> statements)
         => statements.SelectMany(command => command.Operation == SchemaSqlOperation.CreateTable
-            ? SparkTableCommands.Plan(command, dialect is DatabricksSqlDialect) : [command]).ToArray();
+            ? SparkTableCommands.Plan(command, dialect is DatabricksSqlDialect)
+            : [AddForeignKeyOptions(command)]).ToArray();
+
+    private static SchemaSqlCommand AddForeignKeyOptions(SchemaSqlCommand command)
+        => command.Operation == SchemaSqlOperation.ForeignKey
+            ? command with { CommandText = command.CommandText.TrimEnd().TrimEnd(';') + " NOT ENFORCED NORELY;" }
+            : command;
 
     public override string RenderRegex(IDialect dialect, string expression, string pattern)
         => dialect is DatabricksSqlDialect ? $"({expression} RLIKE {pattern})"

@@ -27,6 +27,19 @@ public sealed class DatabricksSqlDialect : SparkSqlDialect
         SupportsStoredGeneratedColumns = true,
     };
 
+    internal bool SupportsInformationalKeys { get; private set; }
+    internal bool SupportsUniqueKeys { get; private set; }
+
+    /// <summary>Accepts Databricks informational key semantics for a Unity Catalog target.</summary>
+    /// <param name="supportsUnique">Set only when the target supports UNIQUE and foreign keys to UNIQUE targets.</param>
+    public DatabricksSqlDialect WithInformationalKeys(bool supportsUnique = false)
+    {
+        var dialect = (DatabricksSqlDialect)MemberwiseClone();
+        dialect.SupportsInformationalKeys = true;
+        dialect.SupportsUniqueKeys = supportsUnique;
+        return dialect;
+    }
+
     internal bool SupportsTime { get; private set; }
 
     /// <summary>Enables TIME for a warehouse or runtime that has been verified to support it.</summary>

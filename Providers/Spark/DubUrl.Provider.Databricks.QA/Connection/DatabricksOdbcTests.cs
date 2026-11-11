@@ -21,6 +21,46 @@ public sealed class DatabricksOdbcTests : OdbcContract
     protected override string SelectCustomerByIdSql => SparkOdbcCustomerQueries.ById;
 
     [Test, Category("ODBC")]
+    public void InformationalKeysPreserveOrderAndAllowDuplicatesAndOrphans()
+    {
+        var url = CreateLiveConnectionUrl();
+        SparkSchemaQa.WithScratch(url, (connection, catalog, schema) =>
+        {
+            var dialect = ((DatabricksSqlDialect)url.Dialect).WithInformationalKeys(supportsUnique: true);
+            var parentName = new DatabaseObjectName("parents", schema, catalog: catalog);
+            var childName = new DatabaseObjectName("children", schema, catalog: catalog);
+            var a = new Column("a", DbType.Int32);
+            var b = new Column("b", DbType.Int32);
+            var code = new Column("code", DbType.Int32);
+            var parent = new Table(parentName, [a, b, code],
+                [new PrimaryKeyConstraint([b, a], "parent_pk"), new UniquenessConstraint([code], "parent_uq")]);
+            var child = new Table(childName, [new Column("x", DbType.Int32), new Column("y", DbType.Int32), new Column("z", DbType.Int32)],
+            [
+                new DubUrl.Schema.Constraints.ForeignKeyConstraint("child_fk", ["y", "x"], parentName, ["b", "a"]),
+                new DubUrl.Schema.Constraints.ForeignKeyConstraint("child_uq_fk", ["z"], parentName, ["code"]),
+            ]);
+            var model = new DubUrl.Schema.Schema([child, parent]);
+            new SchemaScriptDeployer().DeploySchema(url, new SchemaScriptRenderer(dialect).Plan(model));
+
+            string Name(DatabaseObjectName name) => dialect.SchemaSqlRenderer.RenderObjectName(dialect, catalog, null, schema, name.Name);
+            SparkSchemaQa.Execute(connection, $"INSERT INTO {Name(parentName)} VALUES (1, 2, 3), (1, 2, 3)");
+            SparkSchemaQa.Execute(connection, $"INSERT INTO {Name(childName)} VALUES (99, 98, 97)");
+            Assert.That(SparkSchemaQa.Scalar(connection, $"SELECT COUNT(*) FROM {Name(parentName)}"), Is.EqualTo(2));
+            Assert.That(SparkSchemaQa.Scalar(connection, $"SELECT COUNT(*) FROM {Name(childName)}"), Is.EqualTo(1));
+
+            var metadataCatalog = dialect.SchemaSqlRenderer.RenderIdentifier(dialect, catalog);
+            using var command = connection.CreateCommand();
+            command.CommandText = $"SELECT column_name FROM {metadataCatalog}.information_schema.key_column_usage " +
+                $"WHERE constraint_schema = '{schema}' AND constraint_name = 'child_fk' ORDER BY ordinal_position";
+            using var rows = command.ExecuteReader();
+            var columns = new List<string>();
+            while (rows.Read()) columns.Add(rows.GetString(0));
+            Assert.That(columns, Is.EqualTo(new[] { "y", "x" }));
+        });
+    }
+
+
+    [Test, Category("ODBC")]
     public void DeltaChecksEnforceComparisonMembershipAndRegex()
     {
         var url = CreateLiveConnectionUrl();

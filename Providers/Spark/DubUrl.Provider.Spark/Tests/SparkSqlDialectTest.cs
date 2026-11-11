@@ -206,6 +206,22 @@ public sealed class SparkSqlDialectTest
         Assert.That(plan[3].CommandText, Does.Contain("numeric_tag").And.Contain("IS NOT NULL").And.Contain("RLIKE"));
     }
 
+    [Test]
+    public void DatabricksRequiresExplicitInformationalAndUniqueCapabilityOptIns()
+    {
+        var key = new Column("key", DbType.Int32);
+        var code = new Column("code", DbType.String);
+        var model = new DubUrl.Schema.Schema([new Table("t", [key, code],
+            [new PrimaryKeyConstraint(key, "pk"), new UniquenessConstraint([code], "uq")])]);
+        Assert.That(() => new SchemaScriptRenderer(Databricks()).Plan(model),
+            Throws.Exception.With.Message.Contains("informational"));
+        Assert.That(() => new SchemaScriptRenderer(Databricks().WithInformationalKeys()).Plan(model),
+            Throws.Exception.With.Message.Contains("UNIQUE"));
+        var sql = new SchemaScriptRenderer(Databricks().WithInformationalKeys(supportsUnique: true)).Plan(model).Single().CommandText;
+        Assert.That(sql, Does.Contain("PRIMARY KEY (`key`) NOT ENFORCED NORELY")
+            .And.Contain("UNIQUE (`code`) NOT ENFORCED NORELY"));
+    }
+
     private static SparkSqlDialect Spark() => DefaultRegistry.GetDialects("odbc+spark").Get<SparkSqlDialect>();
     private static DatabricksSqlDialect Databricks() => DefaultRegistry.GetDialects("odbc+databricks").Get<DatabricksSqlDialect>();
 }
