@@ -1,0 +1,49 @@
+name: Hive ODBC QA
+
+on:
+  pull_request:
+    branches: [main, feat/spark-databricks-odbc]
+    paths:
+      - 'Providers/Hive/**'
+      - 'Providers/Odbc/**'
+      - 'Providers/Spark/DubUrl.Provider.Spark.QA/infrastructure/compose.yaml'
+      - 'QA/DubUrl.Provider.QA/**'
+      - '.github/workflows/qa-hive-odbc.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  DOTNET_CLI_TELEMETRY_OPTOUT: 1
+  DOTNET_NOLOGO: 1
+
+jobs:
+  hive:
+    name: HiveServer2 and Spark Thrift Server
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: '10.0.401'
+      - name: Prepare Linux driver prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y unixodbc odbcinst rpm2cpio cpio libsasl2-2
+          curl --fail --silent --show-error --location --retry 3 \
+            https://downloads.cloudera.com/connectors/hive-2.5.0.1001/Linux/EL6/ClouderaHiveODBC-2.5.0.1001-1.el6.x86_64.rpm \
+            --output "$RUNNER_TEMP/cloudera-hive-odbc.rpm"
+      - name: Run Hive ODBC smoke tests
+        run: |
+          export HIVE_ODBC_RPM="$RUNNER_TEMP/cloudera-hive-odbc.rpm"
+          bash Providers/Hive/DubUrl.Provider.Hive.QA/infrastructure/run-qa.sh
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: hive-odbc-qa
+          path: .test-results/hive
+          if-no-files-found: warn

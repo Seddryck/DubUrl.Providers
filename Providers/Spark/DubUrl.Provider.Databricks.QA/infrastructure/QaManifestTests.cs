@@ -1,7 +1,7 @@
 using DubUrl.ProviderTesting;
 using NUnit.Framework;
 
-namespace DubUrl.Provider.Databricks.QA.Infrastructure;
+namespace DubUrl.Provider.Databricks.QA.infrastructure;
 
 public sealed class QaManifestTests
 {

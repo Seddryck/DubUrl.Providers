@@ -20,7 +20,7 @@ services:
       - --hiveconf
       - hive.server2.use.SSL=false
     ports:
-      - "127.0.0.1:10000:10000"
+      - "${SPARK_THRIFT_BINDING:-127.0.0.1:10000:10000}"
     healthcheck:
       test: ["CMD", "/opt/spark/bin/beeline", "-u", "jdbc:hive2://127.0.0.1:10000/default;auth=noSasl", "-n", "spark", "-e", "SELECT 1"]
       interval: 5s

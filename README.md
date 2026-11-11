@@ -30,6 +30,16 @@ The on-demand [Databricks Free Edition](Providers/Spark/DubUrl.Provider.Databric
 
 The published [DubUrl.ProviderTesting 0.60.0 package](https://www.nuget.org/packages/DubUrl.ProviderTesting/0.60.0) remains available for compatibility. The internal DubUrl.Provider.QA project is not published.
 
+## Apache Hive over ODBC
+
+Install the `hive-odbc` connector and register the **Cloudera ODBC Driver for Apache Hive** with your ODBC driver manager under that name. On Linux, unixODBC and `odbcinst` are required. The driver must match the application's architecture. NuGet applications can reference `DubUrl.Provider.Odbc` and `System.Data.Odbc`.
+
+```text
+odbc+hive://hive.example.com/analytics?AuthMech=2&ThriftTransport=1
+```
+
+The URL uses port `10000` by default and maps `analytics` to the driver's `Schema` setting. Match the authentication, Thrift transport, and TLS settings to your server. For a differently registered driver name, set `Driver` in the URL query. The route is for HiveServer2 and can also connect to a compatible Spark SQL Thrift Server. See the [Cloudera driver guide](https://docs.cloudera.com/application-resources/latest/connectors/hive-odbc/2-9-0.html) and the [Hive ODBC QA fixture](Providers/Hive/DubUrl.Provider.Hive.QA/infrastructure/README.md).
+
 ## Structured schema columns
 
 Schema rendering uses the column's explicit `StructuredStorage`. The following table describes SQL representation, database enforcement, and catalog recovery independently.

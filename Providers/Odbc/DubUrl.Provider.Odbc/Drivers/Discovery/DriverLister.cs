@@ -1,3 +1,4 @@
+using DubUrl.Locating.OdbcDriver;
 using System.Runtime.InteropServices;
 
 namespace DubUrl.Provider.Odbc.Drivers.Discovery;
@@ -24,6 +25,10 @@ public class DriverLister
             "/usr/local/etc/odbcinst.ini",
             "/opt/homebrew/etc/odbcinst.ini");
     }
+
+    internal string LocateRegistered(string name)
+        => List().FirstOrDefault(driver => driver.Equals(name, StringComparison.OrdinalIgnoreCase))
+            ?? throw new DriverDiscoveryException($"The ODBC driver '{name}' is not registered.");
 
     private static string[] ListFromIniFiles(params string[] paths)
         => paths

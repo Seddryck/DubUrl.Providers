@@ -1,0 +1,17 @@
+services:
+  hive-server2:
+    image: apache/hive:4.0.1
+    environment:
+      SERVICE_NAME: hiveserver2
+      SERVICE_OPTS: >-
+        -Dhive.server2.authentication=NOSASL
+        -Dhive.server2.transport.mode=binary
+        -Dhive.server2.enable.doAs=false
+    ports:
+      - "127.0.0.1::10000"
+    healthcheck:
+      test: ["CMD", "/opt/hive/bin/beeline", "-u", "jdbc:hive2://127.0.0.1:10000/default;auth=noSasl", "-n", "hive", "-e", "SELECT 1"]
+      interval: 5s
+      timeout: 15s
+      start_period: 30s
+      retries: 24
