@@ -12,6 +12,10 @@ namespace DubUrl.Provider.Spark.Tests;
 public sealed class SparkSqlDialectTest
 {
     [TestCase("odbc+spark", "", typeof(SparkSqlDialect))]
+    [TestCase("odbc+spark+http", "", typeof(SparkSqlDialect))]
+    [TestCase("odbc+spark+https", "", typeof(SparkSqlDialect))]
+    [TestCase("odbc+spark+tcp", "", typeof(SparkSqlDialect))]
+    [TestCase("odbc+spark+tcps", "", typeof(SparkSqlDialect))]
     [TestCase("odbc+databricks", "/warehouse/qa", typeof(DatabricksSqlDialect))]
     public void SchemeSelectsDialectEvenWithExplicitDriver(string scheme, string path, Type expected)
     {

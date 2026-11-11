@@ -8,8 +8,7 @@ namespace DubUrl.Provider.Spark.QA.Connection;
 public sealed class SparkOdbcTests : OdbcContract
 {
     internal const string ThriftLocation = "odbc+spark://127.0.0.1";
-    internal const string ThriftUrl = ThriftLocation
-        + "?AuthMech=0&ThriftTransport=0&SSL=0";
+    internal const string ThriftUrl = "odbc+spark+tcp://127.0.0.1?AuthMech=0&sasl=0";
 
     protected override string AuthenticationConnectionUrl => ThriftLocation;
 

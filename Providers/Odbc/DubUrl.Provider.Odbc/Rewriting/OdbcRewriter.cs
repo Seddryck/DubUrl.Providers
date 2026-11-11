@@ -170,10 +170,15 @@ public class OdbcRewriter : ConnectionStringRewriter, IOdbcConnectionStringRewri
 
     protected internal class OptionsMapper : BaseTokenMapper
     {
+        protected virtual bool ShouldMap(ConnectionUri url, string option) => true;
+
         public override void Execute(ConnectionUri urlInfo)
         {
             foreach (var option in urlInfo.Options)
             {
+                if (!ShouldMap(urlInfo, option.Key))
+                    continue;
+
                 if (StringComparer.OrdinalIgnoreCase.Equals(option.Key, DRIVER_KEYWORD))
                 {
                     if (!option.Value.StartsWith("{") || !option.Value.EndsWith("}"))

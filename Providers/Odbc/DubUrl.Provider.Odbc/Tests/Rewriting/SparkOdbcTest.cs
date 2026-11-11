@@ -106,6 +106,92 @@ public sealed class SparkOdbcTest
         });
     }
 
+    [TestCase("http", "", "", "10001", "/cliservice", null, "2", "0")]
+    [TestCase("https", "/schema/analytics", "", "10001", "/cliservice", "analytics", "2", "1")]
+    [TestCase("https", ":443/gateway/sandbox/spark/schema/analytics", "", "443", "/gateway/sandbox/spark", "analytics", "2", "1")]
+    [TestCase("tcp", "", "", "10000", null, null, null, "0")]
+    [TestCase("tcp", ":10003/schema/analytics", "&sasl=0", "10003", null, "analytics", "0", "0")]
+    [TestCase("tcps", "/schema/analytics", "&SASL=1", "10000", null, "analytics", "1", "1")]
+    [TestCase("tcps", "", "&ThriftTransport=1", "10000", null, null, "1", "1")]
+    [TestCase("tcp", "", "&sasl=1&ThriftTransport=1&Schema=analytics", "10000", null, "analytics", "1", "0")]
+    [TestCase("http", "/custom", "&SSL=0&ThriftTransport=2&HTTPPath=%2Fcustom", "10001", "/custom", null, "2", "0")]
+    public void SparkTransportMapsEndpointAndSessionSettings(string suffix, string address, string options, string port,
+        string? httpPath, string? schema, string? thriftTransport, string ssl)
+    {
+        var scheme = $"odbc+spark+{suffix}";
+        var url = new ConnectionUrl($"{scheme}://example.com{address}?Driver=Explicit{options}", Registry());
+        var settings = new OdbcConnectionStringBuilder(url.Parse());
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(settings["Port"], Is.EqualTo(port));
+            Assert.That(settings["SSL"], Is.EqualTo(ssl));
+            Assert.That(settings["EnableArrow"], Is.EqualTo("0"));
+            Assert.That(settings.TryGetValue("HTTPPath", out var path) ? path : null, Is.EqualTo(httpPath));
+            Assert.That(settings.TryGetValue("Schema", out var actualSchema) ? actualSchema : null, Is.EqualTo(schema));
+            Assert.That(settings.TryGetValue("ThriftTransport", out var thrift) ? thrift : null, Is.EqualTo(thriftTransport));
+            Assert.That(settings.ContainsKey("sasl"), Is.False);
+        });
+    }
+
+    [TestCase("http", "&sasl=1")]
+    [TestCase("https", "&SSL=0")]
+    [TestCase("http", "&ThriftTransport=0")]
+    [TestCase("tcps", "&ThriftTransport=2")]
+    [TestCase("tcp", "&sasl=2")]
+    [TestCase("tcp", "&sasl=1&ThriftTransport=0")]
+    [TestCase("tcps", "&HTTPPath=%2Fcliservice")]
+    [TestCase("https", "&HTTPPath=%2Foverride")]
+    [TestCase("https", "&%20SSL=0")]
+    [TestCase("http+tcp", "")]
+    public void SparkRejectsConflictingTransportOptions(string suffix, string options)
+    {
+        var url = new ConnectionUrl($"odbc+spark+{suffix}://example.com?Driver=Explicit{options}", Registry());
+
+        Assert.That(() => url.Parse(), Throws.InstanceOf<InvalidConnectionUrlException>());
+    }
+
+    [TestCase("tcp", "/cliservice", "")]
+    [TestCase("tcp", "/schema/%20", "")]
+    [TestCase("http", "/cliservice/schema/%20", "")]
+    [TestCase("http", "/endpoint/schema/one/schema/two", "")]
+    [TestCase("https", "/schema/analytics", "&Schema=override")]
+    public void SparkRejectsInvalidOrConflictingPathSettings(string suffix, string path, string options)
+    {
+        var url = new ConnectionUrl($"odbc+spark+{suffix}://example.com{path}?Driver=Explicit{options}", Registry());
+
+        Assert.That(() => url.Parse(), Throws.InstanceOf<InvalidConnectionUrlException>());
+    }
+
+    [TestCase("http", "10001", ";HTTPPath=/cliservice;ThriftTransport=2;SSL=0", "", null)]
+    [TestCase("https", "443", ";HTTPPath=/gateway/spark;Schema=analytics;ThriftTransport=2;SSL=1",
+        "gateway/spark/schema/analytics", null)]
+    [TestCase("tcp", "10000", ";Schema=analytics;SSL=0", "schema/analytics", null)]
+    [TestCase("tcps", "10000", ";ThriftTransport=1;SSL=1", "", "1")]
+    public void SparkReverseMappingUsesTransportScheme(string suffix, string port, string options, string path, string? sasl)
+    {
+        var settings = $"Driver={{Simba Spark ODBC Driver}};Host=example.com;Port={port};EnableArrow=0{options}";
+        var registry = Registry();
+        var uri = new ConnectionStringConverter(registry).Convert($"odbc+spark+{suffix}", settings);
+        var actual = new OdbcConnectionStringBuilder(new ConnectionUrl(uri.ToString(false), registry).Parse());
+
+        Assert.That(actual.EquivalentTo(new OdbcConnectionStringBuilder(settings)), Is.True);
+
+        Assert.That(string.Join('/', uri.Segments), Is.EqualTo(path));
+        Assert.That(uri.Options.TryGetValue("sasl", out var value) ? value : null, Is.EqualTo(sasl));
+    }
+
+    [Test]
+    public void SparkReverseMappingRejectsReservedEndpointSuffix()
+    {
+        const string scheme = "odbc+spark+http";
+        const string settings = "Driver={Simba Spark ODBC Driver};Host=example.com;Port=10001;EnableArrow=0;SSL=0;ThriftTransport=2;HTTPPath=/gateway/schema/analytics";
+        var converter = new ConnectionStringConverter(Registry());
+
+        Assert.That(converter.TryConvert(scheme, settings, out _, out var diagnostic), Is.False);
+        Assert.That(diagnostic!.Code, Is.EqualTo(ConnectionStringConversionDiagnosticCode.SettingsNotRepresentable));
+    }
+
     [Test]
     public void SparkUsesStandardThriftResults()
     {

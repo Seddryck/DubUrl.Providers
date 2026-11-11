@@ -10,7 +10,7 @@ namespace DubUrl.Provider.Odbc.Rewriting;
 internal sealed class SparkOdbcRewriter(DbConnectionStringBuilder builder, DriverLocatorFactory drivers,
     IEnumerable<Type> locatorOptions)
     : OdbcRewriter(builder, [new EndpointMapper(), new AuthentificationMapper(),
-        new DriverMapper(drivers, locatorOptions), new OptionsMapper()])
+        new DriverMapper(drivers, locatorOptions), new SparkOptionsMapper()])
 {
     public override ConnectionUri Convert(SchemeKey scheme, DbConnectionStringBuilder source)
     {
@@ -20,6 +20,8 @@ internal sealed class SparkOdbcRewriter(DbConnectionStringBuilder builder, Drive
         parts.TakeCredentials("UID", "PWD");
         if (IsDatabricks(scheme))
             AddDatabricksSegments(parts);
+        else
+            SparkOdbcTransport.Find(scheme)?.AddSegments(parts);
         return parts.ToUri(scheme);
     }
 
@@ -47,6 +49,12 @@ internal sealed class SparkOdbcRewriter(DbConnectionStringBuilder builder, Drive
             parts.Segments.Add(schema);
     }
 
+    private sealed class SparkOptionsMapper : OptionsMapper
+    {
+        protected override bool ShouldMap(ConnectionUri url, string option)
+            => !SparkOdbcTransport.IsSasl(option) || SparkOdbcTransport.Find(url.Scheme) is null;
+    }
+
     private sealed class EndpointMapper : BaseTokenMapper
     {
         private static readonly HashSet<string> DatabricksPathSettings =
@@ -55,8 +63,9 @@ internal sealed class SparkOdbcRewriter(DbConnectionStringBuilder builder, Drive
         public override void Execute(ConnectionUri urlInfo)
         {
             var databricks = IsDatabricks(urlInfo.Scheme);
+            var sparkTransport = SparkOdbcTransport.Find(urlInfo.Scheme);
             Specificator.Execute("Host", string.IsNullOrEmpty(urlInfo.Host) ? "localhost" : urlInfo.Host);
-            Specificator.Execute("Port", urlInfo.Port > 0 ? urlInfo.Port : databricks ? 443 : 10000);
+            Specificator.Execute("Port", urlInfo.Port > 0 ? urlInfo.Port : databricks ? 443 : sparkTransport?.DefaultPort ?? 10000);
 
             if (databricks)
             {
@@ -66,7 +75,9 @@ internal sealed class SparkOdbcRewriter(DbConnectionStringBuilder builder, Drive
             }
             else
             {
-                if (urlInfo.Segments.Count > 0)
+                if (sparkTransport is not null)
+                    sparkTransport.Map(urlInfo, Specificator);
+                else if (urlInfo.Segments.Count > 0)
                     Specificator.Execute("HTTPPath", "/" + string.Join("/", urlInfo.Segments));
 
                 // Apache Spark Thrift Server returns standard Thrift results.
