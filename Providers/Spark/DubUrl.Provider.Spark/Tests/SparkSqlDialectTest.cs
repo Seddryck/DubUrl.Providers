@@ -105,6 +105,41 @@ public sealed class SparkSqlDialectTest
             Throws.TypeOf<NotSupportedException>());
     }
 
+    [TestCase(false)]
+    [TestCase(true)]
+    public void TablePlanningPreservesFacetsCommentsAndQuotedDelimiters(bool delta)
+    {
+        var dialect = delta ? Databricks() : Spark();
+        var model = new DubUrl.Schema.Schema([new Table("t",
+        [
+            new VarLengthColumn("a)", DbType.String, 12, description: "Café's \\\\;"),
+            new NumericColumn("b", DbType.Decimal, 10, 2),
+            new Column("c", DbType.String),
+        ], description: "table's comment")]);
+        var sql = new SchemaScriptRenderer(dialect).Plan(model).Single().CommandText;
+
+        Assert.That(sql, Does.Contain("`a)` VARCHAR(12) COMMENT 'Café\\'s \\\\\\\\;'"));
+        Assert.That(sql, Does.Contain("`b` DECIMAL(10, 2)").And.Contain("`c` STRING"));
+        Assert.That(sql, Does.Contain(delta ? ") USING DELTA COMMENT 'table\\'s comment'" : ") USING PARQUET COMMENT 'table\\'s comment'"));
+    }
+
+    [Test]
+    public void DeltaEnforcesExplicitNotNullAndSparkRejectsIt()
+    {
+        var model = new DubUrl.Schema.Schema([new Table("t",
+            [new Column("id", DbType.Int32, constraints: [new DubUrl.Schema.Constraints.NotNullableConstraint()])])]);
+        Assert.That(new SchemaScriptRenderer(Databricks()).Plan(model).Single().CommandText, Does.Contain("`id` INT NOT NULL"));
+        Assert.That(() => new SchemaScriptRenderer(Spark()).Plan(model), Throws.Exception.With.Message.Contains("NOT NULL"));
+    }
+
+    [TestCase("UUID")]
+    [TestCase("HUGEINT")]
+    [TestCase("JSON")]
+    public void UnsupportedTypeRequiresAnExplicitConversion(string nativeType)
+        => Assert.That(() => Databricks().SchemaSqlRenderer.RenderColumnType(Databricks(), nativeType, null, 0, 0, true),
+            Throws.TypeOf<NotSupportedException>());
+
+
     private static SparkSqlDialect Spark() => DefaultRegistry.GetDialects("odbc+spark").Get<SparkSqlDialect>();
     private static DatabricksSqlDialect Databricks() => DefaultRegistry.GetDialects("odbc+databricks").Get<DatabricksSqlDialect>();
 }

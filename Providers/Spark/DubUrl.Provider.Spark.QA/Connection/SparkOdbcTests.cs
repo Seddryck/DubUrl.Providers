@@ -9,6 +9,7 @@ public sealed class SparkOdbcTests : OdbcContract
 {
     internal const string ThriftLocation = "odbc+spark://127.0.0.1";
     internal const string ThriftUrl = "odbc+spark+tcp://127.0.0.1?AuthMech=0&sasl=0";
+    private static ConnectionUrl NativeSchemaUrl => new(ThriftUrl + "&UseNativeQuery=1");
 
     protected override string AuthenticationConnectionUrl => ThriftLocation;
 
@@ -16,6 +17,9 @@ public sealed class SparkOdbcTests : OdbcContract
     protected override string SelectFirstCustomerSql => SparkOdbcCustomerQueries.First;
     protected override string SelectCustomerByIdSql => string.Empty;
     protected override bool SupportsParameters => false;
+
+    [Test, Category("ODBC")]
+    public void RenderTablesWithFacetsAndComments() => SparkSchemaQa.Tables(NativeSchemaUrl, delta: false);
 
     [Test, Category("ODBC")]
     public void OpenThriftServer()

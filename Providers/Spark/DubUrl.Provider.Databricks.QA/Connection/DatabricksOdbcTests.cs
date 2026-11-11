@@ -17,6 +17,9 @@ public sealed class DatabricksOdbcTests : OdbcContract
     protected override string SelectCustomerByIdSql => SparkOdbcCustomerQueries.ById;
 
     [Test, Category("ODBC")]
+    public void RenderTablesWithFacetsAndComments() => SparkSchemaQa.Tables(CreateLiveConnectionUrl(), delta: true);
+
+    [Test, Category("ODBC")]
     public void OpenFreeEditionWarehouse()
         => OdbcSmokeTest.Verify(CreateLiveConnectionUrl(), OdbcFactory.Instance);
 

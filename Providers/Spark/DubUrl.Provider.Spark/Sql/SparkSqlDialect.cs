@@ -11,7 +11,7 @@ namespace DubUrl.Provider.Spark.Sql;
 public sealed record SparkCatalogNameRules(StringComparer Comparer, int? MaxNamespaceParts = null,
     Func<string, bool>? IsValidObjectComponent = null);
 
-[DbTypeMapper<AnsiTypeMapper>]
+[DbTypeMapper<SparkTypeMapper>]
 [SqlFunctionMapper<AnsiFunctionMapper>]
 [Renderer<SparkSqlRenderer>]
 [ReturnCaster<DateTimeCaster<DateOnly>>]
@@ -30,6 +30,7 @@ public class SparkSqlDialect : BaseDialect
     public override DialectCapabilities Capabilities { get; } = new()
     {
         ObjectNames = ObjectNameParts.Name | ObjectNameParts.Schema | ObjectNameParts.Catalog,
+        SupportsComments = true,
     };
 
     internal SparkSqlDialect(ILanguage language, string[] aliases, IRenderer renderer, ICaster[] casters,

@@ -13,6 +13,7 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="../Shared/SparkOdbcQueryContract.cs" Link="Query/SparkOdbcQueryContract.cs" />
+    <Compile Include="../Shared/SparkSchemaQa.cs" Link="Connection/SparkSchemaQa.cs" />
     <None Update="qa-manifest.json" CopyToOutputDirectory="PreserveNewest" />
     <QaInfrastructure Include="infrastructure/**/*" />
   </ItemGroup>

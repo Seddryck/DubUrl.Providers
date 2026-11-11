@@ -7,7 +7,7 @@ using DubUrl.Querying.TypeMapping;
 
 namespace DubUrl.Provider.Spark.Sql;
 
-[DbTypeMapper<AnsiTypeMapper>]
+[DbTypeMapper<SparkTypeMapper>]
 [SqlFunctionMapper<AnsiFunctionMapper>]
 [Renderer<SparkSqlRenderer>]
 [ReturnCaster<DateTimeCaster<DateOnly>>]
