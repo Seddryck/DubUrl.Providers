@@ -37,6 +37,9 @@
   <Project Path="Providers/PostgreSql/DubUrl.Provider.QuestDb.QA/DubUrl.Provider.QuestDb.QA.csproj" />
   <Project Path="Providers/PostgreSql/DubUrl.Provider.Timescale.QA/DubUrl.Provider.Timescale.QA.csproj" />
   <Project Path="Providers/Snowflake/DubUrl.Provider.Snowflake/DubUrl.Provider.Snowflake.csproj" />
+  <Project Path="Providers/Spark/DubUrl.Provider.Spark/DubUrl.Provider.Spark.csproj" />
+  <Project Path="Providers/Spark/DubUrl.Provider.Spark.QA/DubUrl.Provider.Spark.QA.csproj" />
+  <Project Path="Providers/Spark/DubUrl.Provider.Databricks.QA/DubUrl.Provider.Databricks.QA.csproj" />
   <Project Path="Providers/Sqlite/DubUrl.Provider.Sqlite/DubUrl.Provider.Sqlite.csproj" />
   <Project Path="Providers/Sqlite/DubUrl.Provider.Sqlite.QA/DubUrl.Provider.Sqlite.QA.csproj" />
   <Project Path="Providers/SqlServer/DubUrl.Provider.MsSqlServer.QA/DubUrl.Provider.MsSqlServer.QA.csproj" />

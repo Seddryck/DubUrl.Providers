@@ -2,6 +2,9 @@ using System.Data;
 using System.Linq.Expressions;
 using Dapper;
 using DbReader;
+using DubUrl.Authentication;
+using DubUrl.Mapping;
+using DubUrl.Querying;
 using DubUrl.Extensions.DependencyInjection;
 using DubUrl.Registering;
 using Microsoft.Extensions.Configuration;
@@ -16,7 +19,13 @@ public abstract class ProviderContract : ConnectionQaContract
 {
     protected abstract string ConnectionUrl { get; }
     protected override string CliConnectionUrl => ConnectionUrl;
-    protected override ConnectionUrl CreateLiveConnectionUrl() => new(ConnectionUrl);
+    protected virtual ConnectionAuthentication? LiveAuthentication => null;
+
+    protected override ConnectionUrl CreateLiveConnectionUrl()
+    {
+        var url = new ConnectionUrl(ConnectionUrl);
+        return LiveAuthentication is { } authentication ? url.WithAuthentication(authentication) : url;
+    }
     protected abstract string SelectFirstCustomerSql { get; }
     protected abstract string SelectCustomerByIdSql { get; }
     protected abstract string SelectCustomerByPositionSql { get; }
@@ -47,14 +56,14 @@ public abstract class ProviderContract : ConnectionQaContract
     [Test, Category("ConnectionUrl")]
     public void Connect()
     {
-        using var connection = new ConnectionUrl(ConnectionUrl).Connect();
+        using var connection = CreateLiveConnectionUrl().Connect();
         Assert.That(connection.State, Is.EqualTo(ConnectionState.Closed));
     }
 
     [Test, Category("ConnectionUrl")]
     public void Open()
     {
-        using var connection = new ConnectionUrl(ConnectionUrl).Open();
+        using var connection = CreateLiveConnectionUrl().Open();
         Assert.That(connection.State, Is.EqualTo(ConnectionState.Open));
     }
 
@@ -73,7 +82,7 @@ public abstract class ProviderContract : ConnectionQaContract
 
     [Test, Category("DatabaseUrl")]
     public void QueryCustomerWithDatabase()
-        => Assert.That(new DatabaseUrl(ConnectionUrl).ReadScalarNonNull<string>(SelectFirstCustomerSql), Is.EqualTo("Nikola Tesla"));
+        => Assert.That(CreateDatabaseUrl().ReadScalarNonNull<string>(SelectFirstCustomerSql), Is.EqualTo("Nikola Tesla"));
 
     [Test, Category("ConnectionUrl")]
     public void QueryCustomerWithParams()
@@ -94,7 +103,7 @@ public abstract class ProviderContract : ConnectionQaContract
     [Test, Category("DatabaseUrl")]
     public void QueryCustomerWithDatabaseUrlAndQueryClass()
     {
-        var value = new DatabaseUrl(ConnectionUrl).ReadScalarNonNull<string>(new InlineProviderCommand(SelectFirstCustomerSql));
+        var value = CreateDatabaseUrl().ReadScalarNonNull<string>(new InlineProviderCommand(SelectFirstCustomerSql));
         Assert.That(value, Is.EqualTo("Nikola Tesla"));
     }
 
@@ -139,7 +148,7 @@ public abstract class ProviderContract : ConnectionQaContract
     {
         if (!SupportsNull)
             Assert.Ignore("The provider does not support the shared null-value contract.");
-        var value = new DatabaseUrl(ConnectionUrl).ReadScalar<string>(
+        var value = CreateDatabaseUrl().ReadScalar<string>(
             SelectAliasedPrimitiveTemplate,
             new Dictionary<string, object?> { ["value"] = null, ["columnId"] = "ColumnName" });
         Assert.That(value, Is.Null);
@@ -148,7 +157,7 @@ public abstract class ProviderContract : ConnectionQaContract
     [Test, Category("DatabaseUrl")]
     public void QueryRepeatWithDatabaseUrl()
     {
-        var database = new DatabaseUrl(ConnectionUrl);
+        var database = CreateDatabaseUrl();
         var template = database.CreateTemplate(SelectAliasedPrimitiveTemplate);
         var parameters = new Dictionary<string, object?> { ["value"] = "foo", ["columnId"] = "ColumnName" };
         foreach (var expected in new[] { "foo", "bar", "qrz" })
@@ -206,7 +215,7 @@ public abstract class ProviderContract : ConnectionQaContract
     {
         if (!SupportsDapper)
             Assert.Ignore("The provider is not supported by Dapper.");
-        using var connection = new ConnectionUrl(ConnectionUrl).Open();
+        using var connection = CreateLiveConnectionUrl().Open();
         AssertCustomers(connection.Query<Customer>(SelectAllCustomersSql).ToList());
     }
 
@@ -226,13 +235,13 @@ public abstract class ProviderContract : ConnectionQaContract
     {
         if (!SupportsDbReader)
             Assert.Ignore("The provider is not supported by DbReader.");
-        using var connection = new ConnectionUrl(ConnectionUrl).Open();
+        using var connection = CreateLiveConnectionUrl().Open();
         AssertCustomers(connection.Read<ReaderCustomer>(SelectAllCustomersSql).ToList());
     }
 
     private void AssertScalar(string sql, string expected)
     {
-        using var connection = new ConnectionUrl(ConnectionUrl).Open();
+        using var connection = CreateLiveConnectionUrl().Open();
         using var command = connection.CreateCommand();
         command.CommandText = sql;
         Assert.That(command.ExecuteScalar(), Is.EqualTo(expected));
@@ -240,7 +249,7 @@ public abstract class ProviderContract : ConnectionQaContract
 
     private void AssertParameter(string sql, string? name, int value, string expected)
     {
-        using var connection = new ConnectionUrl(ConnectionUrl).Open();
+        using var connection = CreateLiveConnectionUrl().Open();
         using var command = connection.CreateCommand();
         command.CommandText = sql;
         var parameter = command.CreateParameter();
@@ -254,17 +263,28 @@ public abstract class ProviderContract : ConnectionQaContract
 
     private void AssertPrimitive<T>(T expected)
     {
-        var actual = new DatabaseUrl(ConnectionUrl).ReadScalarNonNull<T>(
+        var actual = CreateDatabaseUrl().ReadScalarNonNull<T>(
             SelectPrimitiveTemplate, new Dictionary<string, object?> { ["value"] = expected });
         Assert.That(actual, Is.EqualTo(expected));
     }
 
-    private static IServiceCollection CreateServices(bool microOrm = false)
+    private DatabaseUrl CreateDatabaseUrl()
+        => new(CreateLiveConnectionUrl(), new(), NullQueryLogger.Instance);
+
+    private IServiceCollection CreateServices(bool microOrm = false)
     {
         var services = new ServiceCollection()
             .AddSingleton<IConfiguration>(new ConfigurationBuilder().AddInMemoryCollection().Build())
             .AddDubUrl(new DubUrlServiceOptions());
+        if (LiveAuthentication is { } authentication)
+            services.AddSingleton<ConnectionUrlFactory>(new AuthenticatedQaUrlFactory(CliRegistry, authentication));
         return microOrm ? services.WithMicroOrm() : services;
+    }
+
+    private sealed class AuthenticatedQaUrlFactory(ISchemeRegistry registry, ConnectionAuthentication authentication)
+        : ConnectionUrlFactory(registry)
+    {
+        public override ConnectionUrl Instantiate(string url) => base.Instantiate(url).WithAuthentication(authentication);
     }
 
     private static void AssertCustomers<T>(IReadOnlyCollection<T> customers) where T : ICustomer

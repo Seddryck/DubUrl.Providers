@@ -8,6 +8,8 @@ public sealed class BuiltInDriverLocatorFactory : DriverLocatorFactory
 {
     protected override void Initialize()
     {
+        AddDrivers(["databricks"], static _ => new DatabricksDriverLocator());
+        AddDrivers(["spark"], static _ => new SparkDriverLocator());
         AddDrivers(["drill"], static _ => new DrillDriverLocator());
         AddDrivers(["duck", "duckdb"], static _ => new DuckdbDriverLocator());
         AddDrivers(["maria", "mariadb"], static _ => new MariaDbDriverLocator());

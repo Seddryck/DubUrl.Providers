@@ -1,0 +1,29 @@
+services:
+  spark-thrift:
+    image: apache/spark:3.5.8-scala2.12-java17-python3-ubuntu
+    environment:
+      SPARK_NO_DAEMONIZE: "true"
+    command:
+      - /opt/spark/sbin/start-thriftserver.sh
+      - --master
+      - local[2]
+      - --conf
+      - spark.ui.enabled=false
+      - --hiveconf
+      - hive.server2.thrift.bind.host=0.0.0.0
+      - --hiveconf
+      - hive.server2.thrift.port=10000
+      - --hiveconf
+      - hive.server2.transport.mode=binary
+      - --hiveconf
+      - hive.server2.authentication=NOSASL
+      - --hiveconf
+      - hive.server2.use.SSL=false
+    ports:
+      - "127.0.0.1:10000:10000"
+    healthcheck:
+      test: ["CMD", "/opt/spark/bin/beeline", "-u", "jdbc:hive2://127.0.0.1:10000/default;auth=noSasl", "-n", "spark", "-e", "SELECT 1"]
+      interval: 5s
+      timeout: 15s
+      start_period: 30s
+      retries: 12
