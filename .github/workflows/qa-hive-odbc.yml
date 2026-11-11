@@ -1,0 +1,48 @@
+name: Hive ODBC QA
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'Providers/Hive/**'
+      - 'Providers/Odbc/**'
+      - 'QA/DubUrl.Provider.QA/**'
+      - '.github/workflows/qa-hive-odbc.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  DOTNET_CLI_TELEMETRY_OPTOUT: 1
+  DOTNET_NOLOGO: 1
+
+jobs:
+  hive:
+    name: HiveServer2
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: '10.0.401'
+      - name: Prepare pinned Linux ODBC driver
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y unixodbc odbcinst libsasl2-2
+          curl --fail --silent --show-error --location --retry 3 \
+            https://downloads.cloudera.com/connectors/ClouderaHiveODBC-2.10.1.1001/Debian/clouderahiveodbc_2.10.1.1001-2_amd64.deb \
+            --output "$RUNNER_TEMP/cloudera-hive-odbc.deb"
+      - name: Run Hive ODBC QA
+        run: |
+          export HIVE_ODBC_DEB="$RUNNER_TEMP/cloudera-hive-odbc.deb"
+          bash Providers/Hive/DubUrl.Provider.Hive.QA/infrastructure/run-qa.sh
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: hive-odbc-qa
+          path: .test-results/hive
+          if-no-files-found: warn

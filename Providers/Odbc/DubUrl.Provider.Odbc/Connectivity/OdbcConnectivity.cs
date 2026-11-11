@@ -1,4 +1,4 @@
-﻿using DubUrl.Mapping;
+using DubUrl.Mapping;
 using DubUrl.Mapping.Connectivity;
 using DubUrl.Locating;
 using DubUrl.Parsing;
@@ -25,9 +25,9 @@ public class OdbcConnectivity : IWrapperConnectivity {
     public IEnumerable<string> DefineAliases(WrapperConnectivityAttribute connectivity, DatabaseAttribute database, LocatorAttribute locator)
     {
         var aliases = CartesianProduct(connectivity.Aliases, database.Aliases);
-        return database.Aliases.Contains("spark", StringComparer.OrdinalIgnoreCase)
-            ? aliases.Concat(SparkOdbcTransport.Aliases)
-            : aliases;
+        return aliases.Concat(database.Aliases
+            .Where(alias => alias is "spark" or "hive")
+            .SelectMany(ThriftOdbcTransport.Aliases));
     }
 
     private static IEnumerable<string> CartesianProduct(string[] firstArray, string[] secondArray)

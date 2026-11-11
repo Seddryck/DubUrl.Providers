@@ -15,11 +15,7 @@ public sealed class SparkDriverLocator : IDriverLocator
 
     internal SparkDriverLocator(DriverLister lister) => this.lister = lister;
 
-    public string Locate() => LocateRegistered(lister, DriverName);
-
-    internal static string LocateRegistered(DriverLister lister, string name)
-        => lister.List().FirstOrDefault(driver => driver.Equals(name, StringComparison.OrdinalIgnoreCase))
-            ?? throw new DriverDiscoveryException($"The ODBC driver '{name}' is not registered.");
+    public string Locate() => lister.LocateRegistered(DriverName);
 
     internal sealed class DriverRegex() : BaseDriverRegex([new LiteralMatch(DriverName)]);
 }
@@ -34,7 +30,7 @@ public sealed class DatabricksDriverLocator : IDriverLocator
 
     internal DatabricksDriverLocator(DriverLister lister) => this.lister = lister;
 
-    public string Locate() => SparkDriverLocator.LocateRegistered(lister, DriverName);
+    public string Locate() => lister.LocateRegistered(DriverName);
 
     internal sealed class DriverRegex() : BaseDriverRegex([new LiteralMatch(DriverName)]);
 }
