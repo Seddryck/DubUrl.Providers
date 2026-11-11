@@ -35,6 +35,7 @@ public sealed class SparkOdbcTest
             Assert.That(settings["HTTPPath"], Is.EqualTo(path));
             Assert.That(settings["ThriftTransport"], Is.EqualTo("2"));
             Assert.That(settings["SSL"], Is.EqualTo("1"));
+            Assert.That(settings.ContainsKey("EnableArrow"), Is.False);
             Assert.That(settings["Catalog"], Is.EqualTo("qa"));
             Assert.That(settings["Schema"], Is.EqualTo("default"));
         });
@@ -47,7 +48,7 @@ public sealed class SparkOdbcTest
     public void RouteMapsPortsAndPreservesExplicitOptions(string scheme, string port, string expected)
     {
         var url = new ConnectionUrl(
-            $"{scheme}://localhost{port}/unused?driver=Explicit&HTTPPath=%2Fcustom%2F&SSL=0&ThriftTransport=1&AuthMech=0", Registry());
+            $"{scheme}://localhost{port}/unused?driver=Explicit&HTTPPath=%2Fcustom%2F&SSL=0&ThriftTransport=1&AuthMech=0&EnableArrow=1", Registry());
         var settings = new OdbcConnectionStringBuilder(url.Parse());
 
         Assert.Multiple(() =>
@@ -58,11 +59,12 @@ public sealed class SparkOdbcTest
             Assert.That(settings["SSL"], Is.EqualTo("0"));
             Assert.That(settings["ThriftTransport"], Is.EqualTo("1"));
             Assert.That(settings["AuthMech"], Is.EqualTo("0"));
+            Assert.That(settings["EnableArrow"], Is.EqualTo("1"));
         });
     }
 
     [Test]
-    public void SparkDoesNotApplyDatabricksDefaults()
+    public void SparkUsesStandardThriftResults()
     {
         var url = new ConnectionUrl("odbc+spark://localhost?Driver=Explicit", Registry());
         var settings = new OdbcConnectionStringBuilder(url.Parse());
@@ -70,6 +72,7 @@ public sealed class SparkOdbcTest
         Assert.Multiple(() =>
         {
             Assert.That(settings.ContainsKey("HTTPPath"), Is.False);
+            Assert.That(settings["EnableArrow"], Is.EqualTo("0"));
             Assert.That(settings.ContainsKey("ThriftTransport"), Is.False);
             Assert.That(settings.ContainsKey("SSL"), Is.False);
         });

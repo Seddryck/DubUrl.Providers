@@ -35,6 +35,11 @@ internal sealed class SparkOdbcRewriter(DbConnectionStringBuilder builder, Drive
                 Specificator.Execute("ThriftTransport", "2");
                 Specificator.Execute("SSL", "1");
             }
+            else
+            {
+                // Apache Spark Thrift Server returns standard Thrift results.
+                Specificator.Execute("EnableArrow", "0");
+            }
         }
     }
 }
