@@ -21,7 +21,7 @@ public abstract class OdbcContract : ConnectionQaContract
     [Test, Category("ODBC")]
     public void Connect()
     {
-        using var connection = new ConnectionUrl(ConnectionUrl).Connect();
+        using var connection = CreateLiveConnectionUrl().Connect();
         Assert.That(connection.State, Is.EqualTo(ConnectionState.Closed));
     }
 
@@ -39,7 +39,7 @@ public abstract class OdbcContract : ConnectionQaContract
 
     private void AssertScalar(string sql, string? parameterName, int parameterValue, string expected)
     {
-        using var connection = new ConnectionUrl(ConnectionUrl).Open();
+        using var connection = CreateLiveConnectionUrl().Open();
         using var command = connection.CreateCommand();
         command.CommandText = sql;
         if (parameterName is not null)

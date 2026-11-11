@@ -26,7 +26,7 @@ Every active provider QA job requires a passing live connection lifecycle, custo
 CI live QA is disabled for Snowflake, Teradata, and SSAS Tabular and Multidimensional. SSAS keeps its named checks for its package and manifest checks only.
 The required Apache Drill QA check builds the provider and validates its manifest. Live ODBC QA requires an authenticated driver distribution and is excluded on public runners.
 
-The on-demand [Databricks Free Edition](Providers/Spark/DubUrl.Provider.Databricks.QA/infrastructure/README.md) and [Apache Spark](Providers/Spark/DubUrl.Provider.Spark.QA/infrastructure/README.md) ODBC fixtures check connectivity with a single query.
+The on-demand [Databricks Free Edition](Providers/Spark/DubUrl.Provider.Databricks.QA/infrastructure/README.md) and [Apache Spark](Providers/Spark/DubUrl.Provider.Spark.QA/infrastructure/README.md) ODBC fixtures check connectivity, DDL, and table metadata using the [Spark SQL and Databricks SQL dialects](Providers/Spark/README.md).
 
 The published [DubUrl.ProviderTesting 0.60.0 package](https://www.nuget.org/packages/DubUrl.ProviderTesting/0.60.0) remains available for compatibility. The internal DubUrl.Provider.QA project is not published.
 
