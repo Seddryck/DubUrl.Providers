@@ -40,13 +40,27 @@ jobs:
         run: |
           mkdir -p .test-results/databricks
           archive="$RUNNER_TEMP/databricks-odbc.zip"
-          curl --fail --silent --show-error --location --retry 3 \
+          curl --fail --silent --show-error --location --retry 3 --retry-max-time 120 --connect-timeout 10 --max-time 60 \
             https://databricks-bi-artifacts.s3.amazonaws.com/simba-databricks-odbc-drivers/2.14.0/DatabricksODBC-2.14.0-Debian-64bit.zip \
             --output "$archive"
           echo "835f793a68e704e93a3726dc5f873140cc9d8e11a33c6c62b0400435b8d08aa8  $archive" | sha256sum --check
           unzip -q "$archive" -d "$RUNNER_TEMP/databricks-odbc"
-          sudo apt-get update
-          sudo apt-get install -y unixodbc odbcinst "$RUNNER_TEMP/databricks-odbc/databricksodbc_2.14.0.1000-2_amd64.deb"
+          # Use Ubuntu's HTTPS archives directly. The hosted runner's Azure mirror can fail DNS resolution.
+          sources="$RUNNER_TEMP/databricks-ubuntu.list"
+          cat > "$sources" <<'EOF'
+          deb https://archive.ubuntu.com/ubuntu noble main universe
+          deb https://archive.ubuntu.com/ubuntu noble-updates main universe
+          deb https://security.ubuntu.com/ubuntu noble-security main universe
+          EOF
+          apt_options=(
+            -o "Dir::Etc::sourcelist=$sources"
+            -o Dir::Etc::sourceparts=-
+            -o Acquire::https::Timeout=15
+            -o Acquire::Retries=2
+          )
+          sudo apt-get "${apt_options[@]}" -o APT::Update::Error-Mode=any update
+          sudo apt-get "${apt_options[@]}" install -y unixodbc odbcinst \
+            "$RUNNER_TEMP/databricks-odbc/databricksodbc_2.14.0.1000-2_amd64.deb"
           printf '%s\n' '[Databricks ODBC Driver]' 'Driver=/opt/databricks/databricksodbc/lib/64/libdatabricksodbc64.so' > "$RUNNER_TEMP/databricks-odbc.ini"
           sudo odbcinst -i -d -f "$RUNNER_TEMP/databricks-odbc.ini"
           odbcinst -q -d -n 'Databricks ODBC Driver' >/dev/null
