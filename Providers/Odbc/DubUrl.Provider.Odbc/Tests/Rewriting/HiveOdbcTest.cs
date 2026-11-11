@@ -3,6 +3,7 @@ using System.Data.Odbc;
 using DubUrl.Core.Testing.Conversion;
 using DubUrl.Locating.OdbcDriver;
 using DubUrl.Mapping;
+using DubUrl.Provider.Hive.Sql;
 using DubUrl.Provider.Odbc.Drivers.Discovery;
 using DubUrl.Provider.Odbc.Mapping;
 using DubUrl.Querying.Parametrizing;
@@ -12,6 +13,18 @@ namespace DubUrl.Provider.Odbc.Tests.Rewriting;
 
 public sealed class HiveOdbcTest
 {
+    [TestCase("select", "`select`")]
+    [TestCase("has`tick", "`has``tick`")]
+    [TestCase("analytics.order details.select", "`analytics`.`order details`.`select`")]
+    [TestCase("analytics.has`tick", "`analytics`.`has``tick`")]
+    public void HiveRouteQuotesIdentifiers(string identifier, string expected)
+    {
+        var url = new ConnectionUrl("odbc+hive://localhost?Driver=Explicit", Registry());
+
+        Assert.That(url.Dialect, Is.TypeOf<HiveDialect>());
+        Assert.That(url.Dialect.Renderer.Render(identifier, "identity"), Is.EqualTo(expected));
+    }
+
     [TestCase("example.com/analytics", "10000", "analytics")]
     [TestCase("example.com:10001/my%20database", "10001", "my database")]
     public void MapsEndpointAndPreservesDriverOptions(string endpoint, string port, string schema)
