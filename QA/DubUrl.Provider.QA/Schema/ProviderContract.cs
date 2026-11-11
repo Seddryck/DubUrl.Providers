@@ -318,6 +318,7 @@ public abstract partial class ProviderContract : SchemaContract
     }
 
     protected virtual TablePhysicalOptions? PhysicalOptions(string scenario) => null;
+    protected virtual bool VerifyNativeCharacterKeySemantics => false;
 
     private void Keys(string scenario)
     {
@@ -331,7 +332,39 @@ public abstract partial class ProviderContract : SchemaContract
         Execute($"INSERT INTO {Q(table.Identity)} VALUES ({value},2)");
         Assert.That(() => Execute($"INSERT INTO {Q(table.Identity)} VALUES ({value},2)"), Throws.InstanceOf<DbException>());
         if (composite) Execute($"INSERT INTO {Q(table.Identity)} VALUES ({value},3)");
+        if (native is not null && VerifyNativeCharacterKeySemantics)
+            NativeCharacterKeys(table, native);
     }
+
+    private void NativeCharacterKeys(Table primary, NativeDatabaseType native)
+    {
+        var code = new VarLengthColumn("code", DbType.AnsiString, 20, nativeType: native);
+        var unique = new Table(Name("unique"), [code], [new UniquenessConstraint([code])]);
+        var child = new Table(Name("child"), [code],
+            [new ForeignKey(Name("fk"), ["code"], unique.Name, ["code"])]);
+        Assert.That(Deploy(new([child, unique])), Is.True);
+
+        var primaryName = Q(primary.Identity);
+        var uniqueName = Q(unique.Identity);
+        var childName = Q(child.Identity);
+        Execute($"INSERT INTO {uniqueName} VALUES ('STD')");
+        Execute($"INSERT INTO {childName} VALUES ('STD')");
+        Assert.That(() => Execute($"INSERT INTO {uniqueName} VALUES ('STD')"), Throws.InstanceOf<DbException>());
+        Assert.That(() => Execute($"INSERT INTO {childName} VALUES ('missing')"), Throws.InstanceOf<DbException>());
+        Assert.That(() => Execute($"INSERT INTO {primaryName} VALUES ('{new string('x', 21)}', 2)"), Throws.InstanceOf<DbException>());
+
+        if (native.Name.Equals("CHAR", StringComparison.OrdinalIgnoreCase))
+        {
+            Assert.That(() => Execute($"INSERT INTO {primaryName} VALUES ('STD ', 2)"), Throws.InstanceOf<DbException>());
+            Execute($"INSERT INTO {childName} VALUES ('STD ')");
+        }
+        else
+        {
+            Execute($"INSERT INTO {primaryName} VALUES ('STD ', 2)");
+            Assert.That(() => Execute($"INSERT INTO {childName} VALUES ('STD ')"), Throws.InstanceOf<DbException>());
+        }
+    }
+
     private SchemaModel RelationshipSchema(bool composite = true)
     {
         var b = Id("b"); var a = Id("a");
