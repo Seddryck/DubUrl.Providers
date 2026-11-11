@@ -7,7 +7,11 @@ namespace DubUrl.Provider.Spark.QA.Connection;
 [Category("Live")]
 public sealed class SparkOdbcTests : OdbcContract
 {
-    internal const string ThriftUrl = "odbc+spark://127.0.0.1?AuthMech=0&ThriftTransport=0&SSL=0";
+    internal const string ThriftLocation = "odbc+spark://127.0.0.1";
+    internal const string ThriftUrl = ThriftLocation
+        + "?AuthMech=0&ThriftTransport=0&SSL=0&UseNativeQuery=1&EnableNativeParameterizedQuery=1&PopulateParametersForNativeQuery=1";
+
+    protected override string AuthenticationConnectionUrl => ThriftLocation;
 
     protected override string ConnectionUrl => ThriftUrl;
     protected override string SelectFirstCustomerSql => SparkOdbcCustomerQueries.First;

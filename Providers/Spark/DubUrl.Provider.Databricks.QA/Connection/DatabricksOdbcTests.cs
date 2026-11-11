@@ -10,6 +10,7 @@ namespace DubUrl.Provider.Databricks.QA.Connection;
 public sealed class DatabricksOdbcTests : OdbcContract
 {
     protected override string ConnectionUrl => DatabricksWarehouse.Url;
+    protected override string AuthenticationConnectionUrl => DatabricksWarehouse.Location;
     protected override ConnectionUrl CreateLiveConnectionUrl()
         => base.CreateLiveConnectionUrl().WithAuthentication(DatabricksWarehouse.Authentication);
     protected override string SelectFirstCustomerSql => SparkOdbcCustomerQueries.First;
@@ -29,7 +30,9 @@ internal static class DatabricksWarehouse
     internal static ConnectionAuthentication Authentication
         => ConnectionAuthentication.UsernamePassword("token", RequireVariable("DATABRICKS_TOKEN"));
 
-    internal static string Url
+    internal static string Url => Location + "?AuthMech=3";
+
+    internal static string Location
     {
         get
         {
@@ -43,7 +46,7 @@ internal static class DatabricksWarehouse
                 || !path[warehousePrefix.Length..].All(char.IsAsciiLetterOrDigit))
                 Assert.Fail("DATABRICKS_HTTP_PATH must be the warehouse HTTP path.");
 
-            return $"odbc+databricks://{host}{path}?AuthMech=3";
+            return $"odbc+databricks://{host}{path}";
         }
     }
 

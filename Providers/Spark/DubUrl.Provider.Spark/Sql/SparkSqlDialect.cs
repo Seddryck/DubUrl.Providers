@@ -14,6 +14,7 @@ public sealed record SparkCatalogNameRules(StringComparer Comparer, int? MaxName
 [DbTypeMapper<AnsiTypeMapper>]
 [SqlFunctionMapper<AnsiFunctionMapper>]
 [Renderer<SparkSqlRenderer>]
+[ReturnCaster<DateTimeCaster<DateOnly>>]
 [ParentLanguage<SqlLanguage>]
 public class SparkSqlDialect : BaseDialect
 {

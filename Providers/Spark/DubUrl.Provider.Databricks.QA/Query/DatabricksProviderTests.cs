@@ -9,5 +9,8 @@ namespace DubUrl.Provider.Databricks.QA.Query;
 public sealed class DatabricksProviderTests : SparkOdbcQueryContract
 {
     protected override string ConnectionUrl => DatabricksWarehouse.Url;
+    protected override string AuthenticationConnectionUrl => DatabricksWarehouse.Location;
     protected override ConnectionAuthentication LiveAuthentication => DatabricksWarehouse.Authentication;
+    protected override bool SupportsTime => false;
+    protected override bool SupportsInterval => false;
 }

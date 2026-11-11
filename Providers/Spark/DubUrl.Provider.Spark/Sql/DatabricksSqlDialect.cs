@@ -10,6 +10,7 @@ namespace DubUrl.Provider.Spark.Sql;
 [DbTypeMapper<AnsiTypeMapper>]
 [SqlFunctionMapper<AnsiFunctionMapper>]
 [Renderer<SparkSqlRenderer>]
+[ReturnCaster<DateTimeCaster<DateOnly>>]
 [ParentLanguage<SqlLanguage>]
 public sealed class DatabricksSqlDialect : SparkSqlDialect
 {

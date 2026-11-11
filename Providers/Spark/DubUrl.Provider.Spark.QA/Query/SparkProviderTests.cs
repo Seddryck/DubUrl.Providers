@@ -7,5 +7,7 @@ namespace DubUrl.Provider.Spark.QA.Query;
 public sealed class SparkProviderTests : SparkOdbcQueryContract
 {
     protected override string ConnectionUrl => SparkOdbcTests.ThriftUrl;
+    protected override string AuthenticationConnectionUrl => SparkOdbcTests.ThriftLocation;
     protected override bool SupportsTime => false;
+    protected override bool SupportsInterval => false;
 }
