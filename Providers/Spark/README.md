@@ -9,14 +9,4 @@ Both dialects quote each identifier component with backticks and double an embed
 
 Use `ValidateObjectNames` to check a batch of table identities for collisions under the selected catalog's rules. Supply the same qualification for names that resolve to the same namespace. Portable table planning also checks column collisions.
 
-## Map a DuckDB database to a Databricks catalog
-
-Keep the source database, target catalog, and schema as distinct components. Call `MapDuckDbObjectName` explicitly to select the source database and destination catalog.
-
-```csharp
-var dialect = DefaultRegistry.GetDialects("odbc+databricks").Get<DatabricksSqlDialect>();
-var source = new SchemaSqlObjectName("events", Schema: "main", Database: "analytics");
-var target = dialect.MapDuckDbObjectName(source, "analytics", "warehouse");
-```
-
-The resulting SQL name is `` `warehouse`.`main`.`events` ``. The mapping requires a matching source database and an explicit schema. It rejects an existing catalog qualifier. `Catalog` and `Schema` can also be supplied independently as ODBC connection options to select session defaults.
+The Databricks ODBC route accepts `Catalog` and `Schema` as separate connection options to select session defaults.

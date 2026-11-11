@@ -94,18 +94,10 @@ public sealed class SparkSqlDialectTest
     }
 
     [Test]
-    public void DuckDbMappingRequiresAnExplicitSourceDatabaseAndPreservesSchema()
+    public void DatabricksRejectsDatabaseQualifier()
     {
         var dialect = Databricks();
-        var source = new SchemaSqlObjectName("t", "main", "local");
-        var mapped = dialect.MapDuckDbObjectName(source, "local", "target");
-        Assert.That(mapped, Is.EqualTo(new SchemaSqlObjectName("t", "main", Catalog: "target")));
-        Assert.That(dialect.SchemaSqlRenderer.RenderObjectName(dialect, mapped.Catalog, mapped.Database, mapped.Schema, mapped.Name),
-            Is.EqualTo("`target`.`main`.`t`"));
-        Assert.That(() => dialect.MapDuckDbObjectName(source, "other", "target"), Throws.ArgumentException);
-        Assert.That(() => dialect.MapDuckDbObjectName(source with { Catalog = "conflict" }, "local", "target"), Throws.ArgumentException);
-        Assert.That(() => dialect.MapDuckDbObjectName(source with { Schema = null }, "local", "target"), Throws.ArgumentException);
-        Assert.That(() => dialect.SchemaSqlRenderer.RenderObjectName(dialect, null, "local", "main", "t"),
+        Assert.That(() => dialect.SchemaSqlRenderer.RenderObjectName(dialect, null, "database", "schema", "table"),
             Throws.TypeOf<NotSupportedException>());
     }
 

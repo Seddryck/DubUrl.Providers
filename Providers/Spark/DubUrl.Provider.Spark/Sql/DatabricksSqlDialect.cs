@@ -32,20 +32,6 @@ public sealed class DatabricksSqlDialect : SparkSqlDialect
             throw new ArgumentException($"'{catalog}' is not a valid Unity Catalog name.", nameof(catalog));
     }
 
-    /// <summary>Maps an explicitly selected DuckDB database to a Unity Catalog catalog, preserving the schema and object.</summary>
-    public SchemaSqlObjectName MapDuckDbObjectName(SchemaSqlObjectName source, string sourceDatabase, string destinationCatalog)
-    {
-        ArgumentNullException.ThrowIfNull(source);
-        ArgumentException.ThrowIfNullOrEmpty(sourceDatabase);
-        ArgumentException.ThrowIfNullOrEmpty(destinationCatalog);
-        if (source.Catalog is not null || source.Schema is null
-            || !string.Equals(source.Database, sourceDatabase, StringComparison.OrdinalIgnoreCase))
-            throw new ArgumentException("The DuckDB name must include the selected database and a schema.", nameof(source));
-
-        _ = RenderObjectName(source.Name, [source.Schema], destinationCatalog);
-        return source with { Database = null, Catalog = destinationCatalog };
-    }
-
     private static bool IsUnityCatalogName(string name)
         => name.EnumerateRunes().Count() <= 255
             && !name.Any(character => character is '.' or ' ' or '/' or <= '\u001F' or '\u007F');
