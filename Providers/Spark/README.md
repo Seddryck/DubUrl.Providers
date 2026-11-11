@@ -9,4 +9,13 @@ Both dialects quote each identifier component with backticks and double an embed
 
 Use `ValidateObjectNames` to check a batch of table identities for collisions under the selected catalog's rules. Supply the same qualification for names that resolve to the same namespace. Portable table planning also checks column collisions.
 
-The Databricks ODBC route accepts `Catalog` and `Schema` as separate connection options to select session defaults.
+## Databricks connection URLs
+
+```text
+odbc+databricks://<host>[:<port>]/warehouse/<warehouse-id>[/<catalog>[/<schema>]]
+odbc+databricks://<host>[:<port>]/cluster/<workspace-id>/<cluster-id>[/<catalog>[/<schema>]]
+```
+
+The warehouse form generates `HTTPPath=/sql/1.0/warehouses/<warehouse-id>`. The cluster form generates `HTTPPath=/sql/protocolv1/o/<workspace-id>/<cluster-id>`. Find the hostname and IDs in the compute resource's connection details. The optional trailing segments map to the driver's `Catalog` and `Schema` settings. Include a catalog when specifying a schema.
+
+Use the shortcut path in the URL. The mapper rejects a raw HTTP endpoint path and the `HTTPPath`, `Catalog`, and `Schema` query options. Other driver options can still be passed in the query string. [Databricks ODBC connection details](https://docs.databricks.com/aws/en/integrations/odbc/compute)

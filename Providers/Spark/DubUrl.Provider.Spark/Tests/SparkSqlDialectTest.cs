@@ -11,13 +11,13 @@ namespace DubUrl.Provider.Spark.Tests;
 
 public sealed class SparkSqlDialectTest
 {
-    [TestCase("odbc+spark", typeof(SparkSqlDialect))]
-    [TestCase("odbc+databricks", typeof(DatabricksSqlDialect))]
-    public void SchemeSelectsDialectEvenWithExplicitDriver(string scheme, Type expected)
+    [TestCase("odbc+spark", "", typeof(SparkSqlDialect))]
+    [TestCase("odbc+databricks", "/warehouse/qa", typeof(DatabricksSqlDialect))]
+    public void SchemeSelectsDialectEvenWithExplicitDriver(string scheme, string path, Type expected)
     {
         DbProviderFactories.RegisterFactory("System.Data.Odbc", OdbcFactory.Instance);
         var registry = new ProviderCatalogBuilder().AddApplicationProviders().Build();
-        var url = new ConnectionUrl($"{scheme}://example.com?Driver=Explicit", registry);
+        var url = new ConnectionUrl($"{scheme}://example.com{path}?Driver=Explicit", registry);
 
         Assert.That(url.Dialect.GetType(), Is.EqualTo(expected));
         Assert.That(DefaultRegistry.GetDialects(scheme).Get(scheme).GetType(), Is.EqualTo(expected));

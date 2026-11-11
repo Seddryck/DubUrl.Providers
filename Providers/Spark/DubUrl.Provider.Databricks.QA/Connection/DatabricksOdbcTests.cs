@@ -37,16 +37,14 @@ internal static class DatabricksWarehouse
         get
         {
             var host = RequireVariable("DATABRICKS_HOST");
-            var path = RequireVariable("DATABRICKS_HTTP_PATH");
+            var warehouseId = RequireVariable("DATABRICKS_WAREHOUSE_ID");
 
             if (Uri.CheckHostName(host) != UriHostNameType.Dns)
                 Assert.Fail("DATABRICKS_HOST must be the warehouse hostname.");
-            const string warehousePrefix = "/sql/1.0/warehouses/";
-            if (!path.StartsWith(warehousePrefix, StringComparison.Ordinal) || path.Length == warehousePrefix.Length
-                || !path[warehousePrefix.Length..].All(char.IsAsciiLetterOrDigit))
-                Assert.Fail("DATABRICKS_HTTP_PATH must be the warehouse HTTP path.");
+            if (!warehouseId.All(char.IsAsciiLetterOrDigit))
+                Assert.Fail("DATABRICKS_WAREHOUSE_ID must contain only the warehouse ID.");
 
-            return $"odbc+databricks://{host}{path}";
+            return $"odbc+databricks://{host}/warehouse/{warehouseId}";
         }
     }
 
