@@ -1,35 +1,50 @@
 using System.Data.Odbc;
 using DubUrl.Authentication;
+using DubUrl.Provider.Spark.QA;
 using DubUrl.Providers.QA.Contracts.Connection;
 using NUnit.Framework;
 
 namespace DubUrl.Provider.Databricks.QA.Connection;
 
-public sealed class DatabricksOdbcTests
+[Category("Live")]
+public sealed class DatabricksOdbcTests : OdbcContract
 {
-    [Test, Category("Live"), Category("ODBC")]
+    protected override string ConnectionUrl => DatabricksWarehouse.Url;
+    protected override ConnectionUrl CreateLiveConnectionUrl()
+        => base.CreateLiveConnectionUrl().WithAuthentication(DatabricksWarehouse.Authentication);
+    protected override string SelectFirstCustomerSql => SparkOdbcCustomerQueries.First;
+    protected override string SelectCustomerByIdSql => SparkOdbcCustomerQueries.ById;
+
+    [Test, Category("ODBC")]
     public void OpenFreeEditionWarehouse()
-        => OdbcSmokeTest.Verify(FreeEditionUrl(), OdbcFactory.Instance);
+        => OdbcSmokeTest.Verify(CreateLiveConnectionUrl(), OdbcFactory.Instance);
 
-    [Test, Category("Live"), Category("ODBC")]
+    [Test, Category("ODBC")]
     public void CreateDescribeAndDropUnityCatalogTable()
-        => OdbcDdlTest.Verify(FreeEditionUrl(), OdbcFactory.Instance, "qa-table", "SeLeCt");
+        => OdbcDdlTest.Verify(CreateLiveConnectionUrl(), OdbcFactory.Instance, "qa-table", "SeLeCt");
+}
 
-    private static ConnectionUrl FreeEditionUrl()
+internal static class DatabricksWarehouse
+{
+    internal static ConnectionAuthentication Authentication
+        => ConnectionAuthentication.UsernamePassword("token", RequireVariable("DATABRICKS_TOKEN"));
+
+    internal static string Url
     {
-        var host = RequireVariable("DATABRICKS_HOST");
-        var path = RequireVariable("DATABRICKS_HTTP_PATH");
-        var token = RequireVariable("DATABRICKS_TOKEN");
+        get
+        {
+            var host = RequireVariable("DATABRICKS_HOST");
+            var path = RequireVariable("DATABRICKS_HTTP_PATH");
 
-        if (Uri.CheckHostName(host) != UriHostNameType.Dns)
-            Assert.Fail("DATABRICKS_HOST must be the warehouse hostname.");
-        const string warehousePrefix = "/sql/1.0/warehouses/";
-        if (!path.StartsWith(warehousePrefix, StringComparison.Ordinal) || path.Length == warehousePrefix.Length
-            || !path[warehousePrefix.Length..].All(char.IsAsciiLetterOrDigit))
-            Assert.Fail("DATABRICKS_HTTP_PATH must be the warehouse HTTP path.");
+            if (Uri.CheckHostName(host) != UriHostNameType.Dns)
+                Assert.Fail("DATABRICKS_HOST must be the warehouse hostname.");
+            const string warehousePrefix = "/sql/1.0/warehouses/";
+            if (!path.StartsWith(warehousePrefix, StringComparison.Ordinal) || path.Length == warehousePrefix.Length
+                || !path[warehousePrefix.Length..].All(char.IsAsciiLetterOrDigit))
+                Assert.Fail("DATABRICKS_HTTP_PATH must be the warehouse HTTP path.");
 
-        return new ConnectionUrl($"odbc+databricks://{host}{path}?AuthMech=3")
-            .WithAuthentication(ConnectionAuthentication.UsernamePassword("token", token));
+            return $"odbc+databricks://{host}{path}?AuthMech=3";
+        }
     }
 
     private static string RequireVariable(string name)
