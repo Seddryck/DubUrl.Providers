@@ -2,6 +2,7 @@ using System.Data;
 using System.Data.Odbc;
 using DubUrl.Provider.Spark.Sql;
 using DubUrl.Schema;
+using DubUrl.Schema.Constraints;
 using DubUrl.Authentication;
 using DubUrl.Provider.Spark.QA;
 using DubUrl.Providers.QA.Contracts.Connection;
@@ -18,6 +19,38 @@ public sealed class DatabricksOdbcTests : OdbcContract
         => base.CreateLiveConnectionUrl().WithAuthentication(DatabricksWarehouse.Authentication);
     protected override string SelectFirstCustomerSql => SparkOdbcCustomerQueries.First;
     protected override string SelectCustomerByIdSql => SparkOdbcCustomerQueries.ById;
+
+    [Test, Category("ODBC")]
+    public void DeltaChecksEnforceComparisonMembershipAndRegex()
+    {
+        var url = CreateLiveConnectionUrl();
+        SparkSchemaQa.WithScratch(url, (connection, catalog, schema) =>
+        {
+            var name = new DatabaseObjectName("delta_checks", schema, catalog: catalog);
+            var value = new ColumnIdentityExpression("score");
+            var table = new Table(name, [new Column("score", DbType.Int32), new Column("tag", DbType.String)],
+            [
+                new CheckConstraint(value, ">=", new ValueExpression(0), "positive_score"),
+                new MembershipCheckConstraint(value, [1, 2, null], NullMembershipBehavior.MatchNull, "allowed_score"),
+                new RegexCheckConstraint(new ColumnIdentityExpression("tag"), @"^\d+$", RegexNullBehavior.RejectNull, "numeric_tag"),
+            ]);
+            foreach (var command in new SchemaScriptRenderer(url.Dialect).Plan(new DubUrl.Schema.Schema([table])))
+                SparkSchemaQa.Execute(connection, command.CommandText);
+
+            var target = url.Dialect.SchemaSqlRenderer.RenderObjectName(url.Dialect, catalog, null, schema, table.Name);
+            SparkSchemaQa.Execute(connection, $"INSERT INTO {target} VALUES (1, '123'), (NULL, '456')");
+            foreach (var rejected in new[] { "(-1, '123')", "(3, '123')", "(1, 'bad')", "(1, NULL)" })
+                Assert.That(() => SparkSchemaQa.Execute(connection, $"INSERT INTO {target} VALUES {rejected}"),
+                    Throws.InstanceOf<System.Data.Common.DbException>());
+            Assert.That(SparkSchemaQa.Scalar(connection, $"SELECT COUNT(*) FROM {target}"), Is.EqualTo(2));
+            using var properties = connection.CreateCommand();
+            properties.CommandText = $"SHOW TBLPROPERTIES {target} ('delta.constraints.numeric_tag')";
+            using var rows = properties.ExecuteReader();
+            Assert.That(rows.Read(), Is.True);
+            Assert.That(rows.GetString(1), Does.Contain("RLIKE").IgnoreCase);
+        });
+    }
+
 
     [Test, Category("ODBC")]
     public void DeltaIdentitySupportsExplicitValuesAndResetsOnReplacement()

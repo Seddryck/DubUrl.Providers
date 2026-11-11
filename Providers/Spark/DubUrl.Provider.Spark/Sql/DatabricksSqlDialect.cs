@@ -23,6 +23,7 @@ public sealed class DatabricksSqlDialect : SparkSqlDialect
     public override DialectCapabilities Capabilities => base.Capabilities with
     {
         SupportsIdentityColumns = true,
+        SupportsRegularExpressionChecks = true,
         SupportsStoredGeneratedColumns = true,
     };
 

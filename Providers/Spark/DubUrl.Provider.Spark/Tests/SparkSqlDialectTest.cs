@@ -5,6 +5,7 @@ using DubUrl.Mapping;
 using DubUrl.Provider.Spark.Sql;
 using DubUrl.Querying.Dialects;
 using DubUrl.Schema;
+using DubUrl.Schema.Constraints;
 using NUnit.Framework;
 
 namespace DubUrl.Provider.Spark.Tests;
@@ -182,6 +183,27 @@ public sealed class SparkSqlDialectTest
             .And.Not.Contain("allowColumnDefaults"));
         Assert.That(() => renderer.Plan(Model(DbType.Int32)), Throws.Exception.With.Message.Contains("BIGINT"));
         Assert.That(() => new SchemaScriptRenderer(Spark()).Plan(Model(DbType.Int64)), Throws.Exception.With.Message.Contains("Delta"));
+    }
+
+    [Test]
+    public void DeltaChecksAreSeparateCommandsAndPreserveNullAcceptance()
+    {
+        var value = new ColumnIdentityExpression("score");
+        var model = new DubUrl.Schema.Schema([new Table("t",
+        [
+            new Column("score", DbType.Int32, constraints: [new CheckConstraint(value, ">=", new ValueExpression(0))]),
+            new Column("tag", DbType.String),
+        ],
+        [
+            new MembershipCheckConstraint(value, [1, null], NullMembershipBehavior.MatchNull, "allowed_score"),
+            new RegexCheckConstraint(new ColumnIdentityExpression("tag"), @"^\d+$", RegexNullBehavior.RejectNull, "numeric_tag"),
+        ])]);
+        var plan = new SchemaScriptRenderer(Databricks()).Plan(model);
+        Assert.That(plan, Has.Count.EqualTo(4));
+        Assert.That(plan[0].CommandText, Does.Contain("USING DELTA").And.Not.Contain("CHECK"));
+        Assert.That(plan[1].CommandText, Does.Contain("coalesce((").And.Contain(">= 0"));
+        Assert.That(plan[2].CommandText, Does.Contain("allowed_score").And.Contain("IS NULL"));
+        Assert.That(plan[3].CommandText, Does.Contain("numeric_tag").And.Contain("IS NOT NULL").And.Contain("RLIKE"));
     }
 
     private static SparkSqlDialect Spark() => DefaultRegistry.GetDialects("odbc+spark").Get<SparkSqlDialect>();

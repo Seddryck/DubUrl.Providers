@@ -98,27 +98,12 @@ internal sealed class SparkSchemaSqlRenderer : StandardSchemaSqlRenderer, ITable
     }
 
     public override IReadOnlyList<SchemaSqlCommand> PlanCommands(IDialect dialect, IReadOnlyList<SchemaSqlCommand> statements)
-    {
-        var delta = dialect is DatabricksSqlDialect;
-        return statements.Select(command => command.Operation == SchemaSqlOperation.CreateTable
-            ? command with { CommandText = AddTableProvider(command.CommandText, delta) } : command).ToArray();
-    }
+        => statements.SelectMany(command => command.Operation == SchemaSqlOperation.CreateTable
+            ? SparkTableCommands.Plan(command, dialect is DatabricksSqlDialect) : [command]).ToArray();
 
-    private static string AddTableProvider(string sql, bool delta)
-    {
-        var tokens = SparkSqlSyntax.Tokenize(sql);
-        var end = tokens.FindIndex(token => token.Depth == 0 && token.Is(")"));
-        if (end < 0)
-            throw new InvalidOperationException("The CREATE TABLE command does not contain a complete column list.");
-        var result = sql.Insert(tokens[end].End, delta ? " USING DELTA" : " USING PARQUET");
-        if (delta && tokens.Take(end).Where((token, index) =>
-                token.Depth == 1 && token.Is("DEFAULT") && !tokens[index - 1].Is("BY")).Any())
-        {
-            var terminator = result.LastIndexOf(';');
-            result = result.Insert(terminator, " TBLPROPERTIES ('delta.feature.allowColumnDefaults' = 'supported')");
-        }
-        return result;
-    }
+    public override string RenderRegex(IDialect dialect, string expression, string pattern)
+        => dialect is DatabricksSqlDialect ? $"({expression} RLIKE {pattern})"
+            : throw new NotSupportedException("Regular-expression checks require Databricks Delta.");
 
     public string RenderCreateIndex(IDialect dialect, IndexDefinitionContext index)
         => throw new NotSupportedException("Portable Spark SQL index creation is unsupported.");
