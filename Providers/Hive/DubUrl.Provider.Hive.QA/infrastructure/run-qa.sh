@@ -37,6 +37,10 @@ if ! "${compose[@]}" up --detach --wait --wait-timeout 180; then
     exit 1
 fi
 
+"${compose[@]}" exec -T hive-server2 /opt/hive/bin/beeline \
+    -u 'jdbc:hive2://127.0.0.1:10000/default;auth=noSasl' -n hive --force=false \
+    -e "$(cat "$infrastructure_dir/initialize.sql")"
+
 export HIVE_ODBC_HIVESERVER2_ENDPOINT="$( "${compose[@]}" port hive-server2 10000 )"
 export HIVE_ODBC_SPARK_ENDPOINT="$( "${compose[@]}" port spark-thrift 10000 )"
 # The pinned legacy driver reads .cloudera.hiveodbc.ini from the test process's home directory.

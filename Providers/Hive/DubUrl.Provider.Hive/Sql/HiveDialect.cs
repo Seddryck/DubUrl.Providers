@@ -11,6 +11,7 @@ namespace DubUrl.Provider.Hive.Sql;
 [DbTypeMapper<AnsiTypeMapper>]
 [SqlFunctionMapper<AnsiFunctionMapper>]
 [Renderer<HiveRenderer>]
+[ReturnCaster<Parser<DateOnly>>]
 [ParentLanguage<SqlLanguage>]
 public sealed class HiveDialect : BaseDialect
 {
