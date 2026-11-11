@@ -7,6 +7,8 @@ Use the `2X-Small` serverless SQL warehouse included in Databricks Free Edition.
 3. Under the repository's **Settings → Environments**, create `databricks-qa`. Allow deployments from `main` and `qa/odbc-connectivity` only. Add environment variables `DATABRICKS_HOST` and `DATABRICKS_HTTP_PATH`, and the environment secret `DATABRICKS_TOKEN`. Copy the token directly into the secret field.
 4. Dispatch **Spark and Databricks live ODBC QA** with fixture `databricks`. Before the workflow exists on `main`, a maintainer can push the reviewed commit to `qa/odbc-connectivity` to trigger it. The GitHub-hosted Linux runner installs the pinned Databricks ODBC Driver 2.14.0 and unixODBC in a Debian 12 job container.
 
+The live suite also runs the shared `OdbcContract` and query `ProviderContract` against five customer rows defined in each statement. It covers positional parameters, typed scalar reads, query templates, and the repository, Dapper, and DbReader paths. Named parameters are outside the ODBC contract. The pinned driver fails to decode `TIME` Arrow results and exposes intervals as strings, so the shared `TimeOnly` and `TimeSpan` cases are skipped.
+
 For a local Linux x64 run, install unixODBC and the vendor's [Databricks ODBC Driver 2.14.0 Debian x64 package](https://www.databricks.com/spark/odbc-drivers-download). Register the following section in the driver manager's `odbcinst.ini` and verify it with `odbcinst -q -d -n 'Databricks ODBC Driver'`.
 
 ```ini
