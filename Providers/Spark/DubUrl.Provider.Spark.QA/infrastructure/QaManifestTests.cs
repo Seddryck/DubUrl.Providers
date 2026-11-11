@@ -1,7 +1,7 @@
 using DubUrl.ProviderTesting;
 using NUnit.Framework;
 
-namespace DubUrl.Provider.Spark.QA.Infrastructure;
+namespace DubUrl.Provider.Spark.QA.infrastructure;
 
 public sealed class QaManifestTests
 {
