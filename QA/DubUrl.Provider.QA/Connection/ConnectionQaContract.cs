@@ -1,3 +1,4 @@
+using DubUrl.Discovery;
 using DubUrl.Providers.QA.Contracts.BulkCopy;
 using DubUrl.Providers.QA.Contracts.Schema;
 using System.Data;
@@ -33,7 +34,13 @@ public abstract class ConnectionQaContract : PasswordAuthenticationQaContract
 
     [Test, Category("SharedSchema")]
     public Task SchemaDiscoveryMatchesProviderSupport()
-        => SchemaDiscoveryBaseline.VerifyAsync(CreateLiveConnectionUrl(), SupportsSchemaDiscovery);
+        => VerifySchemaDiscoveryAsync(CreateLiveConnectionUrl());
+
+    protected virtual Task VerifySchemaDiscoveryAsync(ConnectionUrl url)
+        => VerifySchemaDiscoveryAsync(url, null);
+
+    protected Task VerifySchemaDiscoveryAsync(ConnectionUrl url, DiscoveryOptions? scope)
+        => SchemaDiscoveryBaseline.VerifyAsync(url, SupportsSchemaDiscovery, scope);
 
     [Test, Category("SharedBulkCopy")]
     public void BulkCopyMatchesProviderSupport()

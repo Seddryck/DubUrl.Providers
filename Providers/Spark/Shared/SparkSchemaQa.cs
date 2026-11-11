@@ -1,7 +1,9 @@
 using System.Data;
 using System.Data.Common;
 using System.Data.Odbc;
+using DubUrl.Discovery;
 using DubUrl.Schema;
+using DubUrl.Schema.Documents;
 using DubUrl.Schema.Constraints;
 using NUnit.Framework;
 
@@ -125,7 +127,103 @@ internal static class SparkSchemaQa
         });
     }
 
+    internal static async Task InspectExportAndRedeploy(ConnectionUrl url, bool delta)
+    {
+        DbProviderFactories.RegisterFactory("System.Data.Odbc", OdbcFactory.Instance);
+        using var connection = (DbConnection)url.Open();
+        var catalog = (string)Scalar(connection, "SELECT current_catalog()")!;
+        var schema = "duburl_qa_" + Guid.NewGuid().ToString("N");
+        var quote = url.Dialect.SchemaSqlRenderer;
+        var scope = $"{quote.RenderIdentifier(url.Dialect, catalog)}.{quote.RenderIdentifier(url.Dialect, schema)}";
+        Execute(connection, $"CREATE SCHEMA {scope}");
+        try
+        {
+            var identity = new DatabaseObjectName("records", schema, catalog: catalog);
+            var table = new Table(identity,
+                [new Column("id", DbType.Int32), new Column("text", DbType.String, "Déjà vu"), new Column("n", DbType.Int32, DBNull.Value)],
+                description: "catalog round trip");
+            var view = new View(new DatabaseObjectName("projection", schema, catalog: catalog), new ViewQuery(identity,
+                new ViewProjection(new ColumnIdentityExpression("id"))));
+            url.DeploySchema(new DubUrl.Schema.Schema([table], [], [view]));
+
+            var inspector = new SchemaInspector();
+            var options = new DiscoveryOptions
+            {
+                Catalogs = [catalog], Schemas = [schema],
+                Features = [SchemaFeature.Tables, SchemaFeature.Columns, SchemaFeature.Comments, SchemaFeature.Defaults, SchemaFeature.Views],
+            };
+            var discovered = await inspector.InspectAsync(url, options);
+            Assert.That(discovered.IsSuccess, Is.True, string.Join(" / ", discovered.Diagnostics.Select(item => item.Message)));
+            Assert.That(discovered.Schema!.Tables.Values.Single().Identity, Is.EqualTo(identity));
+            Assert.That(discovered.Schema.Tables.Values.Single().Columns["n"].DefaultValue, Is.SameAs(DBNull.Value));
+            Assert.That(discovered.Schema.Views.Values.Single().Query.Source, Is.EqualTo(identity));
+
+            byte[] Export(DubUrl.Schema.Schema model, SchemaDocumentFormat format)
+            {
+                using var output = new MemoryStream();
+                new SchemaDocumentWriter().Write(output, new SchemaDocumentExporter().Map(model), format);
+                return output.ToArray();
+            }
+            foreach (var format in new[] { SchemaDocumentFormat.Json, SchemaDocumentFormat.Yaml })
+            {
+                var bytes = Export(discovered.Schema, format);
+                using var input = new MemoryStream(bytes);
+                var document = new SchemaDocumentReader().Read(input, format);
+                Assert.That(new SchemaDocumentValidator().Validate(document), Is.Empty);
+                var mapped = new SchemaDocumentMapper().Map(document);
+                Assert.That(Export(mapped, format), Is.EqualTo(bytes));
+                url.DeploySchema(mapped, SchemaCreationOptions.DropIfExists);
+                var inspectedAgain = await inspector.InspectAsync(url, options);
+                Assert.That(inspectedAgain.IsSuccess, Is.True, string.Join(" / ", inspectedAgain.Diagnostics.Select(item => item.Message)));
+                Assert.That(Export(inspectedAgain.Schema!, format), Is.EqualTo(bytes));
+            }
+
+            var records = quote.RenderObjectName(url.Dialect, catalog, null, schema, "records");
+            Execute(connection, $"CREATE VIEW {scope}.unsupported_projection AS SELECT COUNT(*) AS total FROM {records}");
+            var strict = await inspector.InspectAsync(url, options);
+            Assert.That(strict.IsSuccess, Is.False);
+            Assert.That(strict.Diagnostics.Any(item => item.Feature == SchemaFeature.Views && item.Coverage == MetadataCoverage.Unrepresentable), Is.True);
+            var partial = await inspector.InspectAsync(url, options with { AllowPartial = true });
+            Assert.That(partial.IsSuccess, Is.True);
+            Assert.That(partial.IsComplete, Is.False);
+            Assert.That(partial.ViewInventory.Count, Is.EqualTo(2));
+            if (!delta) return;
+
+            var keyed = quote.RenderObjectName(url.Dialect, catalog, null, schema, "keyed");
+            Execute(connection, $"CREATE TABLE {keyed} (a INT NOT NULL, b INT NOT NULL, CONSTRAINT ordered_pk PRIMARY KEY (b, a)) USING DELTA");
+            var keyOptions = options with
+            {
+                Tables = [new("keyed", schema, Catalog: catalog)],
+                Features = [SchemaFeature.Tables, SchemaFeature.Columns, SchemaFeature.PrimaryKeys],
+            };
+            var keys = await inspector.InspectAsync(url, keyOptions);
+            Assert.That(keys.IsSuccess, Is.False);
+            Assert.That(keys.Diagnostics.Any(item => item.Message.Contains("informational", StringComparison.OrdinalIgnoreCase)), Is.True);
+            var reader = new DubUrl.Provider.Spark.Discovery.DatabricksMetadataReader();
+            var inventory = await reader.ReadAsync(connection, keyOptions);
+            Assert.That(inventory.Tables.Single(table => table.Identity.Name == "keyed").PrimaryKey!.Columns,
+                Is.EqualTo(new[] { "b", "a" }));
+        }
+        finally { Execute(connection, $"DROP SCHEMA IF EXISTS {scope} CASCADE"); }
+    }
+
+    internal static Task VerifySharedDiscovery(ConnectionUrl url, Func<DiscoveryOptions, Task> verify)
+        => WithScratchAsync(url, async (connection, catalog, schema) =>
+        {
+            var dialect = url.Dialect;
+            var table = dialect.SchemaSqlRenderer.RenderObjectName(dialect, catalog, null, schema, "customer");
+            Execute(connection, $"CREATE TABLE {table} (id INT)");
+            await verify(new DiscoveryOptions { Catalogs = [catalog], Schemas = [schema] });
+        });
+
     internal static void WithScratch(ConnectionUrl url, Action<DbConnection, string, string> run)
+        => WithScratchAsync(url, (connection, catalog, schema) =>
+        {
+            run(connection, catalog, schema);
+            return Task.CompletedTask;
+        }).GetAwaiter().GetResult();
+
+    private static async Task WithScratchAsync(ConnectionUrl url, Func<DbConnection, string, string, Task> run)
     {
         DbProviderFactories.RegisterFactory("System.Data.Odbc", OdbcFactory.Instance);
         using var connection = (DbConnection)url.Open();
@@ -134,7 +232,7 @@ internal static class SparkSchemaQa
         var renderer = url.Dialect.SchemaSqlRenderer;
         var scope = $"{renderer.RenderIdentifier(url.Dialect, catalog)}.{renderer.RenderIdentifier(url.Dialect, schema)}";
         Execute(connection, $"CREATE SCHEMA {scope}");
-        try { run(connection, catalog, schema); }
+        try { await run(connection, catalog, schema); }
         finally { Execute(connection, $"DROP SCHEMA IF EXISTS {scope} CASCADE"); }
     }
 

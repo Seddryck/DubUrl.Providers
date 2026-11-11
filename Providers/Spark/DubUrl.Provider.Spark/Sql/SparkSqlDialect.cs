@@ -32,6 +32,7 @@ public class SparkSqlDialect : BaseDialect
         ObjectNames = ObjectNameParts.Name | ObjectNameParts.Schema | ObjectNameParts.Catalog,
         SupportsComments = true,
         SupportsViews = true,
+        NativeTypes = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "CHAR", "VARCHAR" },
     };
 
     internal SparkSqlDialect(ILanguage language, string[] aliases, IRenderer renderer, ICaster[] casters,

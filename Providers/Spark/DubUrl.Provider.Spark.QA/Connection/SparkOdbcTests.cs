@@ -14,9 +14,15 @@ public sealed class SparkOdbcTests : OdbcContract
     protected override string AuthenticationConnectionUrl => ThriftLocation;
 
     protected override string ConnectionUrl => ThriftUrl;
+    protected override bool SupportsSchemaDiscovery => true;
+    protected override Task VerifySchemaDiscoveryAsync(ConnectionUrl url)
+        => SparkSchemaQa.VerifySharedDiscovery(url, scope => VerifySchemaDiscoveryAsync(url, scope));
     protected override string SelectFirstCustomerSql => SparkOdbcCustomerQueries.First;
     protected override string SelectCustomerByIdSql => string.Empty;
     protected override bool SupportsParameters => false;
+
+    [Test, Category("ODBC")]
+    public Task InspectExportAndRedeploySchema() => SparkSchemaQa.InspectExportAndRedeploy(NativeSchemaUrl, delta: false);
 
     [Test, Category("ODBC")]
     public void DeployProjectionViewsAndDiagnosePartialFailure() => SparkSchemaQa.ProjectionViews(NativeSchemaUrl);

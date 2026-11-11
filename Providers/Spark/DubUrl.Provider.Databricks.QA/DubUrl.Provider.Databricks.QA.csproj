@@ -4,6 +4,7 @@
     <QaProvider>databricks</QaProvider>
   </PropertyGroup>
   <ItemGroup>
+    <PackageReference Include="DubUrl.Schema.Documents" Version="$(SchemaPackageVersion)" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.11.0" />
     <PackageReference Include="NUnit" Version="5.0.0" />
     <PackageReference Include="NUnit3TestAdapter" Version="5.1.0" />
@@ -14,6 +15,7 @@
   <ItemGroup>
     <Compile Include="../Shared/SparkOdbcQueryContract.cs" Link="Query/SparkOdbcQueryContract.cs" />
     <Compile Include="../Shared/SparkSchemaQa.cs" Link="Connection/SparkSchemaQa.cs" />
+    <Compile Include="../Shared/SparkSchemaProviderContract.cs" Link="Connection/SparkSchemaProviderContract.cs" />
     <None Update="qa-manifest.json" CopyToOutputDirectory="PreserveNewest" />
     <QaInfrastructure Include="infrastructure/**/*" />
   </ItemGroup>

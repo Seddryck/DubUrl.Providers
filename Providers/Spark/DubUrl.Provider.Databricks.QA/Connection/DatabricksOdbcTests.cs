@@ -17,8 +17,14 @@ public sealed class DatabricksOdbcTests : OdbcContract
     protected override string AuthenticationConnectionUrl => DatabricksWarehouse.Location;
     protected override ConnectionUrl CreateLiveConnectionUrl()
         => base.CreateLiveConnectionUrl().WithAuthentication(DatabricksWarehouse.Authentication);
+    protected override bool SupportsSchemaDiscovery => true;
+    protected override Task VerifySchemaDiscoveryAsync(ConnectionUrl url)
+        => SparkSchemaQa.VerifySharedDiscovery(url, scope => VerifySchemaDiscoveryAsync(url, scope));
     protected override string SelectFirstCustomerSql => SparkOdbcCustomerQueries.First;
     protected override string SelectCustomerByIdSql => SparkOdbcCustomerQueries.ById;
+
+    [Test, Category("ODBC")]
+    public Task InspectExportAndRedeploySchema() => SparkSchemaQa.InspectExportAndRedeploy(CreateLiveConnectionUrl(), delta: true);
 
     [Test, Category("ODBC")]
     public void DeployProjectionViewsAndDiagnosePartialFailure() => SparkSchemaQa.ProjectionViews(CreateLiveConnectionUrl());

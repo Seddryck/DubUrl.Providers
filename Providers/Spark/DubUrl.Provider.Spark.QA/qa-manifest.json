@@ -6,5 +6,5 @@
   "targetFrameworks": ["net8.0", "net9.0", "net10.0"],
   "operatingSystems": ["linux"],
   "rids": ["linux-x64"],
-  "capabilities": ["Connection", "Querying", "ODBC"]
+  "capabilities": ["Connection", "Querying", "ODBC", "Schema"]
 }
