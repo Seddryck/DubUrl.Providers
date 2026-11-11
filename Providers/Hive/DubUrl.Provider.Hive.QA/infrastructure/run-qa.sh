@@ -14,14 +14,18 @@ spark_compose="$infrastructure_dir/compose.yaml"
 if [[ ! -f "$spark_compose" ]]; then
     spark_compose="$project_dir/../../Spark/DubUrl.Provider.Spark.QA/infrastructure/compose.yaml"
 fi
+export HIVE_QA_TLS_DIR="$driver_config/tls"
 export SPARK_THRIFT_BINDING='127.0.0.1::10000'
 compose=(docker compose --project-name "duburl-hive-odbc-qa-$$-$RANDOM"
     --file "$spark_compose" --file "$infrastructure_dir/hive-compose.yaml")
 cleanup() {
-    "${compose[@]}" down --volumes
-    rm -r -- "$driver_config"
+    local status=$?
+    "${compose[@]}" down --volumes || status=1
+    rm -r -- "$driver_config" || status=1
+    exit "$status"
 }
 trap cleanup EXIT
+bash "$infrastructure_dir/configure-tls.sh" "$HIVE_QA_TLS_DIR"
 
 adapter_dir="$project_dir/adapter"
 if [[ -f "$project_dir/DubUrl.Provider.Hive.QA.csproj" ]]; then
@@ -41,8 +45,16 @@ fi
     -u 'jdbc:hive2://127.0.0.1:10000/default;auth=noSasl' -n hive --force=false \
     -e "$(cat "$infrastructure_dir/initialize.sql")"
 
+for transport in http https tcps; do
+    "${compose[@]}" exec -T "hive-$transport" bash -s -- "$transport" < "$infrastructure_dir/verify-hive-transport.sh"
+done
+
 export HIVE_ODBC_HIVESERVER2_ENDPOINT="$( "${compose[@]}" port hive-server2 10000 )"
 export HIVE_ODBC_SPARK_ENDPOINT="$( "${compose[@]}" port spark-thrift 10000 )"
+export HIVE_ODBC_HTTP_ENDPOINT="$( "${compose[@]}" port hive-http 10001 )"
+export HIVE_ODBC_HTTPS_ENDPOINT="localhost:$( "${compose[@]}" port hive-https 10001 | cut -d: -f2 )"
+export HIVE_ODBC_TCPS_ENDPOINT="localhost:$( "${compose[@]}" port hive-tcps 10000 | cut -d: -f2 )"
+export HIVE_ODBC_TLS_CERT="$HIVE_QA_TLS_DIR/server/server-cert.pem"
 # The pinned legacy driver reads .cloudera.hiveodbc.ini from the test process's home directory.
 HOME="$driver_config" dotnet vstest "$adapter_dir/DubUrl.Provider.Hive.QA.dll" \
     --TestAdapterPath:"$adapter_dir" --logger:'trx;LogFileName=hive.trx' --ResultsDirectory:"$results_dir"

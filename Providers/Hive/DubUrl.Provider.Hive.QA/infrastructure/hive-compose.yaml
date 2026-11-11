@@ -1,8 +1,20 @@
+x-hive-server: &hive-server
+  image: apache/hive:4.0.1
+
+x-hive-environment: &hive-environment
+  SERVICE_NAME: hiveserver2
+
+x-tls-volume: &tls-volume
+  type: bind
+  source: ${HIVE_QA_TLS_DIR:?Set HIVE_QA_TLS_DIR to the generated TLS fixture directory}/server
+  target: /hive-tls
+  read_only: true
+
 services:
   hive-server2:
-    image: apache/hive:4.0.1
+    <<: *hive-server
     environment:
-      SERVICE_NAME: hiveserver2
+      <<: *hive-environment
       SERVICE_OPTS: >-
         -Dhive.server2.authentication=NOSASL
         -Dhive.server2.transport.mode=binary
@@ -15,3 +27,50 @@ services:
       timeout: 15s
       start_period: 30s
       retries: 24
+
+  hive-http:
+    <<: *hive-server
+    environment:
+      <<: *hive-environment
+      SERVICE_OPTS: >-
+        -Dhive.server2.authentication=NOSASL
+        -Dhive.server2.transport.mode=http
+        -Dhive.server2.enable.doAs=false
+    ports:
+      - "127.0.0.1::10001"
+    healthcheck: &http-healthcheck
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/10001"]
+      interval: 5s
+      timeout: 5s
+      start_period: 30s
+      retries: 24
+
+  hive-https:
+    <<: *hive-server
+    environment:
+      <<: *hive-environment
+      HIVE_CUSTOM_CONF_DIR: /hive-tls
+      SERVICE_OPTS: >-
+        -Dhive.server2.authentication=NOSASL
+        -Dhive.server2.transport.mode=http
+        -Dhive.server2.enable.doAs=false
+    volumes: [*tls-volume]
+    ports:
+      - "127.0.0.1::10001"
+    healthcheck: *http-healthcheck
+
+  hive-tcps:
+    <<: *hive-server
+    environment:
+      <<: *hive-environment
+      HIVE_CUSTOM_CONF_DIR: /hive-tls
+      SERVICE_OPTS: >-
+        -Dhive.server2.authentication=NOSASL
+        -Dhive.server2.transport.mode=binary
+        -Dhive.server2.enable.doAs=false
+    volumes: [*tls-volume]
+    ports:
+      - "127.0.0.1::10000"
+    healthcheck:
+      <<: *http-healthcheck
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/10000"]

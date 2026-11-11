@@ -5,13 +5,12 @@ using DubUrl.Rewriting.Tokening;
 
 namespace DubUrl.Provider.Odbc.Rewriting;
 
-internal sealed record SparkOdbcTransport(string Suffix, bool IsHttp, bool UsesTls)
+internal sealed record ThriftOdbcTransport(string Suffix, bool IsHttp, bool UsesTls)
 {
-    private const string SchemePrefix = "odbc+spark+";
     private const string SchemaMarker = "schema";
     private const string DefaultHttpPath = "/cliservice";
 
-    private static readonly SparkOdbcTransport[] Transports =
+    private static readonly ThriftOdbcTransport[] Transports =
     [
         new("http", IsHttp: true, UsesTls: false),
         new("https", IsHttp: true, UsesTls: true),
@@ -22,39 +21,39 @@ internal sealed record SparkOdbcTransport(string Suffix, bool IsHttp, bool UsesT
     private static readonly HashSet<string> ManagedOptions =
         new(["SSL", "ThriftTransport", "HTTPPath", "Schema", "sasl"], StringComparer.OrdinalIgnoreCase);
 
-    internal static IEnumerable<string> Aliases => Transports.Select(transport => SchemePrefix + transport.Suffix);
+    internal static IEnumerable<string> Aliases(string database) => Transports.Select(transport => $"odbc+{database}+{transport.Suffix}");
     internal int DefaultPort => IsHttp ? 10001 : 10000;
 
-    internal static SparkOdbcTransport? Find(SchemeKey scheme)
+    internal static ThriftOdbcTransport? Find(SchemeKey scheme, string database, string provider)
     {
-        if (!scheme.Parts.Contains("spark", StringComparer.OrdinalIgnoreCase))
+        if (!scheme.Parts.Contains(database, StringComparer.OrdinalIgnoreCase))
             return null;
 
         var transport = Transports.FirstOrDefault(candidate =>
             scheme.Parts.Contains(candidate.Suffix, StringComparer.OrdinalIgnoreCase));
-        if (transport is not null && scheme.Canonical != SchemePrefix + transport.Suffix)
-            throw new InvalidConnectionUrlException("Specify one Spark transport suffix immediately after odbc+spark.");
+        if (transport is not null && scheme.Canonical != $"odbc+{database}+{transport.Suffix}")
+            throw new InvalidConnectionUrlException($"Specify one {provider} transport suffix immediately after odbc+{database}.");
         return transport;
     }
 
-    internal void Map(ConnectionUri url, ISpecificator settings)
+    internal void Map(ConnectionUri url, ISpecificator settings, string provider)
     {
         foreach (var option in url.Options.Keys)
             if (option != option.Trim() && ManagedOptions.Contains(option.Trim()))
-                throw Conflict(option.Trim());
+                throw Conflict(option.Trim(), provider);
 
         var segments = url.Segments;
         var hasSchema = HasSchemaSuffix(segments);
         var schema = hasSchema ? segments[^1] : null;
         if (hasSchema && string.IsNullOrWhiteSpace(schema))
-            throw new InvalidConnectionUrlException("The Spark schema segment must contain a schema name.");
+            throw new InvalidConnectionUrlException($"The {provider} schema segment must contain a schema name.");
 
         var endpointLength = segments.Count - (hasSchema ? 2 : 0);
         if (!IsHttp && endpointLength != 0)
-            throw new InvalidConnectionUrlException("Spark TCP URLs accept only an optional /schema/<name> path.");
+            throw new InvalidConnectionUrlException($"{provider} TCP URLs accept only an optional /schema/<name> path.");
 
         if (endpointLength >= 2 && segments[endpointLength - 2] == SchemaMarker)
-            throw new InvalidConnectionUrlException("Spark HTTP endpoints ending in /schema/<name> are unsupported.");
+            throw new InvalidConnectionUrlException($"{provider} HTTP endpoints ending in /schema/<name> are unsupported.");
 
         var httpPath = endpointLength == 0 ? DefaultHttpPath : "/" + string.Join("/", segments.Take(endpointLength));
         var ssl = UsesTls ? "1" : "0";
@@ -63,18 +62,18 @@ internal sealed record SparkOdbcTransport(string Suffix, bool IsHttp, bool UsesT
         if (url.Options.TryGetValue("sasl", out var sasl))
         {
             if (IsHttp || sasl is not ("0" or "1"))
-                throw new InvalidConnectionUrlException("The Spark sasl option accepts 0 or 1 on TCP and TCPS URLs.");
+                throw new InvalidConnectionUrlException($"The {provider} sasl option accepts 0 or 1 on TCP and TCPS URLs.");
             thriftTransport = sasl;
         }
 
         if (url.Options.TryGetValue("ThriftTransport", out var thriftOption)
             && (thriftTransport is not null ? thriftOption != thriftTransport : thriftOption is not ("0" or "1")))
-            throw Conflict("ThriftTransport");
+            throw Conflict("ThriftTransport", provider);
 
-        RequireCompatible(url, "SSL", ssl);
-        RequireCompatible(url, "HTTPPath", IsHttp ? httpPath : null);
+        RequireCompatible(url, "SSL", ssl, provider);
+        RequireCompatible(url, "HTTPPath", IsHttp ? httpPath : null, provider);
         if (schema is not null)
-            RequireCompatible(url, "Schema", schema);
+            RequireCompatible(url, "Schema", schema, provider);
 
         settings.Execute("SSL", ssl);
         if (thriftTransport is not null)
@@ -124,12 +123,12 @@ internal sealed record SparkOdbcTransport(string Suffix, bool IsHttp, bool UsesT
     private static bool HasSchemaSuffix(IReadOnlyList<string> segments)
         => segments.Count >= 2 && segments[^2] == SchemaMarker;
 
-    private static void RequireCompatible(ConnectionUri url, string option, string? expected)
+    private static void RequireCompatible(ConnectionUri url, string option, string? expected, string provider)
     {
         if (url.Options.TryGetValue(option, out var value) && value != expected)
-            throw Conflict(option);
+            throw Conflict(option, provider);
     }
 
-    private static InvalidConnectionUrlException Conflict(string option)
-        => new($"The Spark URL option '{option}' conflicts with the transport or path.");
+    private static InvalidConnectionUrlException Conflict(string option, string provider)
+        => new($"The {provider} URL option '{option}' conflicts with the transport or path.");
 }

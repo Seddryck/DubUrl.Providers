@@ -21,7 +21,7 @@ internal sealed class SparkOdbcRewriter(DbConnectionStringBuilder builder, Drive
         if (IsDatabricks(scheme))
             AddDatabricksSegments(parts);
         else
-            SparkOdbcTransport.Find(scheme)?.AddSegments(parts);
+            ThriftOdbcTransport.Find(scheme, "spark", "Spark")?.AddSegments(parts);
         return parts.ToUri(scheme);
     }
 
@@ -52,7 +52,7 @@ internal sealed class SparkOdbcRewriter(DbConnectionStringBuilder builder, Drive
     private sealed class SparkOptionsMapper : OptionsMapper
     {
         protected override bool ShouldMap(ConnectionUri url, string option)
-            => !SparkOdbcTransport.IsSasl(option) || SparkOdbcTransport.Find(url.Scheme) is null;
+            => !ThriftOdbcTransport.IsSasl(option) || ThriftOdbcTransport.Find(url.Scheme, "spark", "Spark") is null;
     }
 
     private sealed class EndpointMapper : BaseTokenMapper
@@ -63,7 +63,7 @@ internal sealed class SparkOdbcRewriter(DbConnectionStringBuilder builder, Drive
         public override void Execute(ConnectionUri urlInfo)
         {
             var databricks = IsDatabricks(urlInfo.Scheme);
-            var sparkTransport = SparkOdbcTransport.Find(urlInfo.Scheme);
+            var sparkTransport = ThriftOdbcTransport.Find(urlInfo.Scheme, "spark", "Spark");
             Specificator.Execute("Host", string.IsNullOrEmpty(urlInfo.Host) ? "localhost" : urlInfo.Host);
             Specificator.Execute("Port", urlInfo.Port > 0 ? urlInfo.Port : databricks ? 443 : sparkTransport?.DefaultPort ?? 10000);
 
@@ -76,7 +76,7 @@ internal sealed class SparkOdbcRewriter(DbConnectionStringBuilder builder, Drive
             else
             {
                 if (sparkTransport is not null)
-                    sparkTransport.Map(urlInfo, Specificator);
+                    sparkTransport.Map(urlInfo, Specificator, "Spark");
                 else if (urlInfo.Segments.Count > 0)
                     Specificator.Execute("HTTPPath", "/" + string.Join("/", urlInfo.Segments));
 
