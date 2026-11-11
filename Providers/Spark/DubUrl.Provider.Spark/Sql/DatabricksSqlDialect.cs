@@ -20,6 +20,12 @@ public sealed class DatabricksSqlDialect : SparkSqlDialect
         IDbTypeMapper dbTypeMapper, ISqlFunctionMapper sqlFunctionMapper)
         : base(language, aliases, renderer, casters, dbTypeMapper, sqlFunctionMapper) { }
 
+    public override DialectCapabilities Capabilities => base.Capabilities with
+    {
+        SupportsIdentityColumns = true,
+        SupportsStoredGeneratedColumns = true,
+    };
+
     internal bool SupportsTime { get; private set; }
 
     /// <summary>Enables TIME for a warehouse or runtime that has been verified to support it.</summary>
