@@ -5,16 +5,20 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: New NuGet version for the provider package set.
+        description: New version for the NuGet provider packages and the connection URL catalog.
         type: string
         required: true
       publish:
-        description: Publish the validated package set to NuGet.
+        description: Publish the validated package set and its matching connection URL catalog.
         type: boolean
         default: false
 
 permissions:
   contents: read
+
+concurrency:
+  group: provider-packages-${{ github.event_name == 'workflow_dispatch' && inputs.publish && inputs.version || github.run_id }}
+  cancel-in-progress: false
 
 jobs:
   pack:
@@ -28,11 +32,31 @@ jobs:
       - uses: actions/setup-dotnet@v6
         with:
           dotnet-version: 10.0.401
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
       - name: Prepare Schema QA packages
         shell: pwsh
         run: ./build/Initialize-SchemaQa.ps1
       - name: Run provider unit tests
         run: dotnet test QA/DubUrl.Providers.Testing -c Release --nologo
+      - name: Verify the generated connection URL catalog
+        shell: pwsh
+        run: |
+          dotnet test QA/DubUrl.Providers.Testing -c Release -f net10.0 --no-build --no-restore --filter FullyQualifiedName~ConnectionUrlCatalogTest --logger trx --results-directory artifacts/catalog-tests
+          if ($LASTEXITCODE) { throw 'Connection URL catalog tests failed.' }
+          $result = Get-ChildItem artifacts/catalog-tests -Filter '*.trx'
+          if (@($result).Count -ne 1) { throw 'Expected one connection URL catalog test result.' }
+          $counters = ([xml](Get-Content $result.FullName -Raw)).TestRun.ResultSummary.Counters
+          if ([int]$counters.executed -eq 0 -or $counters.passed -ne $counters.executed) { throw 'Connection URL catalog tests did not all pass.' }
+      - name: Package the tested connection URL catalog
+        shell: pwsh
+        run: |
+          python -m pip install --only-binary=:all: jsonschema==4.26.0
+          if ($LASTEXITCODE) { throw 'Could not install the catalog validator.' }
+          $coreVersion = dotnet msbuild QA/DubUrl.Providers.Testing/DubUrl.Providers.Testing.csproj -getProperty:DubUrlVersion
+          if ($LASTEXITCODE) { throw 'Could not read the Core package version.' }
+          python build/package_connection_url_catalog.py --catalog QA/DubUrl.Providers.Testing/obj/Release/net10.0/connection-url-catalog.json --schema connection-urls/schema.json --output artifacts/catalog-release --version $env:PROVIDER_PACKAGE_VERSION --commit $env:GITHUB_SHA --core-version $coreVersion
       - name: Pack and validate provider libraries
         shell: pwsh
         run: ./build/Pack-Providers.ps1 -Version $env:PROVIDER_PACKAGE_VERSION
@@ -40,6 +64,11 @@ jobs:
         with:
           name: provider-nuget
           path: artifacts/nuget
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v7
+        with:
+          name: connection-url-catalog
+          path: artifacts/catalog-release
           if-no-files-found: error
 
   publish:
@@ -80,3 +109,53 @@ jobs:
             dotnet nuget push $package.FullName --api-key $env:NUGET_API_KEY --source https://api.nuget.org/v3/index.json --skip-duplicate
             if ($LASTEXITCODE) { throw "Publishing $($package.Name) failed." }
           }
+      - name: Verify the published package source revisions
+        shell: pwsh
+        run: ./build/Test-PublishedProviderPackages.ps1 -Version $env:PROVIDER_PACKAGE_VERSION -SourceCommit $env:GITHUB_SHA -NuGetDirectory artifacts/nuget
+
+  publish-catalog:
+    name: Publish the matching connection URL catalog
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.publish
+    needs: publish
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      PROVIDER_PACKAGE_VERSION: ${{ inputs.version }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@v7
+        with:
+          name: connection-url-catalog
+          path: artifacts/catalog-release
+      - name: Publish the validated artifact
+        shell: bash
+        run: |
+          tag="connection-url-catalog-v$PROVIDER_PACKAGE_VERSION"
+          bundle=connection-url-catalog.zip
+          cd artifacts/catalog-release
+          sha256sum --check "$bundle.sha256"
+          jq -e --arg version "$PROVIDER_PACKAGE_VERSION" --arg commit "$GITHUB_SHA" \
+            '.catalogVersion == $version and .sourceCommit == $commit' <(unzip -p "$bundle" manifest.json)
+          tag_ref="refs/tags/$tag"
+          existing_tag=$(git ls-remote --refs origin "$tag_ref")
+          if [[ -n "$existing_tag" ]]; then
+            git fetch --no-tags origin "$tag_ref"
+            [[ $(git rev-parse 'FETCH_HEAD^{commit}') == "$GITHUB_SHA" ]]
+          fi
+          if gh release view "$tag" >/dev/null 2>&1; then
+            existing=$(mktemp -d)
+            gh release download "$tag" --pattern "$bundle" --pattern "$bundle.sha256" --dir "$existing"
+            cmp "$bundle" "$existing/$bundle"
+            cmp "$bundle.sha256" "$existing/$bundle.sha256"
+          else
+            release_options=()
+            if [[ "$PROVIDER_PACKAGE_VERSION" == *-* ]]; then
+              release_options+=(--prerelease)
+            fi
+            gh release create "$tag" "$bundle" "$bundle.sha256" --target "$GITHUB_SHA" --latest=false "${release_options[@]}" \
+              --title "Connection URL catalog $PROVIDER_PACKAGE_VERSION" --notes "Catalog for DubUrl provider packages $PROVIDER_PACKAGE_VERSION from $GITHUB_SHA."
+          fi
