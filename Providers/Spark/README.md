@@ -41,3 +41,19 @@ odbc+databricks://<host>[:<port>]/cluster/<workspace-id>/<cluster-id>[/<catalog>
 The warehouse form generates `HTTPPath=/sql/1.0/warehouses/<warehouse-id>`. The cluster form generates `HTTPPath=/sql/protocolv1/o/<workspace-id>/<cluster-id>`. Find the hostname and IDs in the compute resource's connection details. The optional trailing segments map to the driver's `Catalog` and `Schema` settings. Include a catalog when specifying a schema.
 
 Use the shortcut path in the URL. The mapper rejects a raw HTTP endpoint path and the `HTTPPath`, `Catalog`, and `Schema` query options. Other driver options can still be passed in the query string. [Databricks ODBC connection details](https://docs.databricks.com/aws/en/integrations/odbc/compute)
+
+## Load files from a Databricks volume
+
+Use the `DubUrl.BulkCopy` package and an `odbc+databricks` connection URL to load staged files into an existing Delta table.
+
+```csharp
+using DubUrl.BulkCopy;
+
+connection.LoadFromFiles("analytics.sales.orders",
+    "/Volumes/analytics/staging/imports/orders/batch-001/",
+    "PARQUET");
+```
+
+Pass the target name as unquoted, dot-separated components. The source can be a file or directory in
+a Unity Catalog volume. The caller stages and manages the files. Databricks uses the source format's
+default options and skips files it has already loaded into the target. [Databricks COPY INTO](https://docs.databricks.com/aws/en/sql/language-manual/delta-copy-into)

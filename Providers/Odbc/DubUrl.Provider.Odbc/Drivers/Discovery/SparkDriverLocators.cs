@@ -20,7 +20,7 @@ public sealed class SparkDriverLocator : IDriverLocator
     internal sealed class DriverRegex() : BaseDriverRegex([new LiteralMatch(DriverName)]);
 }
 
-[Driver<DatabricksDriverLocator.DriverRegex, SparkOdbcMapper, DatabricksDatabase>]
+[Driver<DatabricksDriverLocator.DriverRegex, DatabricksOdbcMapper, DatabricksDatabase>]
 public sealed class DatabricksDriverLocator : IDriverLocator
 {
     internal const string DriverName = "Databricks ODBC Driver";
