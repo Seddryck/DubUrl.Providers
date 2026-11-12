@@ -39,7 +39,7 @@ internal static class DatabricksForeignKeys
             + (dialect.SupportsUniqueKeys ? " or UNIQUE key" : "")
             + $" on '{target}' matching ({string.Join(", ", key.TargetColumns)}).";
         if (!dialect.SupportsUniqueKeys)
-            message += " For UNIQUE targets, select WithInformationalKeys(supportsUnique: true) on compatible Databricks compute.";
+            message = "For UNIQUE targets, select WithInformationalKeys(supportsUnique: true). " + message;
 
         var sql = $"""
             SELECT CASE WHEN EXISTS (

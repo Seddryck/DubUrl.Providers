@@ -147,7 +147,7 @@ public sealed class DatabricksOdbcTests : OdbcContract
                         id INT, schema_value STRING DEFAULT current_schema(), database_value STRING DEFAULT current_database()
                     ) USING DELTA TBLPROPERTIES ('delta.feature.allowColumnDefaults' = 'supported')
                     """);
-                SparkSchemaQa.Execute(connection, $"USE SCHEMA {insertScope}");
+                SparkSchemaQa.Execute(connection, $"USE SCHEMA {quote.RenderIdentifier(dialect, insertSchema)}");
                 Assert.That(SparkSchemaQa.Scalar(connection, "SELECT current_database()"), Is.EqualTo(insertSchema));
                 SparkSchemaQa.Execute(connection, $"INSERT INTO {target} (id) VALUES (1)");
                 Assert.That(SparkSchemaQa.Scalar(connection, $"SELECT CONCAT(schema_value, '/', database_value) FROM {target}"),
@@ -243,8 +243,7 @@ public sealed class DatabricksOdbcTests : OdbcContract
         {
             var dialect = url.Dialect;
             var quote = dialect.SchemaSqlRenderer;
-            var scope = $"{quote.RenderIdentifier(dialect, catalog)}.{quote.RenderIdentifier(dialect, schema)}";
-            SparkSchemaQa.Execute(connection, $"USE SCHEMA {scope}");
+            SparkSchemaQa.Execute(connection, $"USE SCHEMA {quote.RenderIdentifier(dialect, schema)}");
             var table = new Table("comment_table",
                 [new Column("absent", DbType.Int32), new Column("empty", DbType.Int32, description: "")], description: "");
             SparkSchemaQa.Execute(connection, url.ScriptSchema(new DubUrl.Schema.Schema([table])));
