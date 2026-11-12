@@ -25,6 +25,9 @@ public sealed class SparkOdbcTests : OdbcContract
     public Task InspectExportAndRedeploySchema() => SparkSchemaQa.InspectExportAndRedeploy(NativeSchemaUrl, delta: false);
 
     [Test, Category("ODBC")]
+    public Task StructuredRecursiveRoundTrip() => SparkStructuredQa.Recursive(NativeSchemaUrl, delta: false);
+
+    [Test, Category("ODBC")]
     public void DeployProjectionViewsAndDiagnosePartialFailure() => SparkSchemaQa.ProjectionViews(NativeSchemaUrl);
 
     [Test, Category("ODBC")]

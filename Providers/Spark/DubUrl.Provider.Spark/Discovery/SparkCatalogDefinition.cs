@@ -15,11 +15,16 @@ internal static class SparkCatalogDefinition
         var result = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         if (start < 0) return result;
         var first = start + 1;
+        var angles = 0;
         for (var i = first; i < tokens.Count; i++)
         {
             var token = tokens[i];
+            if (token.Is("<") && (angles > 0 || (i == first + 2 && SparkStructuredCatalogType.IsCollection(tokens[first + 1].Text))))
+                angles++;
+            else if (token.Is(">") && angles > 0)
+                angles--;
             var end = token.Depth == 0 && token.Is(")");
-            if (!end && !(token.Depth == 1 && token.Is(","))) continue;
+            if (!end && !(angles == 0 && token.Depth == 1 && token.Is(","))) continue;
             if (first < i && !tokens[first].Is("CONSTRAINT") && !tokens[first].Is("PRIMARY") && !tokens[first].Is("UNIQUE"))
                 result[Identifier(tokens[first].Text)] = sql[tokens[first].Start..token.Start].Trim();
             if (end) break;
@@ -31,7 +36,7 @@ internal static class SparkCatalogDefinition
     internal static string? DefaultSql(string definition)
     {
         var tokens = SparkSqlSyntax.Tokenize(definition);
-        var index = tokens.FindIndex(token => token.Depth == 0 && token.Is("DEFAULT"));
+        var index = tokens.FindIndex(AfterType(tokens), token => token.Depth == 0 && token.Is("DEFAULT"));
         if (index < 1 || tokens[index - 1].Is("BY") || index == tokens.Count - 1) return null;
         var end = tokens.FindIndex(index + 2, token => token.Depth == 0 &&
             (token.Is("COMMENT") || token.Is("CONSTRAINT") || token.Is("NOT") || token.Is("MASK")));
@@ -42,7 +47,7 @@ internal static class SparkCatalogDefinition
     {
         unsupported = false;
         var tokens = SparkSqlSyntax.Tokenize(definition);
-        var generated = tokens.FindIndex(token => token.Depth == 0 && token.Is("GENERATED"));
+        var generated = tokens.FindIndex(AfterType(tokens), token => token.Depth == 0 && token.Is("GENERATED"));
         if (generated < 0) return null;
         if (tokens.Skip(generated + 1).Take(4).Select(token => token.Text.ToUpperInvariant())
             .SequenceEqual(new[] { "BY", "DEFAULT", "AS", "IDENTITY" }))
@@ -61,6 +66,26 @@ internal static class SparkCatalogDefinition
         }
         unsupported = true;
         return null;
+    }
+
+    internal static string? StructuredSql(string definition)
+    {
+        var tokens = SparkSqlSyntax.Tokenize(definition);
+        var end = AfterType(tokens);
+        return end > 2 ? definition[tokens[1].Start..tokens[end - 1].End] : null;
+    }
+
+    internal static int AfterType(List<SparkSqlSyntax.Token> tokens)
+    {
+        if (tokens.Count < 3 || !SparkStructuredCatalogType.IsCollection(tokens[1].Text) || !tokens[2].Is("<"))
+            return Math.Min(2, tokens.Count);
+        var angles = 0;
+        for (var i = 2; i < tokens.Count; i++)
+        {
+            if (tokens[i].Is("<")) angles++;
+            else if (tokens[i].Is(">") && --angles == 0) return i + 1;
+        }
+        return tokens.Count;
     }
 
     private static long? IdentityNumber(List<SparkSqlSyntax.Token> tokens, string first, string second)
