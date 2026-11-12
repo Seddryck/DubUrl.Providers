@@ -29,8 +29,8 @@ def validate_references(catalog):
 
 
 def package(catalog_path, schema_path, output, version, commit, core_version):
-    if not re.fullmatch(r"(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)", version, re.ASCII):
-        raise ValueError("Expected a stable catalog release version such as 1.0.0")
+    if not re.fullmatch(r"0\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)(?:-[0-9A-Za-z.-]+)?", version, re.ASCII):
+        raise ValueError("Expected a provider package version such as 0.68.0")
     if not re.fullmatch(r"[0-9a-f]{40}", commit):
         raise ValueError("Expected a full Providers source commit")
     if not re.fullmatch(r"\d+\.\d+\.\d+(?:-[A-Za-z0-9.-]+)?", core_version, re.ASCII):
