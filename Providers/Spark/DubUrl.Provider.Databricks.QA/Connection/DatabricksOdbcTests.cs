@@ -1,4 +1,5 @@
 using System.Data;
+using System.Data.Common;
 using System.Data.Odbc;
 using DubUrl.Provider.Spark.Sql;
 using DubUrl.Schema;
@@ -65,6 +66,22 @@ public sealed class DatabricksOdbcTests : OdbcContract
             var columns = new List<string>();
             while (rows.Read()) columns.Add(rows.GetString(0));
             Assert.That(columns, Is.EqualTo(new[] { "y", "x" }));
+            rows.Close();
+
+            var externalParent = new Table(parentName, [a, b, code]);
+            var external = new DubUrl.Schema.Schema([child], [], [], [externalParent]);
+            var primaryOnly = ((DatabricksSqlDialect)url.Dialect).WithInformationalKeys();
+            var gated = new SchemaScriptRenderer(primaryOnly, SchemaCreationOptions.DropIfExists).Plan(external);
+            var failure = Assert.Catch<DbException>(() => new SchemaScriptDeployer().DeploySchema(url, gated))!;
+            Assert.That(failure.Message, Does.Contain("WithInformationalKeys(supportsUnique: true)"));
+            Assert.That(failure.Data["SchemaCommandIndex"], Is.EqualTo(1));
+            Assert.That(SparkSchemaQa.Scalar(connection, $"SELECT COUNT(*) FROM {Name(childName)}"), Is.EqualTo(1));
+
+            var replacement = new SchemaScriptRenderer(dialect, SchemaCreationOptions.DropIfExists).Plan(external);
+            new SchemaScriptDeployer().DeploySchema(url, replacement);
+            SparkSchemaQa.Execute(connection, $"INSERT INTO {Name(childName)} VALUES (99, 98, 97)");
+            Assert.That(SparkSchemaQa.Scalar(connection, $"SELECT COUNT(*) FROM {Name(childName)}"), Is.EqualTo(1));
+            Assert.That(SparkSchemaQa.Scalar(connection, $"SELECT COUNT(*) FROM {Name(parentName)}"), Is.EqualTo(2));
         });
     }
 
@@ -77,9 +94,12 @@ public sealed class DatabricksOdbcTests : OdbcContract
         {
             var name = new DatabaseObjectName("delta_checks", schema, catalog: catalog);
             var value = new ColumnIdentityExpression("score");
-            var table = new Table(name, [new Column("score", DbType.Int32), new Column("tag", DbType.String)],
+            var table = new Table(name,
             [
-                new CheckConstraint(value, ">=", new ValueExpression(0), "positive_score"),
+                new Column("score", DbType.Int32, constraints: [new CheckConstraint(value, ">=", new ValueExpression(0), "positive_score")]),
+                new Column("tag", DbType.String),
+            ],
+            [
                 new MembershipCheckConstraint(value, [1, 2, null], NullMembershipBehavior.MatchNull, "allowed_score"),
                 new RegexCheckConstraint(new ColumnIdentityExpression("tag"), @"^\d+$", RegexNullBehavior.RejectNull, "numeric_tag"),
             ]);
@@ -97,6 +117,41 @@ public sealed class DatabricksOdbcTests : OdbcContract
             using var rows = properties.ExecuteReader();
             Assert.That(rows.Read(), Is.True);
             Assert.That(rows.GetString(1), Does.Contain("RLIKE").IgnoreCase);
+            rows.Close();
+            properties.CommandText = $"SHOW TBLPROPERTIES {target} ('delta.constraints.positive_score')";
+            using var comparison = properties.ExecuteReader();
+            Assert.That(comparison.Read(), Is.True);
+            Assert.That(comparison.GetString(1), Does.Contain(">= 0"));
+        });
+    }
+
+    [Test, Category("ODBC")]
+    public void DeltaNamespaceDefaultsRetainTheCreateSessionSchema()
+    {
+        var url = CreateLiveConnectionUrl();
+        SparkSchemaQa.WithScratch(url, (connection, catalog, schema) =>
+        {
+            var dialect = url.Dialect;
+            var quote = dialect.SchemaSqlRenderer;
+            var target = quote.RenderObjectName(dialect, catalog, null, schema, "namespace_probe");
+            var insertSchema = schema + "_insert";
+            var insertScope = $"{quote.RenderIdentifier(dialect, catalog)}.{quote.RenderIdentifier(dialect, insertSchema)}";
+            SparkSchemaQa.Execute(connection, $"CREATE SCHEMA {insertScope}");
+            try
+            {
+                SparkSchemaQa.Execute(connection, $"USE SCHEMA {quote.RenderIdentifier(dialect, schema)}");
+                SparkSchemaQa.Execute(connection, $"""
+                    CREATE TABLE {target} (
+                        id INT, schema_value STRING DEFAULT current_schema(), database_value STRING DEFAULT current_database()
+                    ) USING DELTA TBLPROPERTIES ('delta.feature.allowColumnDefaults' = 'supported')
+                    """);
+                SparkSchemaQa.Execute(connection, $"USE SCHEMA {insertScope}");
+                Assert.That(SparkSchemaQa.Scalar(connection, "SELECT current_database()"), Is.EqualTo(insertSchema));
+                SparkSchemaQa.Execute(connection, $"INSERT INTO {target} (id) VALUES (1)");
+                Assert.That(SparkSchemaQa.Scalar(connection, $"SELECT CONCAT(schema_value, '/', database_value) FROM {target}"),
+                    Is.EqualTo($"{schema}/{schema}"));
+            }
+            finally { SparkSchemaQa.Execute(connection, $"DROP SCHEMA IF EXISTS {insertScope} CASCADE"); }
         });
     }
 
@@ -177,6 +232,29 @@ public sealed class DatabricksOdbcTests : OdbcContract
 
     [Test, Category("ODBC")]
     public void RenderTablesWithFacetsAndComments() => SparkSchemaQa.Tables(CreateLiveConnectionUrl(), delta: true);
+
+    [Test, Category("ODBC")]
+    public void ScriptUnqualifiedDeltaTablePreservesEmptyAndAbsentComments()
+    {
+        var url = CreateLiveConnectionUrl();
+        SparkSchemaQa.WithScratch(url, (connection, catalog, schema) =>
+        {
+            var dialect = url.Dialect;
+            var quote = dialect.SchemaSqlRenderer;
+            var scope = $"{quote.RenderIdentifier(dialect, catalog)}.{quote.RenderIdentifier(dialect, schema)}";
+            SparkSchemaQa.Execute(connection, $"USE SCHEMA {scope}");
+            var table = new Table("comment_table",
+                [new Column("absent", DbType.Int32), new Column("empty", DbType.Int32, description: "")], description: "");
+            SparkSchemaQa.Execute(connection, url.ScriptSchema(new DubUrl.Schema.Schema([table])));
+
+            var info = $"{quote.RenderIdentifier(dialect, catalog)}.information_schema";
+            Assert.That(SparkSchemaQa.Scalar(connection, $"SELECT COUNT(*) FROM {info}.tables " +
+                $"WHERE table_schema = '{schema}' AND table_name = 'comment_table' AND comment = ''"), Is.EqualTo(1));
+            Assert.That(SparkSchemaQa.Scalar(connection, $"SELECT COUNT(*) FROM {info}.columns " +
+                $"WHERE table_schema = '{schema}' AND table_name = 'comment_table' " +
+                "AND ((column_name = 'absent' AND comment IS NULL) OR (column_name = 'empty' AND comment = ''))"), Is.EqualTo(2));
+        });
+    }
 
     [Test, Category("ODBC")]
     public void OpenFreeEditionWarehouse()

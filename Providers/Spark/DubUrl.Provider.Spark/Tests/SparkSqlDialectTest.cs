@@ -9,6 +9,7 @@ using DubUrl.Querying.Dialects;
 using DubUrl.Schema;
 using DubUrl.Schema.Constraints;
 using NUnit.Framework;
+using ForeignKeyConstraint = DubUrl.Schema.Constraints.ForeignKeyConstraint;
 
 namespace DubUrl.Provider.Spark.Tests;
 
@@ -119,8 +120,10 @@ public sealed class SparkSqlDialectTest
             new NumericColumn("b", DbType.Decimal, 10, 2),
             new Column("c", DbType.String),
         ], description: "table's comment")]);
-        var sql = new SchemaScriptRenderer(dialect).Plan(model).Single().CommandText;
+        var renderer = new SchemaScriptRenderer(dialect);
+        var sql = renderer.Plan(model).Single().CommandText;
 
+        Assert.That(renderer.Render(model), Is.EqualTo(sql.TrimEnd()));
         Assert.That(sql, Does.Contain("`a)` VARCHAR(12) COMMENT 'Café\\'s \\\\\\\\;'"));
         Assert.That(sql, Does.Contain("`b` DECIMAL(10, 2)").And.Contain("`c` STRING"));
         Assert.That(sql, Does.Contain(delta ? ") USING DELTA COMMENT 'table\\'s comment'" : ") USING PARQUET COMMENT 'table\\'s comment'"));
@@ -154,7 +157,9 @@ public sealed class SparkSqlDialectTest
             new Column("with_null", DbType.Int32, DBNull.Value),
             new Column("stamp", DbType.DateTime2, defaultExpression: ColumnDefaultExpression.CurrentUtcTimestamp(6)),
         ])]);
-        var sql = new SchemaScriptRenderer(dialect).Plan(model).Single().CommandText;
+        var renderer = new SchemaScriptRenderer(dialect);
+        var sql = renderer.Plan(model).Single().CommandText;
+        Assert.That(renderer.Render(model), Is.EqualTo(sql.TrimEnd()));
         Assert.That(sql, Does.Contain("with_null` INT DEFAULT NULL").And.Not.Contain("without_default` INT DEFAULT"));
         Assert.That(sql, Does.Contain("unix_micros(current_timestamp())"));
         Assert.That(sql.Contains("delta.feature.allowColumnDefaults", StringComparison.Ordinal), Is.EqualTo(delta));
@@ -193,19 +198,34 @@ public sealed class SparkSqlDialectTest
         var value = new ColumnIdentityExpression("score");
         var model = new DubUrl.Schema.Schema([new Table("t",
         [
-            new Column("score", DbType.Int32, constraints: [new CheckConstraint(value, ">=", new ValueExpression(0))]),
+            new Column("score", DbType.Int32, constraints: [new CheckConstraint(value, ">=", new ValueExpression(0), "score`positive")]),
             new Column("tag", DbType.String),
         ],
         [
             new MembershipCheckConstraint(value, [1, null], NullMembershipBehavior.MatchNull, "allowed_score"),
             new RegexCheckConstraint(new ColumnIdentityExpression("tag"), @"^\d+$", RegexNullBehavior.RejectNull, "numeric_tag"),
         ])]);
-        var plan = new SchemaScriptRenderer(Databricks()).Plan(model);
+        var renderer = new SchemaScriptRenderer(Databricks());
+        var plan = renderer.Plan(model);
         Assert.That(plan, Has.Count.EqualTo(4));
         Assert.That(plan[0].CommandText, Does.Contain("USING DELTA").And.Not.Contain("CHECK"));
-        Assert.That(plan[1].CommandText, Does.Contain("coalesce((").And.Contain(">= 0"));
+        Assert.That(plan[1].CommandText, Does.Contain("ADD CONSTRAINT `score``positive` CHECK").And.Contain("coalesce((").And.Contain(">= 0"));
         Assert.That(plan[2].CommandText, Does.Contain("allowed_score").And.Contain("IS NULL"));
         Assert.That(plan[3].CommandText, Does.Contain("numeric_tag").And.Contain("IS NOT NULL").And.Contain("RLIKE"));
+        Assert.That(renderer.Render(model),
+            Is.EqualTo(string.Join(Environment.NewLine, plan.Select(command => command.CommandText.TrimEnd()))));
+    }
+
+    [Test]
+    public void DatabricksRejectsDuplicateCheckNamesAcrossColumnAndTableScopes()
+    {
+        var value = new ColumnIdentityExpression("score");
+        var model = new DubUrl.Schema.Schema([new Table("t",
+            [new Column("score", DbType.Int32, constraints: [new CheckConstraint(value, ">=", new ValueExpression(0), "ScoreLimit")])],
+            [new CheckConstraint(value, "<=", new ValueExpression(100), "scorelimit")])]);
+
+        Assert.That(() => new SchemaScriptRenderer(Databricks()).Plan(model),
+            Throws.Exception.With.Message.Contains("Duplicate check constraint name"));
     }
 
     [Test]
@@ -222,6 +242,29 @@ public sealed class SparkSqlDialectTest
         var sql = new SchemaScriptRenderer(Databricks().WithInformationalKeys(supportsUnique: true)).Plan(model).Single().CommandText;
         Assert.That(sql, Does.Contain("PRIMARY KEY (`key`) NOT ENFORCED NORELY")
             .And.Contain("UNIQUE (`code`) NOT ENFORCED NORELY"));
+    }
+
+    [TestCase(false)]
+    [TestCase(true)]
+    public void DatabricksPreflightsExternalKeysBeforeReplacement(bool supportsUnique)
+    {
+        var dialect = Databricks().WithInformationalKeys(supportsUnique);
+        var parent = new Table(new DatabaseObjectName("Parent's", "external", catalog: "main"),
+            [new Column("A", DbType.Int32), new Column("B", DbType.Int32)]);
+        var child = new Table("child", [new Column("x", DbType.Int32), new Column("y", DbType.Int32)],
+            [new ForeignKeyConstraint("fk", ["y", "x"], parent.Identity, ["B", "A"])]);
+        var renderer = new SchemaScriptRenderer(dialect, SchemaCreationOptions.DropIfExists);
+        var plan = renderer.Plan(new([child], [], [], [parent]));
+
+        Assert.That(plan.Select(command => command.Operation), Is.EqualTo(new[]
+            { SchemaSqlOperation.ForeignKey, SchemaSqlOperation.DropTable, SchemaSqlOperation.CreateTable, SchemaSqlOperation.ForeignKey }));
+        Assert.That(plan[0].CommandText, Does.Contain("`main`.information_schema.constraint_column_usage")
+            .And.Contain("t.table_name = 'parent\\'s'").And.Contain("IN ('b', 'a')").And.Contain("count(*) = 2"));
+        Assert.That(plan[0].CommandText, Does.Contain(supportsUnique
+            ? "t.constraint_type IN ('PRIMARY KEY', 'UNIQUE')" : "t.constraint_type IN ('PRIMARY KEY')"));
+        Assert.That(plan[1].ObjectName, Is.EqualTo("child"));
+        Assert.That(plan[^1].CommandText, Does.Contain("FOREIGN KEY (`y`, `x`) REFERENCES `main`.`external`.`Parent's` (`B`, `A`)")
+            .And.Contain("NOT ENFORCED NORELY"));
     }
 
     [TestCase(false)]

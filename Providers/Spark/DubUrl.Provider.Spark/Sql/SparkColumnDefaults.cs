@@ -36,6 +36,8 @@ internal static class SparkColumnDefaults
                 => throw new NotSupportedException("Databricks Delta captures namespace defaults before INSERT. Supply the current schema or database explicitly in the INSERT statement."),
             ColumnDefaultKind.NewUuid => throw new NotSupportedException(
                 "Spark SQL rejects nondeterministic UUID column defaults. Generate UUIDs explicitly in the INSERT statement."),
+            ColumnDefaultKind.NextSequenceValue => throw new NotSupportedException(
+                "Spark SQL does not support external named-sequence defaults. Supply the value in the INSERT statement or use a Delta BIGINT identity column."),
             _ => null,
         };
     }

@@ -1,10 +1,12 @@
 using DubUrl.Querying.Dialects;
+using DubUrl.Schema;
+using DubUrl.Schema.Constraints;
 using DubUrl.Schema.Renderers;
 
 namespace DubUrl.Provider.Spark.Sql;
 
 internal sealed class SparkSchemaSqlRenderer : StandardSchemaSqlRenderer, ITableDefinitionSqlRenderer,
-    IColumnDefinitionSqlRenderer, ITableDescriptionSqlRenderer, IColumnDefaultSqlRenderer
+    IColumnDefinitionSqlRenderer, ITableDescriptionSqlRenderer, IColumnDefaultSqlRenderer, ISchemaCommandSqlRenderer
 {
     public static new SparkSchemaSqlRenderer Instance { get; } = new();
 
@@ -84,6 +86,22 @@ internal sealed class SparkSchemaSqlRenderer : StandardSchemaSqlRenderer, ITable
     public override string RenderComment(IDialect dialect, SchemaSqlObjectName table, string? column, string description)
         => string.Empty; // Comments are part of the CREATE TABLE statement.
 
+    public string RenderTableOptions(IDialect dialect, bool hasDefaults)
+        => dialect is not DatabricksSqlDialect ? " USING PARQUET"
+            : hasDefaults ? " USING DELTA TBLPROPERTIES ('delta.feature.allowColumnDefaults' = 'supported')"
+            : " USING DELTA";
+
+    public IReadOnlyList<SchemaSqlCommand> PlanTableChecks(IDialect dialect, DatabaseObjectName table,
+        IReadOnlyList<SchemaCheckDefinition> checks)
+    {
+        if (checks.Count == 0)
+            return [];
+        if (dialect is not DatabricksSqlDialect)
+            throw new NotSupportedException("Spark's built-in table provider does not enforce CHECK constraints. Use Databricks Delta.");
+        var name = RenderObjectName(dialect, table.Catalog, table.Database, table.Schema, table.Name);
+        return SparkCheckCommands.Plan(dialect, table, name, checks);
+    }
+
     public TableDefinitionPlan RenderTableDefinition(IDialect dialect, TableDefinitionContext table)
     {
         var rules = ((SparkSqlDialect)dialect).GetCatalogRules(table.Table.Catalog);
@@ -137,14 +155,19 @@ internal sealed class SparkSchemaSqlRenderer : StandardSchemaSqlRenderer, ITable
     }
 
     public override IReadOnlyList<SchemaSqlCommand> PlanCommands(IDialect dialect, IReadOnlyList<SchemaSqlCommand> statements)
-        => statements.SelectMany(command => command.Operation == SchemaSqlOperation.CreateTable
-            ? SparkTableCommands.Plan(command, dialect is DatabricksSqlDialect)
-            : [AddForeignKeyOptions(command)]).ToArray();
+        => statements.Select(AddForeignKeyOptions).ToArray();
 
     private static SchemaSqlCommand AddForeignKeyOptions(SchemaSqlCommand command)
-        => command.Operation == SchemaSqlOperation.ForeignKey
+        => command.Operation == SchemaSqlOperation.ForeignKey && command.CommandText.TrimStart().StartsWith("ALTER TABLE ", StringComparison.Ordinal)
             ? command with { CommandText = command.CommandText.TrimEnd().TrimEnd(';') + " NOT ENFORCED NORELY;" }
             : command;
+
+    public IReadOnlyList<SchemaSqlCommand> PlanForeignKeyPrerequisites(IDialect dialect, ForeignKeyConstraint key,
+        TableDefinitionContext? createdTarget)
+    {
+        var databricks = RequireInformationalKeys(dialect, key.TargetTable.Catalog);
+        return DatabricksForeignKeys.Plan(databricks, key, createdTarget);
+    }
 
     public override string RenderRegex(IDialect dialect, string expression, string pattern)
         => dialect is DatabricksSqlDialect ? $"({expression} RLIKE {pattern})"

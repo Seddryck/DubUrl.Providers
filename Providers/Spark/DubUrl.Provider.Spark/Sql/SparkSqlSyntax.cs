@@ -7,7 +7,7 @@ internal static class SparkSqlSyntax
         internal bool Is(string value) => Text.Equals(value, StringComparison.OrdinalIgnoreCase);
     }
 
-    // Schema commands are supplied individually by the planner. Quoted delimiters must not affect clause boundaries.
+    // Quoted delimiters must not affect the boundaries of clauses in catalog DDL.
     internal static List<Token> Tokenize(string sql)
     {
         var tokens = new List<Token>();

@@ -25,8 +25,7 @@ internal static class SparkSchemaQa
                 new NumericColumn("amount", DbType.Decimal, 10, 2),
             ], description: comment);
 
-            foreach (var command in new SchemaScriptRenderer(url.Dialect).Plan(new DubUrl.Schema.Schema([table])))
-                Execute(connection, command.CommandText);
+            Execute(connection, url.ScriptSchema(new DubUrl.Schema.Schema([table])));
 
             var target = url.Dialect.SchemaSqlRenderer.RenderObjectName(url.Dialect, catalog, null, schema, table.Name);
             using var describe = connection.CreateCommand();
@@ -69,8 +68,7 @@ internal static class SparkSchemaQa
             ]);
 
             Execute(connection, "SET TIME ZONE '+05:00'");
-            foreach (var command in new SchemaScriptRenderer(url.Dialect).Plan(new DubUrl.Schema.Schema([table])))
-                Execute(connection, command.CommandText);
+            Execute(connection, url.ScriptSchema(new DubUrl.Schema.Schema([table])));
 
             var target = url.Dialect.SchemaSqlRenderer.RenderObjectName(url.Dialect, catalog, null, schema, table.Name);
             Execute(connection, $"INSERT INTO {target} (id) VALUES (1)");
