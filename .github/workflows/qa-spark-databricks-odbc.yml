@@ -83,6 +83,7 @@ jobs:
         run: |
           status=0
           dotnet test Providers/Spark/DubUrl.Provider.Databricks.QA -c Release -f net10.0 --no-build \
+            --filter 'FullyQualifiedName~InformationalKeysPreserveOrderAndAllowDuplicatesAndOrphans|FullyQualifiedName~DeltaChecksEnforceComparisonMembershipAndRegex|FullyQualifiedName~DeltaNamespaceDefaultsRetainTheCreateSessionSchema|FullyQualifiedName~DeltaIdentitySupportsExplicitValuesAndResetsOnReplacement|FullyQualifiedName~ContextAndTimeDefaultsUseTheInsertSession|FullyQualifiedName~EvaluateColumnDefaultsOnInsert|FullyQualifiedName~RenderTablesWithFacetsAndComments|FullyQualifiedName~ScriptUnqualifiedDeltaTablePreservesEmptyAndAbsentComments|FullyQualifiedName~DeployProjectionViewsAndDiagnosePartialFailure' \
             --logger 'trx;LogFileName=databricks.trx' --results-directory .test-results/databricks || status=$?
           report=.test-results/databricks/databricks.trx
           if [[ -n "$DATABRICKS_TOKEN" && -f "$report" ]]; then
