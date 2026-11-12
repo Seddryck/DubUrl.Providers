@@ -1,0 +1,40 @@
+{
+  "routes": [
+    {
+      "id": "hive-odbc",
+      "api": "ODBC",
+      "driver": "Cloudera Hive ODBC",
+      "scheme": "odbc+hive",
+      "locations": [
+        "thriftTcp",
+        "thriftHttp"
+      ],
+      "tls": "thrift",
+      "schemeByLocation": {
+        "thriftTcp": {
+          "default": "odbc+hive+tcp",
+          "on": "odbc+hive+tcps"
+        },
+        "thriftHttp": {
+          "default": "odbc+hive+http",
+          "on": "odbc+hive+https"
+        }
+      },
+      "auth": [
+        "driver",
+        {
+          "id": "thriftNone",
+          "queryByLocation": {
+            "thriftTcp": {
+              "sasl": "0"
+            }
+          }
+        },
+        "thriftPassword",
+        "thriftKerberos",
+        "thriftUsername"
+      ],
+      "providerInvariant": "System.Data.Odbc"
+    }
+  ]
+}

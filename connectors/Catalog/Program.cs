@@ -4,6 +4,12 @@ using System.Text.RegularExpressions;
 using DubUrl.Core.ProviderPacks;
 using DubUrl.Mapping;
 
+if (args is ["connection-urls", var root, var output])
+{
+    ConnectionUrlCatalog.Generate(root, output);
+    return;
+}
+
 if (args.Length != 3) throw new ArgumentException("Expected matrix path, output path, and version.");
 var version = Regex.Match(args[2], @"^(?<major>\d+)\.(?<minor>\d+)\.(?<patch>\d+)(?:[-+].+)?$",
     RegexOptions.None, TimeSpan.FromSeconds(1));

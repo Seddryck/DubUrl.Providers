@@ -1,0 +1,18 @@
+{
+  "routes": [
+    {
+      "id": "sqlite-native",
+      "api": "ADO.NET",
+      "driver": "Microsoft.Data.Sqlite",
+      "scheme": "sqlite",
+      "locations": [
+        "file",
+        "memory"
+      ],
+      "auth": [
+        "none"
+      ],
+      "providerInvariant": "Microsoft.Data.Sqlite"
+    }
+  ]
+}

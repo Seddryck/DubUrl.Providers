@@ -1,0 +1,26 @@
+{
+  "routes": [
+    {
+      "id": "excel-ace",
+      "api": "OLE DB",
+      "driver": "Microsoft ACE OLE DB",
+      "platforms": [
+        "Windows"
+      ],
+      "scheme": "oledb+xlsx",
+      "schemeByExtension": {
+        "xls": "oledb+xls",
+        "xlsx": "oledb+xlsx",
+        "xlsm": "oledb+xlsm",
+        "xlsb": "oledb+xlsb"
+      },
+      "locations": [
+        "file"
+      ],
+      "auth": [
+        "none"
+      ],
+      "providerInvariant": "System.Data.OleDb"
+    }
+  ]
+}

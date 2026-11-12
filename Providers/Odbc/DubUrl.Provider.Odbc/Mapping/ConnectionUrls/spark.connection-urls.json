@@ -1,0 +1,40 @@
+{
+  "routes": [
+    {
+      "id": "spark-odbc",
+      "api": "ODBC",
+      "driver": "Spark ODBC",
+      "scheme": "odbc+spark",
+      "locations": [
+        "thriftTcp",
+        "thriftHttp"
+      ],
+      "tls": "thrift",
+      "schemeByLocation": {
+        "thriftTcp": {
+          "default": "odbc+spark+tcp",
+          "on": "odbc+spark+tcps"
+        },
+        "thriftHttp": {
+          "default": "odbc+spark+http",
+          "on": "odbc+spark+https"
+        }
+      },
+      "auth": [
+        "driver",
+        {
+          "id": "thriftNone",
+          "queryByLocation": {
+            "thriftTcp": {
+              "sasl": "0"
+            }
+          }
+        },
+        "thriftPassword",
+        "thriftKerberos",
+        "thriftUsername"
+      ],
+      "providerInvariant": "System.Data.Odbc"
+    }
+  ]
+}

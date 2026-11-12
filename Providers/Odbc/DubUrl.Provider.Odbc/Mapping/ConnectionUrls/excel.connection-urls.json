@@ -1,0 +1,26 @@
+{
+  "routes": [
+    {
+      "id": "excel-odbc",
+      "api": "ODBC",
+      "driver": "Microsoft Excel ODBC",
+      "platforms": [
+        "Windows"
+      ],
+      "scheme": "odbc+xlsx",
+      "schemeByExtension": {
+        "xls": "odbc+xls",
+        "xlsx": "odbc+xlsx",
+        "xlsm": "odbc+xlsm",
+        "xlsb": "odbc+xlsb"
+      },
+      "locations": [
+        "file"
+      ],
+      "auth": [
+        "none"
+      ],
+      "providerInvariant": "System.Data.Odbc"
+    }
+  ]
+}

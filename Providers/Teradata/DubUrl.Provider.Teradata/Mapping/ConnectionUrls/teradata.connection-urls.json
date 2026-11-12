@@ -1,0 +1,54 @@
+{
+  "routes": [
+    {
+      "id": "teradata-native",
+      "api": "ADO.NET",
+      "driver": "Teradata.Client",
+      "scheme": "teradata",
+      "locations": [
+        "database"
+      ],
+      "tls": "nativeVerified",
+      "note": "Gateway TLS requires a compatible engine.",
+      "fields": {
+        "port": {
+          "layout": "port",
+          "default": 1025
+        }
+      },
+      "auth": [
+        "password",
+        {
+          "id": "integrated",
+          "label": "SPNEGO (OS identity)",
+          "note": "Requires vendor client support and server SPNEGO/TeraGSS."
+        },
+        "driver"
+      ],
+      "providerInvariant": "Teradata.Client"
+    }
+  ],
+  "locations": {
+    "database": {
+      "transport": "TCP",
+      "fields": {
+        "host": {
+          "layout": "host",
+          "required": true,
+          "url": "host"
+        },
+        "port": {
+          "layout": "port",
+          "url": "port"
+        },
+        "database": {
+          "layout": "text",
+          "label": "Database"
+        }
+      },
+      "path": [
+        "database"
+      ]
+    }
+  }
+}

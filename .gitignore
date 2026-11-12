@@ -356,3 +356,6 @@ codecov.exe
 artifacts/schema-feed/
 artifacts/schema-source/
 artifacts/results/
+artifacts/catalog-tests/
+artifacts/catalog-release/
+artifacts/url-catalog/

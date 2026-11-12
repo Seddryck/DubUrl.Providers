@@ -1,0 +1,715 @@
+{
+  "$schema": "./schema.json",
+  "schemaVersion": 2,
+  "scope": "Named DubUrl connection profiles. Authentication and TLS depend on the installed client driver and server configuration.",
+  "layouts": {
+    "text": {},
+    "host": {
+      "label": "Host",
+      "placeholder": "db.example.com"
+    },
+    "port": {
+      "label": "Port",
+      "inputMode": "numeric"
+    }
+  },
+  "driverFields": {
+    "ODBC": {
+      "installedDriver": {
+        "layout": "text",
+        "label": "Installed driver name",
+        "queryKey": "Driver"
+      }
+    },
+    "OLE DB": {
+      "installedProvider": {
+        "layout": "text",
+        "label": "Installed provider name",
+        "queryKey": "Provider"
+      }
+    }
+  },
+  "locations": {
+    "requiredDatabase": {
+      "transport": "TCP",
+      "fields": {
+        "host": {
+          "layout": "host",
+          "required": true,
+          "url": "host"
+        },
+        "port": {
+          "layout": "port",
+          "url": "port"
+        },
+        "database": {
+          "layout": "text",
+          "label": "Database",
+          "required": true
+        }
+      },
+      "path": [
+        "database"
+      ]
+    },
+    "sqlServerWrapped": {
+      "transport": "TCP",
+      "fields": {
+        "host": {
+          "layout": "host",
+          "required": true,
+          "url": "host"
+        },
+        "port": {
+          "layout": "port",
+          "url": "port",
+          "defaultUnless": [
+            "instance"
+          ],
+          "placeholder": "1433 (default instance)"
+        },
+        "instance": {
+          "layout": "text",
+          "label": "Instance"
+        },
+        "database": {
+          "layout": "text",
+          "label": "Database",
+          "required": true
+        }
+      },
+      "path": [
+        "instance",
+        "database"
+      ]
+    },
+    "server": {
+      "transport": "TCP",
+      "fields": {
+        "host": {
+          "layout": "host",
+          "required": true,
+          "url": "host"
+        },
+        "port": {
+          "layout": "port",
+          "url": "port"
+        }
+      }
+    },
+    "service": {
+      "label": "Service on a server",
+      "transport": "TCP",
+      "fields": {
+        "host": {
+          "layout": "host",
+          "required": true,
+          "url": "host"
+        },
+        "port": {
+          "layout": "port",
+          "url": "port"
+        },
+        "service": {
+          "layout": "text",
+          "label": "Service name",
+          "required": true
+        }
+      },
+      "path": [
+        "service"
+      ]
+    },
+    "tns": {
+      "label": "TNS alias",
+      "transport": "Oracle Net",
+      "fields": {
+        "tnsAlias": {
+          "layout": "text",
+          "label": "TNS alias",
+          "required": true,
+          "url": "host"
+        }
+      }
+    },
+    "catalogSchema": {
+      "transport": "HTTP",
+      "requires": {
+        "schema": "catalog"
+      },
+      "fields": {
+        "host": {
+          "layout": "host",
+          "required": true,
+          "url": "host"
+        },
+        "port": {
+          "layout": "port",
+          "url": "port"
+        },
+        "catalog": {
+          "layout": "text",
+          "label": "Catalog"
+        },
+        "schema": {
+          "layout": "text",
+          "label": "Schema"
+        }
+      },
+      "path": [
+        "catalog",
+        "schema"
+      ]
+    },
+    "thriftTcp": {
+      "label": "TCP",
+      "transport": "TCP",
+      "fields": {
+        "host": {
+          "layout": "host",
+          "required": true,
+          "url": "host"
+        },
+        "port": {
+          "layout": "port",
+          "default": 10000,
+          "url": "port"
+        },
+        "schema": {
+          "layout": "text",
+          "label": "Schema"
+        }
+      },
+      "path": [
+        {
+          "literal": "schema",
+          "when": "schema"
+        },
+        "schema"
+      ]
+    },
+    "thriftHttp": {
+      "label": "HTTP",
+      "transport": "HTTP",
+      "fields": {
+        "host": {
+          "layout": "host",
+          "required": true,
+          "url": "host"
+        },
+        "port": {
+          "layout": "port",
+          "default": 10001,
+          "url": "port"
+        },
+        "httpPath": {
+          "layout": "text",
+          "label": "HTTP endpoint path",
+          "default": "/cliservice"
+        },
+        "schema": {
+          "layout": "text",
+          "label": "Schema"
+        }
+      },
+      "path": [
+        {
+          "split": "httpPath",
+          "reserveSuffix": "schema"
+        },
+        {
+          "literal": "schema",
+          "when": "schema"
+        },
+        "schema"
+      ]
+    },
+    "file": {
+      "label": "Database file",
+      "transport": "Local file",
+      "fields": {
+        "file": {
+          "layout": "text",
+          "label": "File path",
+          "required": true,
+          "placeholder": "C:/data/example.db"
+        }
+      },
+      "path": [
+        {
+          "file": "file"
+        }
+      ]
+    },
+    "memory": {
+      "label": "In memory",
+      "transport": "In memory"
+    }
+  },
+  "tlsPolicies": {
+    "driverDefault": {
+      "modes": [
+        {
+          "id": "default",
+          "label": "Driver default"
+        }
+      ]
+    },
+    "fixed": {
+      "modes": [
+        {
+          "id": "default",
+          "label": "Required",
+          "secure": true,
+          "transport": "HTTPS"
+        }
+      ]
+    },
+    "nativeVerified": {
+      "modes": [
+        {
+          "id": "default",
+          "label": "Driver default"
+        },
+        {
+          "id": "verified",
+          "label": "Require verified TLS",
+          "via": "runtime",
+          "cli": [
+            "--tls"
+          ],
+          "library": "WithEncryption(ConnectionEncryption.Tls())",
+          "secure": true
+        }
+      ]
+    },
+    "npgsql": {
+      "modes": [
+        {
+          "id": "default",
+          "label": "Driver default"
+        },
+        {
+          "id": "verified",
+          "label": "Require verified TLS",
+          "via": "url",
+          "query": {
+            "SSL Mode": "VerifyFull",
+            "GSS Encryption Mode": "Disable"
+          },
+          "secure": true
+        }
+      ]
+    },
+    "mysql": {
+      "modes": [
+        {
+          "id": "default",
+          "label": "Driver default"
+        },
+        {
+          "id": "verified",
+          "label": "Require verified TLS",
+          "via": "url",
+          "query": {
+            "SSL Mode": "VerifyFull"
+          },
+          "secure": true
+        }
+      ]
+    },
+    "mysqlOdbc": {
+      "modes": [
+        {
+          "id": "default",
+          "label": "Driver default"
+        },
+        {
+          "id": "verified",
+          "label": "Require verified TLS",
+          "via": "url",
+          "query": {
+            "SSLMODE": "VERIFY_IDENTITY"
+          },
+          "secure": true
+        }
+      ]
+    },
+    "thrift": {
+      "modes": [
+        {
+          "id": "default",
+          "label": "Off"
+        },
+        {
+          "id": "on",
+          "label": "On",
+          "via": "scheme",
+          "secure": true,
+          "transportByProtocol": {
+            "HTTP": "HTTPS",
+            "TCP": "TCP with TLS"
+          }
+        }
+      ]
+    }
+  },
+  "authentication": {
+    "password": {
+      "label": "Username and password",
+      "via": "runtime",
+      "cli": [
+        "--password-prompt"
+      ],
+      "library": "ConnectionAuthentication.Password(…)",
+      "fields": {
+        "username": {
+          "layout": "text",
+          "label": "Username",
+          "required": true,
+          "url": "username"
+        }
+      }
+    },
+    "integrated": {
+      "label": "Operating-system identity",
+      "via": "runtime",
+      "cli": [
+        "--os-identity"
+      ],
+      "library": "ConnectionAuthentication.OperatingSystemIdentity()"
+    },
+    "certificate": {
+      "label": "Client certificate",
+      "via": "runtime",
+      "requiresTls": true,
+      "tlsOverride": "nativeVerified",
+      "cli": [
+        "--client-certificate",
+        "client.crt",
+        "--client-key",
+        "client.key"
+      ],
+      "library": "ConnectionAuthentication.ClientCertificate(…)",
+      "fields": {
+        "username": {
+          "layout": "text",
+          "label": "Username",
+          "required": true,
+          "url": "username"
+        }
+      }
+    },
+    "browser": {
+      "label": "OAuth browser sign-in",
+      "via": "runtime",
+      "cli": [
+        "--oauth",
+        "browser"
+      ],
+      "library": "Provider OAuth session + ConnectionAuthentication.OAuthInteractive(…)"
+    },
+    "driver": {
+      "label": "Driver-managed sign-in",
+      "via": "external",
+      "note": "Configure the vendor's identity or connection properties in the consuming application."
+    },
+    "none": {
+      "label": "No sign-in",
+      "via": "url"
+    },
+    "userOnly": {
+      "label": "Username only (unauthenticated server)",
+      "via": "url",
+      "fields": {
+        "username": {
+          "layout": "text",
+          "label": "Username",
+          "required": true,
+          "url": "username"
+        }
+      }
+    },
+    "thriftNone": {
+      "label": "No sign-in",
+      "via": "url",
+      "query": {
+        "AuthMech": "0"
+      }
+    },
+    "thriftPassword": {
+      "label": "Username and password",
+      "via": "runtime",
+      "query": {
+        "AuthMech": "3"
+      },
+      "cli": [
+        "--password-prompt"
+      ],
+      "library": "ConnectionAuthentication.Password(…)",
+      "fields": {
+        "username": {
+          "layout": "text",
+          "label": "Username",
+          "required": true,
+          "url": "username"
+        }
+      }
+    },
+    "thriftKerberos": {
+      "label": "Kerberos (vendor driver)",
+      "via": "external",
+      "query": {
+        "AuthMech": "1"
+      },
+      "note": "Set the service principal and other Kerberos properties required by your driver."
+    },
+    "thriftUsername": {
+      "label": "Username only",
+      "via": "url",
+      "fields": {
+        "username": {
+          "layout": "text",
+          "label": "Username",
+          "required": true,
+          "url": "username"
+        }
+      }
+    }
+  },
+  "databases": [
+    {
+      "id": "postgresql",
+      "label": "PostgreSQL",
+      "routes": [
+        "npgsql",
+        "psqlodbc"
+      ]
+    },
+    {
+      "id": "sqlserver",
+      "label": "SQL Server / Azure SQL",
+      "routes": [
+        "sqlclient",
+        "msodbc18",
+        "msodbc17",
+        "msoledbsql"
+      ]
+    },
+    {
+      "id": "mysql",
+      "label": "MySQL",
+      "routes": [
+        "mysqlconnector",
+        "mysql-data",
+        "mysql-odbc",
+        "mysql-oledb"
+      ]
+    },
+    {
+      "id": "mariadb",
+      "label": "MariaDB",
+      "routes": [
+        "maria-connector",
+        "maria-data",
+        "maria-odbc",
+        "maria-mysql-odbc"
+      ]
+    },
+    {
+      "id": "sqlite",
+      "label": "SQLite",
+      "routes": [
+        "sqlite-native"
+      ]
+    },
+    {
+      "id": "duckdb",
+      "label": "DuckDB",
+      "routes": [
+        "duckdb-native",
+        "duckdb-adbc",
+        "duckdb-odbc"
+      ]
+    },
+    {
+      "id": "trino",
+      "label": "Trino",
+      "routes": [
+        "nreco",
+        "simba-trino"
+      ]
+    },
+    {
+      "id": "databricks",
+      "label": "Databricks",
+      "routes": [
+        "databricks-odbc"
+      ]
+    },
+    {
+      "id": "spark",
+      "label": "Apache Spark",
+      "routes": [
+        "spark-odbc"
+      ]
+    },
+    {
+      "id": "hive",
+      "label": "Apache Hive",
+      "routes": [
+        "hive-odbc"
+      ]
+    },
+    {
+      "id": "drill",
+      "label": "Apache Drill",
+      "routes": [
+        "drill-odbc"
+      ]
+    },
+    {
+      "id": "snowflake",
+      "label": "Snowflake",
+      "routes": [
+        "snowflake-native"
+      ]
+    },
+    {
+      "id": "cockroachdb",
+      "label": "CockroachDB",
+      "routes": [
+        "cockroach-npgsql"
+      ]
+    },
+    {
+      "id": "timescale",
+      "label": "TimescaleDB",
+      "routes": [
+        "timescale-npgsql",
+        "timescale-psqlodbc"
+      ]
+    },
+    {
+      "id": "cratedb",
+      "label": "CrateDB",
+      "routes": [
+        "crate-npgsql"
+      ]
+    },
+    {
+      "id": "questdb",
+      "label": "QuestDB",
+      "routes": [
+        "quest-npgsql",
+        "quest-psqlodbc"
+      ]
+    },
+    {
+      "id": "singlestore",
+      "label": "SingleStore",
+      "routes": [
+        "singlestore-native"
+      ]
+    },
+    {
+      "id": "oracle",
+      "label": "Oracle Database",
+      "routes": [
+        "odp",
+        "oraoledb"
+      ]
+    },
+    {
+      "id": "db2",
+      "label": "IBM Db2",
+      "routes": [
+        "ibm-db2"
+      ]
+    },
+    {
+      "id": "firebird",
+      "label": "Firebird SQL",
+      "routes": [
+        "firebird-native"
+      ]
+    },
+    {
+      "id": "teradata",
+      "label": "Teradata",
+      "routes": [
+        "teradata-native"
+      ]
+    },
+    {
+      "id": "access",
+      "label": "Microsoft Access",
+      "routes": [
+        "access-odbc",
+        "access-ace"
+      ]
+    },
+    {
+      "id": "excel",
+      "label": "Microsoft Excel",
+      "routes": [
+        "excel-odbc",
+        "excel-ace"
+      ]
+    },
+    {
+      "id": "text",
+      "label": "Text / CSV / TSV",
+      "routes": [
+        "text-odbc"
+      ]
+    },
+    {
+      "id": "ssas-tabular",
+      "label": "SSAS Tabular",
+      "routes": [
+        "ssas-tabular-adomd"
+      ]
+    },
+    {
+      "id": "ssas-multidim",
+      "label": "SSAS Multidimensional",
+      "routes": [
+        "ssas-multidim-adomd"
+      ]
+    },
+    {
+      "id": "power-bi-premium",
+      "label": "Power BI XMLA",
+      "routes": [
+        "pbi-xmla-adomd"
+      ]
+    },
+    {
+      "id": "power-bi-desktop",
+      "label": "Power BI Desktop",
+      "routes": [
+        "pbi-desktop-adomd"
+      ]
+    }
+  ],
+  "sources": {
+    "providerLists": "https://github.com/Seddryck/DubUrl/tree/ef1dc69f63fa1ee3f9a7fd39a0ce57737893ecc2/docs/_data",
+    "providerMappings": "https://github.com/Seddryck/DubUrl.Providers/tree/57c67a7ba675752114f64b8c5f0b24839c6ba1ca/Providers",
+    "authentication": "https://github.com/Seddryck/DubUrl/blob/ef1dc69f63fa1ee3f9a7fd39a0ce57737893ecc2/docs/_docs/authentication.md",
+    "osIdentity": "https://github.com/Seddryck/DubUrl/blob/ef1dc69f63fa1ee3f9a7fd39a0ce57737893ecc2/docs/operating-system-identity-mappings.md",
+    "clientCertificate": "https://github.com/Seddryck/DubUrl/blob/ef1dc69f63fa1ee3f9a7fd39a0ce57737893ecc2/docs/client-certificate-authentication.md",
+    "tls": "https://github.com/Seddryck/DubUrl/blob/ef1dc69f63fa1ee3f9a7fd39a0ce57737893ecc2/docs/_docs/connection-configuration.md",
+    "odbc": "https://github.com/Seddryck/DubUrl/blob/ef1dc69f63fa1ee3f9a7fd39a0ce57737893ecc2/docs/_docs/odbc-driver-locators.md",
+    "databricks": "https://docs.databricks.com/aws/en/integrations/odbc/authentication",
+    "npgsql": "https://www.npgsql.org/doc/connection-string-parameters",
+    "trinoOdbc": "https://documentation.insightsoftware.com/trino-online-documentation-windows/content/odbc/tri/authentication/intro.htm",
+    "sparkOdbc": "https://documentation.insightsoftware.com/simba-spark-windows-driver-guide/content/odbc/sp/strings.htm",
+    "mySqlOdbc": "https://dev.mysql.com/doc/connectors/en/connector-odbc-configuration-connection-parameters.html",
+    "sqlClientDefaults": "https://learn.microsoft.com/en-us/sql/connect/ado-net/connection-options",
+    "sqlOdbc18Defaults": "https://learn.microsoft.com/en-us/sql/connect/odbc/major-version-differences",
+    "sparkOdbcAuth": "https://documentation.insightsoftware.com/simba-spark-windows-driver-guide/content/odbc/options/mechanism.htm",
+    "hiveOdbc": "https://downloads.cloudera.com/connectors/Cloudera_Hive_ODBC_2.8.2.1002/Cloudera-ODBC-Driver-for-Apache-Hive-Install-Guide.pdf",
+    "databricksOAuthFlow": "https://documentation.insightsoftware.com/simba-databricks-odbc-installation-guide/Content/ODBC/sp/Options/UI/Auth_Flow.htm"
+  }
+}

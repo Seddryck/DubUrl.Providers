@@ -41,4 +41,12 @@
   <Target Name="EmbedTestConnectorCatalog" BeforeTargets="AssignTargetPaths" DependsOnTargets="GenerateConnectorCatalog">
     <ItemGroup><EmbeddedResource Include="$(ConnectorCatalogOutput)" LogicalName="DubUrl.ConnectorCatalog" /></ItemGroup>
   </Target>
+  <Target Name="EmbedConnectionUrlCatalog" BeforeTargets="AssignTargetPaths" DependsOnTargets="ResolveProjectReferences">
+    <PropertyGroup>
+      <ConnectionUrlCatalogRoot>$([MSBuild]::NormalizePath('$(MSBuildProjectDirectory)', '../..'))</ConnectionUrlCatalogRoot>
+      <ConnectionUrlCatalogOutput>$([MSBuild]::NormalizePath('$(MSBuildProjectDirectory)', '$(IntermediateOutputPath)', 'connection-url-catalog.json'))</ConnectionUrlCatalogOutput>
+    </PropertyGroup>
+    <Exec Command="dotnet &quot;$(ConnectorCatalogTool)&quot; connection-urls &quot;$(ConnectionUrlCatalogRoot)&quot; &quot;$(ConnectionUrlCatalogOutput)&quot;" />
+    <ItemGroup><EmbeddedResource Include="$(ConnectionUrlCatalogOutput)" LogicalName="DubUrl.ConnectionUrlCatalog" /></ItemGroup>
+  </Target>
 </Project>

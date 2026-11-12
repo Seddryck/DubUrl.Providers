@@ -1,0 +1,62 @@
+{
+  "routes": [
+    {
+      "id": "maria-connector",
+      "api": "ADO.NET",
+      "driver": "MySqlConnector",
+      "scheme": "mariadb",
+      "locations": [
+        "requiredDatabase"
+      ],
+      "tls": "mysql",
+      "fields": {
+        "port": {
+          "layout": "port",
+          "default": 3306
+        }
+      },
+      "auth": [
+        "password",
+        {
+          "id": "integrated",
+          "note": "The MariaDB account must use GSSAPI exclusively.",
+          "fields": {
+            "username": {
+              "layout": "text",
+              "label": "Username",
+              "required": true,
+              "url": "username"
+            }
+          }
+        },
+        "certificate"
+      ],
+      "providerInvariant": "MySqlConnector"
+    },
+    {
+      "id": "maria-data",
+      "api": "ADO.NET",
+      "driver": "MySql.Data",
+      "scheme": "mariadb",
+      "locations": [
+        "requiredDatabase"
+      ],
+      "tls": "mysql",
+      "note": "Register the alternative MySql.Data mapper explicitly.",
+      "fields": {
+        "port": {
+          "layout": "port",
+          "default": 3306
+        }
+      },
+      "auth": [
+        "password",
+        {
+          "id": "certificate",
+          "note": "PEM files or PFX/P12. This certificate route disables pooling. Bundle mode uses system trust."
+        }
+      ],
+      "providerInvariant": "MySql.Data"
+    }
+  ]
+}

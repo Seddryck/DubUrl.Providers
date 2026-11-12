@@ -1,0 +1,39 @@
+{
+  "routes": [
+    {
+      "id": "text-odbc",
+      "api": "ODBC",
+      "driver": "Microsoft Text ODBC",
+      "platforms": [
+        "Windows"
+      ],
+      "scheme": "odbc+csv",
+      "locations": [
+        "folder"
+      ],
+      "note": "Choose the directory. The text file is selected in the query.",
+      "auth": [
+        "none"
+      ],
+      "providerInvariant": "System.Data.Odbc"
+    }
+  ],
+  "locations": {
+    "folder": {
+      "transport": "Local folder",
+      "fields": {
+        "folder": {
+          "layout": "text",
+          "label": "Folder path",
+          "required": true,
+          "placeholder": "C:/data/imports"
+        }
+      },
+      "path": [
+        {
+          "file": "folder"
+        }
+      ]
+    }
+  }
+}

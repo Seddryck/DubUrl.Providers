@@ -1,0 +1,37 @@
+{
+  "routes": [
+    {
+      "id": "singlestore-native",
+      "api": "ADO.NET",
+      "driver": "SingleStoreConnector",
+      "scheme": "singlestore",
+      "locations": [
+        "requiredDatabase"
+      ],
+      "tls": "mysql",
+      "fields": {
+        "port": {
+          "layout": "port",
+          "default": 3306
+        }
+      },
+      "auth": [
+        "password",
+        {
+          "id": "integrated",
+          "note": "Requires an authentication_gss account and Kerberos credentials.",
+          "fields": {
+            "username": {
+              "layout": "text",
+              "label": "Username",
+              "required": true,
+              "url": "username"
+            }
+          }
+        },
+        "certificate"
+      ],
+      "providerInvariant": "SingleStoreConnector"
+    }
+  ]
+}

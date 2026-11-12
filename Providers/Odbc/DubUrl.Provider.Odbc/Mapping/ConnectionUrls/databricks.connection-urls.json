@@ -1,0 +1,155 @@
+{
+  "routes": [
+    {
+      "id": "databricks-odbc",
+      "api": "ODBC",
+      "driver": "Databricks ODBC",
+      "scheme": "odbc+databricks",
+      "locations": [
+        "warehouse",
+        "cluster"
+      ],
+      "tls": "fixed",
+      "auth": [
+        "driver",
+        "databricksOAuthM2M",
+        "databricksOAuthU2M",
+        "databricksOAuthToken",
+        "databricksPat"
+      ],
+      "providerInvariant": "System.Data.Odbc"
+    }
+  ],
+  "locations": {
+    "warehouse": {
+      "label": "SQL warehouse",
+      "transport": "HTTPS",
+      "requires": {
+        "schema": "catalog"
+      },
+      "fields": {
+        "host": {
+          "layout": "host",
+          "required": true,
+          "url": "host"
+        },
+        "port": {
+          "layout": "port",
+          "default": 443,
+          "url": "port"
+        },
+        "warehouseId": {
+          "layout": "text",
+          "label": "Warehouse ID",
+          "required": true,
+          "pattern": "[A-Za-z0-9]+"
+        },
+        "catalog": {
+          "layout": "text",
+          "label": "Catalog"
+        },
+        "schema": {
+          "layout": "text",
+          "label": "Schema"
+        }
+      },
+      "path": [
+        {
+          "literal": "warehouse"
+        },
+        "warehouseId",
+        "catalog",
+        "schema"
+      ]
+    },
+    "cluster": {
+      "label": "Classic cluster",
+      "transport": "HTTPS",
+      "requires": {
+        "schema": "catalog"
+      },
+      "fields": {
+        "host": {
+          "layout": "host",
+          "required": true,
+          "url": "host"
+        },
+        "port": {
+          "layout": "port",
+          "default": 443,
+          "url": "port"
+        },
+        "workspaceId": {
+          "layout": "text",
+          "label": "Workspace ID",
+          "required": true,
+          "pattern": "[0-9]+"
+        },
+        "clusterId": {
+          "layout": "text",
+          "label": "Cluster ID",
+          "required": true,
+          "pattern": "(?=.*[A-Za-z0-9])[A-Za-z0-9-]+"
+        },
+        "catalog": {
+          "layout": "text",
+          "label": "Catalog"
+        },
+        "schema": {
+          "layout": "text",
+          "label": "Schema"
+        }
+      },
+      "path": [
+        {
+          "literal": "cluster"
+        },
+        "workspaceId",
+        "clusterId",
+        "catalog",
+        "schema"
+      ]
+    }
+  },
+  "authentication": {
+    "databricksOAuthM2M": {
+      "label": "OAuth machine-to-machine",
+      "via": "external",
+      "query": {
+        "AuthMech": "11",
+        "Auth_Flow": "1"
+      },
+      "note": "Supply the OAuth client ID and secret in the consuming application."
+    },
+    "databricksOAuthU2M": {
+      "label": "OAuth browser sign-in",
+      "via": "external",
+      "query": {
+        "AuthMech": "11",
+        "Auth_Flow": "2"
+      },
+      "note": "Use a vendor driver and client platform that support interactive sign-in."
+    },
+    "databricksOAuthToken": {
+      "label": "OAuth token pass-through",
+      "via": "external",
+      "query": {
+        "AuthMech": "11"
+      },
+      "note": "Supply and refresh Auth_AccessToken at runtime."
+    },
+    "databricksPat": {
+      "label": "Personal access token",
+      "via": "runtime",
+      "fixedUser": "token",
+      "query": {
+        "AuthMech": "3"
+      },
+      "cli": [
+        "--password-prompt"
+      ],
+      "library": "ConnectionAuthentication.Password(…)",
+      "note": "Supply the personal access token as the password when opening the connection."
+    }
+  }
+}

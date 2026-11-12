@@ -1,0 +1,31 @@
+{
+  "routes": [
+    {
+      "id": "access-ace",
+      "api": "OLE DB",
+      "driver": "Microsoft ACE OLE DB",
+      "platforms": [
+        "Windows"
+      ],
+      "scheme": "oledb+accdb",
+      "locations": [
+        "file"
+      ],
+      "auth": [
+        "none",
+        {
+          "id": "filePassword",
+          "note": "ACE 12.0 or 16.0. Encrypted .accdb is verified in repository QA."
+        }
+      ],
+      "providerInvariant": "System.Data.OleDb"
+    }
+  ],
+  "authentication": {
+    "filePassword": {
+      "label": "File password",
+      "via": "runtime",
+      "library": "ConnectionAuthentication.FilePassword(…)"
+    }
+  }
+}

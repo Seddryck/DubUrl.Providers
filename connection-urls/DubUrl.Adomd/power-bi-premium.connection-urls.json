@@ -1,0 +1,45 @@
+{
+  "routes": [
+    {
+      "id": "pbi-xmla-adomd",
+      "api": "ADOMD.NET",
+      "driver": "Microsoft.AnalysisServices.AdomdClient",
+      "scheme": "powerbi",
+      "locations": [
+        "powerBiCloud"
+      ],
+      "auth": [
+        {
+          "id": "driver",
+          "label": "Microsoft Entra sign-in (ADOMD client)"
+        }
+      ],
+      "providerInvariant": "Microsoft.AnalysisServices.AdomdClient"
+    }
+  ],
+  "locations": {
+    "powerBiCloud": {
+      "transport": "XMLA cloud endpoint",
+      "fields": {
+        "workspace": {
+          "layout": "text",
+          "label": "Workspace",
+          "required": true
+        }
+      },
+      "path": [
+        {
+          "literal": "v1.0",
+          "when": "workspace",
+          "equalsIgnoreCase": "v1.0"
+        },
+        {
+          "literal": "myorg",
+          "when": "workspace",
+          "equalsIgnoreCase": "v1.0"
+        },
+        "workspace"
+      ]
+    }
+  }
+}

@@ -1,0 +1,36 @@
+{
+  "routes": [
+    {
+      "id": "duckdb-odbc",
+      "api": "ODBC",
+      "driver": "DuckDB ODBC",
+      "scheme": "odbc+duckdb",
+      "locations": [
+        "duckOdbcFile"
+      ],
+      "note": "Enter a file name or relative path resolved by the installed ODBC driver.",
+      "auth": [
+        "none"
+      ],
+      "providerInvariant": "System.Data.Odbc"
+    }
+  ],
+  "locations": {
+    "duckOdbcFile": {
+      "transport": "Local file",
+      "fields": {
+        "file": {
+          "layout": "text",
+          "label": "File path",
+          "required": true,
+          "placeholder": "example.duckdb"
+        }
+      },
+      "path": [
+        {
+          "relativeFile": "file"
+        }
+      ]
+    }
+  }
+}

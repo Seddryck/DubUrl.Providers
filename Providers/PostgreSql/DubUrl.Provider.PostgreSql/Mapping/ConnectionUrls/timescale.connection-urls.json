@@ -1,0 +1,32 @@
+{
+  "routes": [
+    {
+      "id": "timescale-npgsql",
+      "api": "ADO.NET",
+      "driver": "Npgsql",
+      "scheme": "timescale",
+      "locations": [
+        "requiredDatabase"
+      ],
+      "tls": "npgsql",
+      "fields": {
+        "port": {
+          "layout": "port",
+          "default": 5432
+        }
+      },
+      "auth": [
+        "password",
+        {
+          "id": "integrated",
+          "note": "Use with a self-hosted PostgreSQL deployment configured for GSS/SSPI."
+        },
+        {
+          "id": "certificate",
+          "note": "Use with a deployment configured for PostgreSQL certificate authentication."
+        }
+      ],
+      "providerInvariant": "Npgsql"
+    }
+  ]
+}
