@@ -10,7 +10,6 @@ public sealed class BuiltInDriverLocatorFactory : DriverLocatorFactory
     {
         AddDrivers(["databricks"], static _ => new DatabricksDriverLocator());
         AddDrivers(["spark"], static _ => new SparkDriverLocator());
-        AddDrivers(["hive"], static _ => new HiveDriverLocator());
         AddDrivers(["drill"], static _ => new DrillDriverLocator());
         AddDrivers(["duck", "duckdb"], static _ => new DuckdbDriverLocator());
         AddDrivers(["maria", "mariadb"], static _ => new MariaDbDriverLocator());

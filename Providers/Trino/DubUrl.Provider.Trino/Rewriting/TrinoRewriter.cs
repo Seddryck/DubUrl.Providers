@@ -24,7 +24,6 @@ internal class TrinoRewriter : ConnectionStringRewriter, DubUrl.Conversion.IReve
     protected internal const string SCHEMA_KEYWORD = "Schema";
     protected internal const string USERNAME_KEYWORD = "User";
     protected internal const string PASSWORD_KEYWORD = "Password";
-    protected internal const string SSL_KEYWORD = "UseSsl";
     protected internal const string HEADERS_KEYWORD = "TrinoHeaders";
     protected internal const int HEADERS_DEFAULT_VALUE = 1;
 
@@ -56,8 +55,6 @@ internal class TrinoRewriter : ConnectionStringRewriter, DubUrl.Conversion.IReve
     {
         public override void Execute(ConnectionUri urlInfo)
         {
-            if (!urlInfo.Options.ContainsKey(SSL_KEYWORD))
-                Specificator.Execute(SSL_KEYWORD, true);
             if (!urlInfo.Options.ContainsKey(HEADERS_KEYWORD))
                 Specificator.Execute(HEADERS_KEYWORD, HEADERS_DEFAULT_VALUE);
             base.Execute(urlInfo);

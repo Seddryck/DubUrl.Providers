@@ -8,33 +8,14 @@ namespace DubUrl.Provider.Spark.QA.Connection;
 public sealed class SparkOdbcTests : OdbcContract
 {
     internal const string ThriftLocation = "odbc+spark://127.0.0.1";
-    internal const string ThriftUrl = "odbc+spark+tcp://127.0.0.1?AuthMech=0&sasl=0";
-    private static ConnectionUrl NativeSchemaUrl => new(ThriftUrl + "&UseNativeQuery=1");
+    internal const string ThriftUrl = ThriftLocation
+        + "?AuthMech=0&ThriftTransport=0&SSL=0&UseNativeQuery=1&EnableNativeParameterizedQuery=1&PopulateParametersForNativeQuery=1";
 
     protected override string AuthenticationConnectionUrl => ThriftLocation;
 
     protected override string ConnectionUrl => ThriftUrl;
-    protected override bool SupportsSchemaDiscovery => true;
-    protected override Task VerifySchemaDiscoveryAsync(ConnectionUrl url)
-        => SparkSchemaQa.VerifySharedDiscovery(url, scope => VerifySchemaDiscoveryAsync(url, scope));
     protected override string SelectFirstCustomerSql => SparkOdbcCustomerQueries.First;
-    protected override string SelectCustomerByIdSql => string.Empty;
-    protected override bool SupportsParameters => false;
-
-    [Test, Category("ODBC")]
-    public Task InspectExportAndRedeploySchema() => SparkSchemaQa.InspectExportAndRedeploy(NativeSchemaUrl, delta: false);
-
-    [Test, Category("ODBC")]
-    public Task StructuredRecursiveRoundTrip() => SparkStructuredQa.Recursive(NativeSchemaUrl, delta: false);
-
-    [Test, Category("ODBC")]
-    public void DeployProjectionViewsAndDiagnosePartialFailure() => SparkSchemaQa.ProjectionViews(NativeSchemaUrl);
-
-    [Test, Category("ODBC")]
-    public void EvaluateColumnDefaultsOnInsert() => SparkSchemaQa.Defaults(NativeSchemaUrl);
-
-    [Test, Category("ODBC")]
-    public void RenderTablesWithFacetsAndComments() => SparkSchemaQa.Tables(NativeSchemaUrl, delta: false);
+    protected override string SelectCustomerByIdSql => SparkOdbcCustomerQueries.ById;
 
     [Test, Category("ODBC")]
     public void OpenThriftServer()

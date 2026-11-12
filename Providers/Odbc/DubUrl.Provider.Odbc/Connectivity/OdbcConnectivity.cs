@@ -1,8 +1,7 @@
-using DubUrl.Mapping;
+﻿using DubUrl.Mapping;
 using DubUrl.Mapping.Connectivity;
 using DubUrl.Locating;
 using DubUrl.Parsing;
-using DubUrl.Provider.Odbc.Rewriting;
 using DubUrl.Querying.Dialects;
 using System;
 using System.Collections.Generic;
@@ -23,12 +22,7 @@ public class OdbcConnectivity : IWrapperConnectivity {
         => GetType().GetCustomAttribute<WrapperConnectivityAttribute>()?.Aliases[0] ?? string.Empty;
 
     public IEnumerable<string> DefineAliases(WrapperConnectivityAttribute connectivity, DatabaseAttribute database, LocatorAttribute locator)
-    {
-        var aliases = CartesianProduct(connectivity.Aliases, database.Aliases);
-        return aliases.Concat(database.Aliases
-            .Where(alias => alias is "spark" or "hive")
-            .SelectMany(ThriftOdbcTransport.Aliases));
-    }
+        => CartesianProduct(connectivity.Aliases, database.Aliases);
 
     private static IEnumerable<string> CartesianProduct(string[] firstArray, string[] secondArray)
     {

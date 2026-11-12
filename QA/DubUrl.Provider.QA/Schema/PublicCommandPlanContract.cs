@@ -20,7 +20,7 @@ public abstract partial class ProviderContract
         using var target = CreatePublicDatabase();
         var provider = target.Url.Dialect.SchemaSqlRenderer;
         var dialect = target.Url.Dialect;
-        var prefix = NormalizeTestName("Cp" + Guid.NewGuid().ToString("N")[..8]);
+        var prefix = "Cp" + Guid.NewGuid().ToString("N")[..8];
         var first = new DatabaseObjectName(prefix + "a");
         var second = new DatabaseObjectName(prefix + "b");
         var view = new DatabaseObjectName(prefix + "v");
@@ -57,8 +57,7 @@ public abstract partial class ProviderContract
             }
             // Exercise the same public plan's reverse drop order and replacement path.
             target.Url.DeploySchema(Build(new SchemaBuilder()).Build(), SchemaCreationOptions.DropIfExists);
-            using var replacement = (DbConnection)target.Url.Open();
-            Assert.That(Convert.ToInt64(QaSql.Rows(replacement, $"SELECT COUNT(*) FROM {Quote(dependent)}").Single()[0]), Is.Zero);
+            Assert.That(Convert.ToInt64(QaSql.Rows(connection, $"SELECT COUNT(*) FROM {Quote(dependent)}").Single()[0]), Is.Zero);
         }
         finally
         {
@@ -81,12 +80,10 @@ public abstract partial class ProviderContract
     [Category("PublicCommandPlan")]
     public void PublicCommandPlan_IndexesAndSupportedForeignKeysSurviveReplacement()
     {
-        var uniqueIndex = FeatureExpectations["UniqueIndex"];
-        if (uniqueIndex.Outcome != ExpectedOutcome.Supported) Assert.Ignore(uniqueIndex.Evidence);
         using var target = CreatePublicDatabase();
         var dialect = target.Url.Dialect;
         var provider = dialect.SchemaSqlRenderer;
-        var prefix = NormalizeTestName("Ck" + Guid.NewGuid().ToString("N")[..8]);
+        var prefix = "Ck" + Guid.NewGuid().ToString("N")[..8];
         var parent = new Table(prefix + "a", [new Column("id", DbType.Int32,
             constraints: [new Constraints.PrimaryKeyConstraint()])]);
         var foreignKeys = FeatureExpectations["ForeignKey"].Outcome == ExpectedOutcome.Supported;
@@ -132,7 +129,7 @@ public abstract partial class ProviderContract
         using var target = CreatePublicDatabase();
         var dialect = target.Url.Dialect;
         var provider = dialect.SchemaSqlRenderer;
-        var prefix = NormalizeTestName("Cf" + Guid.NewGuid().ToString("N")[..8]);
+        var prefix = "Cf" + Guid.NewGuid().ToString("N")[..8];
         var first = new Table(prefix + "a", [new Column("id", DbType.Int32)]);
         var duplicate = new Table(prefix + "b", [new Column("id", DbType.Int32)]);
         var last = new Table(prefix + "c", [new Column("id", DbType.Int32)]);

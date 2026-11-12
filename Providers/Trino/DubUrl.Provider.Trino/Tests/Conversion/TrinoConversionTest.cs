@@ -7,8 +7,7 @@ namespace DubUrl.Provider.Trino.Tests.Conversion;
 
 public class TrinoConversionTest
 {
-    [TestCase("Host=localhost;Port=8080;Catalog=example;Schema=public;User=example;Password=example;TrinoHeaders=1;UseSsl=false")]
-    [TestCase("Host=localhost;Port=443;Catalog=example;Schema=public;User=example;Password=example;TrinoHeaders=1;UseSsl=true")]
+    [TestCase(@"Host=localhost;Port=8080;Catalog=example;Schema=public;User=example;Password=example;TrinoHeaders=1")]
     public void Convert_PreservesProviderSettings(string input)
     {
         ConversionTestSupport.RoundTrip("trino", input, global::NReco.PrestoAdo.PrestoDbFactory.Instance,

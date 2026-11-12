@@ -30,7 +30,6 @@
     <ProjectReference Include="..\PostgreSql\DubUrl.Provider.PostgreSql\DubUrl.Provider.PostgreSql.csproj" Condition="'$(ConnectorFamily)' == 'PostgreSql'" />
     <ProjectReference Include="..\Snowflake\DubUrl.Provider.Snowflake\DubUrl.Provider.Snowflake.csproj" Condition="'$(ConnectorFamily)' == 'Snowflake'" />
     <ProjectReference Include="..\Spark\DubUrl.Provider.Spark\DubUrl.Provider.Spark.csproj" Condition="'$(ConnectorFamily)' == 'Spark'" />
-    <ProjectReference Include="..\Hive\DubUrl.Provider.Hive\DubUrl.Provider.Hive.csproj" Condition="'$(ConnectorFamily)' == 'Hive'" />
     <ProjectReference Include="..\Sqlite\DubUrl.Provider.Sqlite\DubUrl.Provider.Sqlite.csproj" Condition="'$(ConnectorFamily)' == 'Sqlite'" />
     <ProjectReference Include="..\SqlServer\DubUrl.Provider.SqlServer\DubUrl.Provider.SqlServer.csproj" Condition="'$(ConnectorFamily)' == 'SqlServer'" />
     <ProjectReference Include="..\Teradata\DubUrl.Provider.Teradata\DubUrl.Provider.Teradata.csproj" Condition="'$(ConnectorFamily)' == 'Teradata'" />
