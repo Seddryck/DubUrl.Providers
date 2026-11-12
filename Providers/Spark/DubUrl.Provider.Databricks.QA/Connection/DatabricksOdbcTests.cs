@@ -161,7 +161,7 @@ public sealed class DatabricksOdbcTests : OdbcContract
     }
 
     [Test, Category("ODBC")]
-    public void QualifyCatalogDefaultAfterChangingTheInsertSessionCatalog()
+    public void DeltaCatalogDefaultIgnoresTheInsertSessionCatalog()
     {
         var url = CreateLiveConnectionUrl();
         SparkSchemaQa.WithScratch(url, (connection, catalog, schema) =>
@@ -183,7 +183,7 @@ public sealed class DatabricksOdbcTests : OdbcContract
             SparkSchemaQa.Execute(connection, $"INSERT INTO {target} (id) VALUES (1)");
             var storedCatalog = SparkSchemaQa.Scalar(connection, $"SELECT catalog_value FROM {target}");
             TestContext.WriteLine($"Stored current_catalog() as '{storedCatalog}' after changing the session to '{otherCatalog}'.");
-            Assert.That(storedCatalog, Is.EqualTo(catalog).Or.EqualTo(otherCatalog));
+            Assert.That(storedCatalog, Is.Not.Null.And.Not.EqualTo(DBNull.Value).And.Not.EqualTo(otherCatalog));
         });
     }
 
