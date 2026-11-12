@@ -178,6 +178,24 @@ public sealed class SparkSqlDialectTest
         Assert.That(() => new SchemaScriptRenderer(Databricks()).Plan(uuid), Throws.Exception.With.Message.Contains("nondeterministic UUID"));
     }
 
+    [TestCase(false)]
+    [TestCase(true)]
+    public void TemporalLiteralsUseTheDeclaredTimestampSemantics(bool delta)
+    {
+        var local = new DateTime(2024, 3, 10, 2, 30, 0).AddTicks(1_234_560);
+        var offset = new DateTimeOffset(local, TimeSpan.FromHours(-8));
+        var table = new Table("clock", [
+            new Column("local_value", DbType.DateTime2, local),
+            new Column("instant_value", DbType.DateTimeOffset, offset),
+            new Column("date_value", DbType.Date, new DateOnly(2024, 3, 10)),
+        ]);
+        var sql = new SchemaScriptRenderer(delta ? Databricks() : Spark()).Render(new([table]));
+
+        Assert.That(sql, Does.Contain("`local_value` TIMESTAMP_NTZ DEFAULT TIMESTAMP_NTZ '2024-03-10 02:30:00.123456'")
+            .And.Contain("`instant_value` TIMESTAMP_LTZ DEFAULT TIMESTAMP_LTZ '2024-03-10 02:30:00.123456-08:00'")
+            .And.Contain("`date_value` DATE DEFAULT DATE '2024-03-10'"));
+    }
+
     [Test]
     public void DatabricksIdentityRequiresBigintAndPreservesGenerationOptions()
     {

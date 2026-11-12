@@ -98,6 +98,8 @@ public sealed class DatabricksOdbcTests : OdbcContract
             [
                 new Column("score", DbType.Int32, constraints: [new CheckConstraint(value, ">=", new ValueExpression(0), "positive_score")]),
                 new Column("tag", DbType.String),
+                new Column("label", DbType.String, constraints:
+                    [new RegexCheckConstraint(new ColumnIdentityExpression("label"), @"^O'Brien;\d+$", RegexNullBehavior.AllowNull, "label_shape")]),
             ],
             [
                 new MembershipCheckConstraint(value, [1, 2, null], NullMembershipBehavior.MatchNull, "allowed_score"),
@@ -107,10 +109,10 @@ public sealed class DatabricksOdbcTests : OdbcContract
                 SparkSchemaQa.Execute(connection, command.CommandText);
 
             var target = url.Dialect.SchemaSqlRenderer.RenderObjectName(url.Dialect, catalog, null, schema, table.Name);
-            SparkSchemaQa.Execute(connection, $"INSERT INTO {target} VALUES (1, '123'), (NULL, '456')");
-            foreach (var rejected in new[] { "(-1, '123')", "(3, '123')", "(1, 'bad')", "(1, NULL)" })
+            SparkSchemaQa.Execute(connection, $"INSERT INTO {target} VALUES (1, '123', NULL), (NULL, '456', 'O\\'Brien;42')");
+            foreach (var rejected in new[] { "(-1, '123', NULL)", "(3, '123', NULL)", "(1, 'bad', NULL)", "(1, NULL, NULL)", "(1, '123', 'wrong')" })
                 Assert.That(() => SparkSchemaQa.Execute(connection, $"INSERT INTO {target} VALUES {rejected}"),
-                    Throws.InstanceOf<System.Data.Common.DbException>());
+                    Throws.InstanceOf<DbException>());
             Assert.That(SparkSchemaQa.Scalar(connection, $"SELECT COUNT(*) FROM {target}"), Is.EqualTo(2));
             using var properties = connection.CreateCommand();
             properties.CommandText = $"SHOW TBLPROPERTIES {target} ('delta.constraints.numeric_tag')";
