@@ -3,6 +3,7 @@
   <ItemGroup>
     <ProjectReference Include="../../Providers/*/DubUrl.Provider.*/*.csproj" Exclude="../../Providers/*/*.QA/*.csproj" />
     <Compile Include="../../Providers/*/DubUrl.Provider.*/Tests/**/*.cs" />
+    <PackageReference Include="DubUrl.BulkCopy" Version="$(DubUrlVersion)" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.11.0" />
     <PackageReference Include="NUnit" Version="5.0.0" />
     <PackageReference Include="NUnit3TestAdapter" Version="5.1.0" />

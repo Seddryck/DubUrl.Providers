@@ -23,7 +23,8 @@
 
 	<PropertyGroup>
 		<!-- Local project versions must satisfy the extracted Schema dependency baseline. -->
-        <Version Condition="'$(Version)' == ''">0.60.0</Version><DubUrlVersion Condition="'$(DubUrlVersion)' == ''">0.60.0</DubUrlVersion>
+        <Version Condition="'$(Version)' == ''">0.60.0</Version>
+        <DubUrlVersion Condition="'$(DubUrlVersion)' == ''">0.61.0</DubUrlVersion>
         <SchemaPackageVersion Condition="'$(SchemaPackageVersion)' == ''">0.105.0</SchemaPackageVersion>
 		<Authors>Cédric L. Charlier</Authors>
 		<Owners>Seddryck</Owners>
