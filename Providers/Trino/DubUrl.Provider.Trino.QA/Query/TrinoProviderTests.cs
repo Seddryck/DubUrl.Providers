@@ -6,7 +6,7 @@ namespace DubUrl.Provider.Trino.QA.Query;
 [TestFixture, Category("Trino"), NonParallelizable]
 public sealed class TrinoProviderTests : ProviderContract
 {
-    protected override string ConnectionUrl => "trino://localhost:8080/pg/public?UseSsl=false";
+    protected override string ConnectionUrl => "trino://localhost:8080/pg/public";
     protected override string CliTableName => "customer";
     protected override string SelectFirstCustomerSql => "select FullName from Customer where CustomerId=1";
     protected override string SelectCustomerByIdSql => string.Empty;

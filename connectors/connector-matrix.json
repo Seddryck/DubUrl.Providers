@@ -51,7 +51,6 @@
     {"id": "trino-prestoado", "databaseScheme": "tr", "technology": "NReco.PrestoAdo", "status": "ready", "defaultAliases": ["trino"], "family": "Trino", "runtimeIdentifiers": [], "prerequisite": null},
     {"id": "trino-odbc", "databaseScheme": "tr", "technology": "System.Data.Odbc", "status": "ready", "defaultAliases": [], "family": "Trino", "runtimeIdentifiers": [], "prerequisite": "A compatible Trino ODBC driver must be installed on the target machine."},
     {"id": "spark-odbc", "databaseScheme": "spark", "technology": "System.Data.Odbc", "status": "ready", "defaultAliases": ["spark"], "family": "Spark", "runtimeIdentifiers": [], "prerequisite": "The Simba Spark ODBC Driver must be installed on the target machine."},
-    {"id": "hive-odbc", "databaseScheme": "hive", "technology": "System.Data.Odbc", "status": "ready", "defaultAliases": ["hive"], "family": "Hive", "runtimeIdentifiers": [], "prerequisite": "The Cloudera ODBC Driver for Apache Hive must be installed and registered."},
     {"id": "databricks-odbc", "databaseScheme": "databricks", "technology": "System.Data.Odbc", "status": "ready", "defaultAliases": ["databricks"], "family": "Spark", "runtimeIdentifiers": [], "prerequisite": "The Databricks ODBC Driver must be installed on the target machine."},
     {"id": "drill-odbc", "databaseScheme": "drill", "technology": "System.Data.Odbc", "status": "ready", "defaultAliases": ["drill"], "family": "Drill", "runtimeIdentifiers": [], "prerequisite": "A compatible Apache Drill ODBC driver must be installed on the target machine."}
   ]
