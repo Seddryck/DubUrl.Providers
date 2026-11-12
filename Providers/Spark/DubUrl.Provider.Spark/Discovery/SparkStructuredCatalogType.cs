@@ -26,7 +26,7 @@ internal static class SparkStructuredCatalogType
             return new(null, MetadataCoverage.Unrepresentable);
 
         var ddlType = row.Text("column_definition") is { } definition ? SparkCatalogDefinition.StructuredSql(definition) : null;
-        return ReadSql(ddlType ?? sql!, ddlType is not null);
+        return ReadSql(ddlType ?? sql!, parquet: true, hasDdl: ddlType is not null);
     }
 
     internal static StructuredColumnMetadata? ReadDelta(CatalogRow row)
@@ -46,7 +46,7 @@ internal static class SparkStructuredCatalogType
                 type = new VectorType(DbType.Single, dimensions);
             return Native(type, type is null ? MetadataCoverage.Unrepresentable : reader.Coverage);
         }
-        return ReadSql(sql, hasDdl: false);
+        return ReadSql(sql, parquet: false, hasDdl: false);
     }
 
     internal static (Dictionary<string, JsonElement> Columns, JsonElement TableProperties)? DeltaDescription(string? json)
@@ -88,29 +88,28 @@ internal static class SparkStructuredCatalogType
     internal static string? Text(JsonElement item, string name)
         => Property(item, name) is { ValueKind: JsonValueKind.String } value ? value.GetString() : null;
 
-    private static StructuredColumnMetadata ReadSql(string sql, bool hasDdl)
+    private static StructuredColumnMetadata ReadSql(string sql, bool parquet, bool hasDdl)
     {
-        var reader = new SqlTypeReader(sql, hasDdl);
+        var reader = new SqlTypeReader(sql, parquet, hasDdl);
         var type = reader.Read();
-        var coverage = hasDdl ? reader.Coverage : MetadataCoverage.Inaccessible;
-        return Native(type, coverage);
+        return Native(type, reader.Coverage);
     }
 
     private static StructuredColumnMetadata Native(StructuredType? type, MetadataCoverage coverage)
         => new(type is null ? null : new(type, StructuredStorage.Native), coverage);
 
-    private sealed class SqlTypeReader(string sql, bool hasDdl)
+    private sealed class SqlTypeReader(string sql, bool parquet, bool hasDdl)
     {
         private readonly List<SparkSqlSyntax.Token> tokens = SparkSqlSyntax.Tokenize(sql);
         private int position;
-        internal MetadataCoverage Coverage { get; private set; } = MetadataCoverage.Available;
+        internal MetadataCoverage Coverage { get; private set; } = parquet ? MetadataCoverage.Available : MetadataCoverage.Inaccessible;
 
         internal StructuredType? Read()
         {
             var type = ReadType(0);
             if (type is null || position != tokens.Count)
             {
-                Coverage = MetadataCoverage.Unrepresentable;
+                Coverage = hasDdl ? MetadataCoverage.Unrepresentable : MetadataCoverage.Inaccessible;
                 return null;
             }
             return type;
@@ -125,7 +124,7 @@ internal static class SparkStructuredCatalogType
                 return SparkStructuredTypes.ReadScalar(name);
             if (!Take("<")) return null;
 
-            var nullable = hasDdl ? true : (bool?)null;
+            var nullable = parquet ? true : (bool?)null;
             switch (name.ToUpperInvariant())
             {
                 case "ARRAY":
@@ -140,6 +139,9 @@ internal static class SparkStructuredCatalogType
 
         private StructType? ReadStruct(int depth, bool? nullable)
         {
+            // Spark's display text can drop field quoting. Only SHOW CREATE gives the literal names.
+            if (!hasDdl)
+                Coverage = MetadataCoverage.Inaccessible;
             var fields = new List<StructField>();
             var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             do
