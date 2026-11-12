@@ -42,6 +42,14 @@ The warehouse form generates `HTTPPath=/sql/1.0/warehouses/<warehouse-id>`. The 
 
 Use the shortcut path in the URL. The mapper rejects a raw HTTP endpoint path and the `HTTPPath`, `Catalog`, and `Schema` query options. Other driver options can still be passed in the query string. [Databricks ODBC connection details](https://docs.databricks.com/aws/en/integrations/odbc/compute)
 
+## Databricks Delta schema generation
+
+`ScriptSchema` exports the statements in deployment order, including Delta table properties and separate `ALTER TABLE` statements for enforced checks. Deploy a schema model or fluent builder to execute those commands on one connection. The shared schema model treats empty and whitespace-only descriptions as absent.
+
+`WithTimeType()` enables `TIME` columns and `current_time()` defaults on compatible compute. Databricks treats `current_user()` and `session_user()` as aliases. Supply insert-session schema and catalog values in the insert itself. In the live Delta fixture, `current_schema()` and its alias `current_database()` both stored `default` after a schema switch, and `current_catalog()` stored `spark_catalog` after switching the session to `samples`. Generate UUID values in the insert because Delta rejects the nondeterministic default. [TIME type](https://docs.databricks.com/aws/en/sql/language-manual/data-types/time-type) · [Session user](https://docs.databricks.com/aws/en/sql/language-manual/functions/session_user) · [Current database](https://docs.databricks.com/aws/en/sql/language-manual/functions/current_database) · [Current catalog](https://docs.databricks.com/aws/en/sql/language-manual/functions/current_catalog)
+
+Use `WithInformationalKeys()` to accept Unity Catalog's informational primary and foreign keys. Use `WithInformationalKeys(supportsUnique: true)` on compute that supports informational `UNIQUE` and foreign keys that reference it. Deployment checks the visible keys of existing parent tables before applying replacement commands. [Databricks key constraints](https://docs.databricks.com/aws/en/sql/language-manual/sql-ref-syntax-ddl-create-table-constraint) · [Unity Catalog metadata visibility](https://docs.databricks.com/aws/en/sql/language-manual/sql-ref-information-schema)
+
 ## Load files from a Databricks volume
 
 Use the `DubUrl.BulkCopy` package and an `odbc+databricks` connection URL to load staged files into an existing Delta table.

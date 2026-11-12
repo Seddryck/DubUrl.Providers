@@ -1,4 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup><Description>Apache Spark and Databricks database metadata for DubUrl.</Description></PropertyGroup>
   <Import Project="..\..\Provider.Build.props" />
+  <ItemGroup>
+    <PackageReference Include="DubUrl.Schema" Version="$(SchemaPackageVersion)" />
+  </ItemGroup>
 </Project>

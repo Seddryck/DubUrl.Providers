@@ -7,7 +7,7 @@ using DubUrl.Querying.TypeMapping;
 
 namespace DubUrl.Provider.Spark.Sql;
 
-[DbTypeMapper<AnsiTypeMapper>]
+[DbTypeMapper<SparkTypeMapper>]
 [SqlFunctionMapper<AnsiFunctionMapper>]
 [Renderer<SparkSqlRenderer>]
 [ReturnCaster<DateTimeCaster<DateOnly>>]
@@ -19,6 +19,36 @@ public sealed class DatabricksSqlDialect : SparkSqlDialect
     internal DatabricksSqlDialect(ILanguage language, string[] aliases, IRenderer renderer, ICaster[] casters,
         IDbTypeMapper dbTypeMapper, ISqlFunctionMapper sqlFunctionMapper)
         : base(language, aliases, renderer, casters, dbTypeMapper, sqlFunctionMapper) { }
+
+    public override DialectCapabilities Capabilities => base.Capabilities with
+    {
+        SupportsIdentityColumns = true,
+        SupportsRegularExpressionChecks = true,
+        SupportsStoredGeneratedColumns = true,
+    };
+
+    internal bool SupportsInformationalKeys { get; private set; }
+    internal bool SupportsUniqueKeys { get; private set; }
+
+    /// <summary>Accepts Databricks informational key semantics for a Unity Catalog target.</summary>
+    /// <param name="supportsUnique">Set only when the target supports UNIQUE and foreign keys to UNIQUE targets.</param>
+    public DatabricksSqlDialect WithInformationalKeys(bool supportsUnique = false)
+    {
+        var dialect = (DatabricksSqlDialect)MemberwiseClone();
+        dialect.SupportsInformationalKeys = true;
+        dialect.SupportsUniqueKeys = supportsUnique;
+        return dialect;
+    }
+
+    internal bool SupportsTime { get; private set; }
+
+    /// <summary>Enables TIME for a warehouse or runtime that has been verified to support it.</summary>
+    public DatabricksSqlDialect WithTimeType()
+    {
+        var dialect = (DatabricksSqlDialect)MemberwiseClone();
+        dialect.SupportsTime = true;
+        return dialect;
+    }
 
     public override SparkSqlDialect WithCatalogRules(string catalog, SparkCatalogNameRules rules, bool isCurrent = false)
         => throw new NotSupportedException("Databricks SQL uses Unity Catalog naming rules.");
