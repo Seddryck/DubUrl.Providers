@@ -6,11 +6,15 @@ using DubUrl.Schema.Renderers;
 namespace DubUrl.Provider.Spark.Sql;
 
 internal sealed class SparkSchemaSqlRenderer : StandardSchemaSqlRenderer, ITableDefinitionSqlRenderer,
-    IColumnDefinitionSqlRenderer, ITableDescriptionSqlRenderer, IColumnDefaultSqlRenderer, ISchemaCommandSqlRenderer
+    IColumnDefinitionSqlRenderer, ITableDescriptionSqlRenderer, IColumnDefaultSqlRenderer, ISchemaCommandSqlRenderer,
+    IStructuredColumnSqlRenderer
 {
     public static new SparkSchemaSqlRenderer Instance { get; } = new();
 
     public override bool SupportsCommentRendering => true;
+
+    public string RenderStructuredType(IDialect dialect, StructuredColumnTypeContext context)
+        => SparkStructuredTypes.Render((SparkSqlDialect)dialect, context);
 
     public override string RenderObjectName(IDialect dialect, string? catalog, string? database, string? schema, string name)
     {
@@ -44,9 +48,15 @@ internal sealed class SparkSchemaSqlRenderer : StandardSchemaSqlRenderer, ITable
             && (column.Type.StartsWith("VARCHAR(", StringComparison.Ordinal) || column.Type.StartsWith("CHAR(", StringComparison.Ordinal)))
             throw new NotSupportedException("Spark 3.5 cannot apply a non-NULL default to CHAR or VARCHAR. Use an unbounded string column.");
 
+        var jsonText = column.Type == SparkStructuredTypes.JsonTextSql;
+        var description = column.Description;
+        if (jsonText)
+            description = SparkStructuredTypes.JsonTextCommentPrefix + description;
+        else if (column.Type == "STRING" && description is not null && SparkStructuredTypes.IsTaggedComment(description))
+            description = SparkStructuredTypes.LiteralCommentPrefix + description;
         var specification = column.Generation switch
         {
-            null => column.Type,
+            null => jsonText ? "STRING" : column.Type,
             { Identity: true } identity => RenderIdentity(dialect, column.Type, identity.Seed, identity.Increment),
             { Expression: not null } generation => RenderGenerated(dialect, column.Type, generation.Expression, generation.Stored),
             _ => throw new NotSupportedException("A generated column requires an expression."),
@@ -65,8 +75,8 @@ internal sealed class SparkSchemaSqlRenderer : StandardSchemaSqlRenderer, ITable
             specification += " DEFAULT TIMESTAMP_NTZ " + defaultSql[timestampLiteralPrefix.Length..];
             clauses |= ColumnDefinitionClauses.Default;
         }
-        if (column.Description is not null)
-            specification += " COMMENT " + SparkStringFormatter.Quote(column.Description);
+        if (description is not null)
+            specification += " COMMENT " + SparkStringFormatter.Quote(description);
         return new(specification, clauses);
     }
 
@@ -96,9 +106,17 @@ internal sealed class SparkSchemaSqlRenderer : StandardSchemaSqlRenderer, ITable
         => string.Empty; // Comments are part of the CREATE TABLE statement.
 
     public string RenderTableOptions(IDialect dialect, bool hasDefaults)
-        => dialect is not DatabricksSqlDialect ? " USING PARQUET"
-            : hasDefaults ? " USING DELTA TBLPROPERTIES ('delta.feature.allowColumnDefaults' = 'supported')"
-            : " USING DELTA";
+    {
+        if (dialect is not DatabricksSqlDialect delta)
+            return " USING PARQUET";
+
+        var properties = new List<string>();
+        if (hasDefaults)
+            properties.Add("'delta.feature.allowColumnDefaults' = 'supported'");
+        if (delta.UsesNameBasedColumnMapping)
+            properties.Add("'delta.columnMapping.mode' = 'name'");
+        return properties.Count == 0 ? " USING DELTA" : $" USING DELTA TBLPROPERTIES ({string.Join(", ", properties)})";
+    }
 
     public IReadOnlyList<SchemaSqlCommand> PlanTableChecks(IDialect dialect, DatabaseObjectName table,
         IReadOnlyList<SchemaCheckDefinition> checks)
@@ -108,6 +126,8 @@ internal sealed class SparkSchemaSqlRenderer : StandardSchemaSqlRenderer, ITable
         if (dialect is not DatabricksSqlDialect)
             throw new NotSupportedException("Spark's built-in table provider does not enforce CHECK constraints. Use Databricks Delta.");
         var name = RenderObjectName(dialect, table.Catalog, table.Database, table.Schema, table.Name);
+        if (checks.Any(check => check.Name?.StartsWith(DeltaVectorSql.ConstraintPrefix, StringComparison.OrdinalIgnoreCase) == true))
+            throw new NotSupportedException($"Check names beginning with '{DeltaVectorSql.ConstraintPrefix}' are reserved for Delta vectors.");
         return SparkCheckCommands.Plan(dialect, table, name, checks);
     }
 
@@ -164,7 +184,7 @@ internal sealed class SparkSchemaSqlRenderer : StandardSchemaSqlRenderer, ITable
     }
 
     public override IReadOnlyList<SchemaSqlCommand> PlanCommands(IDialect dialect, IReadOnlyList<SchemaSqlCommand> statements)
-        => statements.Select(AddForeignKeyOptions).ToArray();
+        => statements.SelectMany(statement => DeltaVectorSql.Plan(AddForeignKeyOptions(statement))).ToArray();
 
     private static SchemaSqlCommand AddForeignKeyOptions(SchemaSqlCommand command)
         => command.Operation == SchemaSqlOperation.ForeignKey && command.CommandText.TrimStart().StartsWith("ALTER TABLE ", StringComparison.Ordinal)

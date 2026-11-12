@@ -28,6 +28,12 @@ public sealed class DatabricksOdbcTests : OdbcContract
     public Task InspectExportAndRedeploySchema() => SparkSchemaQa.InspectExportAndRedeploy(CreateLiveConnectionUrl(), delta: true);
 
     [Test, Category("ODBC")]
+    public Task StructuredRecursiveRoundTrip() => SparkStructuredQa.Recursive(CreateLiveConnectionUrl(), delta: true);
+
+    [Test, Category("ODBC")]
+    public Task StructuredDeltaGuarantees() => SparkStructuredQa.DeltaGuarantees(CreateLiveConnectionUrl());
+
+    [Test, Category("ODBC")]
     public void DeployProjectionViewsAndDiagnosePartialFailure() => SparkSchemaQa.ProjectionViews(CreateLiveConnectionUrl());
 
     [Test, Category("ODBC")]

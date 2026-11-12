@@ -50,6 +50,18 @@ Use the shortcut path in the URL. The mapper rejects a raw HTTP endpoint path an
 
 Use `WithInformationalKeys()` to accept Unity Catalog's informational primary and foreign keys. Use `WithInformationalKeys(supportsUnique: true)` on compute that supports informational `UNIQUE` and foreign keys that reference it. Deployment checks the visible keys of existing parent tables before applying replacement commands. [Databricks key constraints](https://docs.databricks.com/aws/en/sql/language-manual/sql-ref-syntax-ddl-create-table-constraint) · [Unity Catalog metadata visibility](https://docs.databricks.com/aws/en/sql/language-manual/sql-ref-information-schema)
 
+## Structured schema columns
+
+Spark 3.5.8 `spark_catalog` Parquet and Databricks Unity Catalog Delta support recursive native arrays, maps, and structs in schema models and v1 JSON and YAML documents. Arrays require nullable elements. Maps require non-null scalar keys and nullable values. Declare each struct field's nullability explicitly. Field order and spelling are preserved, including quoted names. Name collisions are checked using the catalog's identifier rules. Spark's Hive metastore rejects commas, colons, and semicolons in nested field names.
+
+The reversible scalar leaves are `Boolean`, `SByte`, `Int16`, `Int32`, `Int64`, `Single`, `Double`, `String`, `Binary`, and `Date`. Spark Parquet widens nullability. Delta enforces a required field when the column and every enclosing struct are also required and the path has no array or map ancestor. Use `WithNameBasedColumnMapping()` when Delta fields contain spaces or other characters that require column mapping. Use the same dialect setting when redeploying the exported model. [Spark Parquet types](https://spark.apache.org/docs/3.5.8/sql-data-sources-parquet.html) · [Delta constraints](https://docs.databricks.com/aws/en/tables/constraints) · [Delta column mapping](https://docs.databricks.com/aws/en/delta/column-mapping)
+
+- `JsonText` stores caller-encoded JSON in `STRING`. DubUrl records the declaration with the reserved `[duburl:json-text:v1]` prefix in the column comment and restores the original description on discovery. Untagged strings are scalar columns. The engine accepts arbitrary text in either case.
+- `Json` uses `VARIANT` with `WithVariantType()` on compatible Databricks compute. Insert with `parse_json` and read with `to_json`. SQL `NULL` and the JSON value `null` remain distinct. Spark 3.5 uses the `JsonText` route. Shaped JSON and binary structured storage are unsupported. [Databricks VARIANT and JSON semantics](https://docs.databricks.com/aws/en/semi-structured/variant-json-diff)
+- Delta supports fixed-length `Single` vectors as `ARRAY<FLOAT>` with a check for the exact dimension and non-null elements. Discovery uses the reserved, enforced check in the Delta catalog as evidence for both guarantees. Ordinary float arrays retain their array shape. Spark Parquet has no vector mapping.
+
+Spark discovery combines `DESCRIBE TABLE EXTENDED` with `SHOW CREATE TABLE` to recover literal field names. Databricks uses `DESCRIBE TABLE EXTENDED AS JSON` for ordered fields and nullability. If nested evidence is missing or cannot be represented, inspection reports incomplete coverage. The ODBC QA cases verify values through SQL projections such as `size`, `element_at`, field selection, and `to_json`. Native structured parameter binding and .NET materialization are separate driver capabilities. [Databricks DESCRIBE TABLE](https://docs.databricks.com/aws/en/sql/language-manual/sql-ref-syntax-aux-describe-table)
+
 ## Load files from a Databricks volume
 
 Use the `DubUrl.BulkCopy` package and an `odbc+databricks` connection URL to load staged files into an existing Delta table.

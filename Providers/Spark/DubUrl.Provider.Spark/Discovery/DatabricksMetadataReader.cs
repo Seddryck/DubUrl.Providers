@@ -1,6 +1,8 @@
 using System.Data.Common;
+using System.Text.Json;
 using DubUrl.Discovery;
 using DubUrl.Provider.Spark.Sql;
+using DubUrl.Schema;
 
 namespace DubUrl.Provider.Spark.Discovery;
 
@@ -8,14 +10,16 @@ public sealed class DatabricksMetadataReader : SparkCatalogMetadataReader
 {
     private static readonly IReadOnlySet<SchemaFeature> Unsupported = new HashSet<SchemaFeature> { SchemaFeature.Indexes };
     private static readonly SchemaFeature[] KeyFeatures = [SchemaFeature.PrimaryKeys, SchemaFeature.ForeignKeys, SchemaFeature.UniqueConstraints];
-    private readonly CatalogRead? read;
-
-    public DatabricksMetadataReader() { }
-
-    private DatabricksMetadataReader(CatalogRead read) => this.read = read;
+    private CatalogRead? read;
 
     public override Task<SchemaMetadata> ReadAsync(DbConnection connection, DiscoveryOptions options, CancellationToken cancellationToken = default)
-        => new DatabricksMetadataReader(new CatalogRead()).ReadWithDiagnosticsAsync(connection, options, cancellationToken);
+    {
+        var snapshot = (DatabricksMetadataReader)MemberwiseClone();
+        snapshot.read = new();
+        return snapshot.ReadWithDiagnosticsAsync(connection, options, cancellationToken);
+    }
+
+    private protected override StructuredColumnMetadata? ReadStructuredType(CatalogRow row) => SparkStructuredCatalogType.ReadDelta(row);
 
     private async Task<SchemaMetadata> ReadWithDiagnosticsAsync(DbConnection connection, DiscoveryOptions options,
         CancellationToken cancellationToken)
@@ -110,25 +114,54 @@ public sealed class DatabricksMetadataReader : SparkCatalogMetadataReader
 
         var rows = (await ReadRows(connection, sql, options, scope.Keys is not null, cancellationToken).ConfigureAwait(false))
             .Where(row => scope.Names.Contains(Identity(row))).ToList();
-        if (sql != ColumnsSql || !NeedsDefinition(options)) return rows;
+        if (sql != ColumnsSql) return rows;
+        var needsDefinition = NeedsDefinition(options);
         var result = new List<CatalogRow>();
         foreach (var group in rows.GroupBy(Identity))
         {
+            var target = QualifiedName(group.Key);
+            var structuredColumns = group.Where(row => SparkStructuredCatalogType.IsStructured(row.Text("type_name")))
+                .Select(row => row.Text("column_name")!).ToHashSet(StringComparer.OrdinalIgnoreCase);
+            string? json = null;
+            if (structuredColumns.Count > 0)
+            {
+                try { json = await ScalarAsync(connection, $"DESCRIBE TABLE EXTENDED {target} AS JSON", cancellationToken).ConfigureAwait(false); }
+                catch (DbException) { } // Older compute and restricted readers can still expose the type text.
+            }
+            var description = SparkStructuredCatalogType.DeltaDescription(json);
             Dictionary<string, string>? definitions = null;
-            var definitionRequired = true;
-            try
+            var definitionRequired = needsDefinition;
+            if (needsDefinition)
             {
-                var ddl = await ScalarAsync(connection, $"SHOW CREATE TABLE {QualifiedName(group.Key)}", cancellationToken).ConfigureAwait(false);
-                if (ddl is not null) definitions = SparkCatalogDefinition.Columns(ddl);
+                try
+                {
+                    var ddl = await ScalarAsync(connection, $"SHOW CREATE TABLE {target}", cancellationToken).ConfigureAwait(false);
+                    if (ddl is not null) definitions = SparkCatalogDefinition.Columns(ddl);
+                }
+                catch (DbException) when (read is not null)
+                {
+                    definitionRequired = false;
+                    foreach (var feature in new[] { SchemaFeature.Defaults, SchemaFeature.Generation }.Where(options.Features.Contains))
+                        read.Inaccessible(feature, group.Key, "The table definition could not be read with SHOW CREATE TABLE.");
+                }
             }
-            catch (DbException) when (read is not null)
+            foreach (var row in group)
             {
-                definitionRequired = false;
-                foreach (var feature in new[] { SchemaFeature.Defaults, SchemaFeature.Generation }.Where(options.Features.Contains))
-                    read.Inaccessible(feature, group.Key, "The table definition could not be read with SHOW CREATE TABLE.");
+                var name = row.Text("column_name")!;
+                var column = row.With(("column_definition", definitions?.GetValueOrDefault(name)), ("definition_required", definitionRequired));
+                if (structuredColumns.Contains(name) && description is { } metadata && metadata.Columns.TryGetValue(name, out var descriptor))
+                {
+                    var type = SparkStructuredCatalogType.Property(descriptor, "type");
+                    var vectorCheck = SparkStructuredCatalogType.Text(type, "name") == "array"
+                        && SparkStructuredCatalogType.Flag(type, "element_nullable") == true
+                        && SparkStructuredCatalogType.Text(SparkStructuredCatalogType.Property(type, "element_type"), "name") == "float"
+                        ? SparkStructuredCatalogType.Text(metadata.TableProperties, "delta.constraints." + DeltaVectorSql.ConstraintName(name)) : null;
+                    column = column.With(("structured_json", type.ValueKind == JsonValueKind.Object ? type.GetRawText() : null),
+                        ("nullable", SparkStructuredCatalogType.Flag(descriptor, "nullable") ?? row.Bool("nullable")),
+                        ("vector_dimensions", DeltaVectorSql.ReadDimensions(name, vectorCheck)));
+                }
+                result.Add(column);
             }
-            result.AddRange(group.Select(row => row.With(("column_definition", definitions?.GetValueOrDefault(row.Text("column_name")!)),
-                ("definition_required", definitionRequired))));
         }
         return result;
     }
@@ -242,9 +275,14 @@ public sealed class DatabricksMetadataReader : SparkCatalogMetadataReader
         var checks = new List<CatalogRow>();
         var requiredColumns = columnRows.Where(row => Identity(row) == table && row.Bool("nullable") == false)
             .Select(row => row.Text("column_name")).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var vectors = columnRows.Where(row => Identity(row) == table && row.Int("vector_dimensions") is not null)
+            .Select(row => row.Text("column_name")!).ToDictionary(DeltaVectorSql.ConstraintName, StringComparer.OrdinalIgnoreCase);
         foreach (var check in checkRows.Where(row => Identity(row) == table))
         {
             var sql = check.Text("expression")?.Trim() ?? "";
+            if (check.Text("check_name") is { } name && vectors.TryGetValue(name, out var column)
+                && DeltaVectorSql.ReadDimensions(column, sql) is not null)
+                continue;
             const string prefix = "coalesce((";
             const string suffix = "), true)";
             if (sql.StartsWith(prefix, StringComparison.OrdinalIgnoreCase) && sql.EndsWith(suffix, StringComparison.OrdinalIgnoreCase))
