@@ -8,7 +8,7 @@
       "locations": [
         "requiredDatabase"
       ],
-      "tls": "mysql",
+      "tls": "nativeVerified",
       "fields": {
         "port": {
           "layout": "port",

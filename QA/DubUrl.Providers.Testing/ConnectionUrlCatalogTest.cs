@@ -4,7 +4,9 @@ using System.Text.Json;
 using DubUrl.BulkCopy;
 using DubUrl.Discovery;
 using DubUrl.Mapping;
+using MySqlConnector;
 using NReco.PrestoAdo;
+using Npgsql;
 using NUnit.Framework;
 
 namespace DubUrl.Providers.Testing;
@@ -22,6 +24,8 @@ public sealed class ConnectionUrlCatalogTest
         catalog = JsonDocument.Parse(stream);
         DbProviderFactories.RegisterFactory("NReco.PrestoAdo", PrestoDbFactory.Instance);
         DbProviderFactories.RegisterFactory("System.Data.Odbc", OdbcFactory.Instance);
+        DbProviderFactories.RegisterFactory("MySqlConnector", MySqlConnectorFactory.Instance);
+        DbProviderFactories.RegisterFactory("Npgsql", NpgsqlFactory.Instance);
         registry = new ProviderCatalogBuilder().AddApplicationProviders().Build();
     }
 
@@ -79,6 +83,31 @@ public sealed class ConnectionUrlCatalogTest
             Assert.That(capabilities.GetProperty("fileLoad").GetBoolean(), Is.True);
             Assert.That(url.TryGetCapability<FileLoadCapability>(out _), Is.True);
         });
+    }
+
+    [Test]
+    public void CatalogSchemesRequireVerifiedTls()
+    {
+        var mysql = Route("mysqlconnector");
+        var certificate = catalog.RootElement.GetProperty("authentication").GetProperty("certificate");
+        var mysqlUrl = new ConnectionUrl(VerifiedTlsScheme(mysql, mysql.GetProperty("tls")) + "://alice@mysql.example.com/app", registry);
+        var postgres = Route("npgsql");
+        var postgresUrl = new ConnectionUrl(VerifiedTlsScheme(postgres, certificate.GetProperty("tlsOverride"))
+            + "://alice@postgres.example.com/app", registry);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(new MySqlConnectionStringBuilder(mysqlUrl.Parse()).SslMode, Is.EqualTo(MySqlSslMode.VerifyFull));
+            Assert.That(new NpgsqlConnectionStringBuilder(postgresUrl.Parse()).SslMode, Is.EqualTo(SslMode.VerifyFull));
+        });
+    }
+
+    private string VerifiedTlsScheme(JsonElement route, JsonElement policy)
+    {
+        var modes = catalog.RootElement.GetProperty("tlsPolicies").GetProperty(policy.GetString()!).GetProperty("modes");
+        var verified = modes.EnumerateArray().Single(mode => mode.GetProperty("id").GetString() == "verified");
+        Assert.That(verified.GetProperty("via").GetString(), Is.EqualTo("scheme"));
+        return route.GetProperty("scheme").GetString() + verified.GetProperty("schemeSuffix").GetString();
     }
 
     private JsonElement Route(string id)

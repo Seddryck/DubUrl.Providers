@@ -23,9 +23,11 @@ $pending = @(Get-ChildItem -LiteralPath $NuGetDirectory -Filter '*.nupkg' -File 
 if ($pending.Count -eq 0) { throw 'No packages to verify on NuGet.' }
 
 $feedVersion = $Version.ToLowerInvariant()
-for ($attempt = 1; $attempt -le 30; $attempt++) {
+$pollId = [Guid]::NewGuid().ToString('N')
+for ($attempt = 1; $attempt -le 40; $attempt++) {
     $pending = @(foreach ($id in $pending) {
-        $url = "https://api.nuget.org/v3-flatcontainer/$id/$feedVersion/$id.nuspec"
+        # A cached 404 can outlive NuGet indexing, even after the upload succeeds.
+        $url = "https://api.nuget.org/v3-flatcontainer/$id/$feedVersion/$id.nuspec?verify=$pollId-$attempt"
         $response = Invoke-WebRequest -Uri $url -TimeoutSec 15 -SkipHttpErrorCheck
         if ($response.StatusCode -in 404, 429 -or $response.StatusCode -ge 500) {
             $id
@@ -40,6 +42,6 @@ for ($attempt = 1; $attempt -le 30; $attempt++) {
         Write-Host "Verified $id $Version from $SourceCommit."
     })
     if ($pending.Count -eq 0) { return }
-    if ($attempt -lt 30) { Start-Sleep -Seconds 10 }
+    if ($attempt -lt 40) { Start-Sleep -Seconds 15 }
 }
 throw "NuGet has not indexed $Version for $($pending -join ', ')."
