@@ -8,7 +8,7 @@
       "locations": [
         "requiredDatabase"
       ],
-      "tls": "mysql",
+      "tls": "nativeVerified",
       "fields": {
         "port": {
           "layout": "port",
@@ -41,7 +41,7 @@
       "locations": [
         "requiredDatabase"
       ],
-      "tls": "mysql",
+      "tls": "nativeVerified",
       "note": "Register the alternative MySql.Data mapper explicitly.",
       "fields": {
         "port": {

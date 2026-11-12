@@ -274,12 +274,9 @@
         {
           "id": "verified",
           "label": "Require verified TLS",
-          "via": "runtime",
-          "cli": [
-            "--tls"
-          ],
-          "library": "WithEncryption(ConnectionEncryption.Tls())",
-          "secure": true
+          "via": "scheme",
+          "secure": true,
+          "schemeSuffix": "+tls"
         }
       ]
     },
@@ -296,23 +293,6 @@
           "query": {
             "SSL Mode": "VerifyFull",
             "GSS Encryption Mode": "Disable"
-          },
-          "secure": true
-        }
-      ]
-    },
-    "mysql": {
-      "modes": [
-        {
-          "id": "default",
-          "label": "Driver default"
-        },
-        {
-          "id": "verified",
-          "label": "Require verified TLS",
-          "via": "url",
-          "query": {
-            "SSL Mode": "VerifyFull"
           },
           "secure": true
         }
