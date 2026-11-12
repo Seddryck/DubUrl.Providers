@@ -6,7 +6,7 @@ namespace DubUrl.Providers.QA.Contracts.Schema;
 
 internal static class SchemaDiscoveryBaseline
 {
-    internal static async Task VerifyAsync(ConnectionUrl url, bool expected)
+    internal static async Task VerifyAsync(ConnectionUrl url, bool expected, DiscoveryOptions? scope = null)
     {
         if (!expected)
         {
@@ -17,7 +17,7 @@ internal static class SchemaDiscoveryBaseline
             return;
         }
 
-        var result = await new SchemaInspector().InspectAsync(url, new DiscoveryOptions
+        var result = await new SchemaInspector().InspectAsync(url, (scope ?? new DiscoveryOptions()) with
         {
             Features = [SchemaFeature.Tables]
         });

@@ -5,6 +5,7 @@
     <ProjectReference Include="..\..\Drill\DubUrl.Provider.Drill\DubUrl.Provider.Drill.csproj" />
     <ProjectReference Include="..\..\DuckDb\DubUrl.Provider.DuckDb\DubUrl.Provider.DuckDb.csproj" />
     <ProjectReference Include="..\..\Excel\DubUrl.Provider.Excel\DubUrl.Provider.Excel.csproj" />
+    <ProjectReference Include="..\..\Hive\DubUrl.Provider.Hive\DubUrl.Provider.Hive.csproj" />
     <ProjectReference Include="..\..\MySql\DubUrl.Provider.MySql\DubUrl.Provider.MySql.csproj" />
     <ProjectReference Include="..\..\PostgreSql\DubUrl.Provider.PostgreSql\DubUrl.Provider.PostgreSql.csproj" />
     <ProjectReference Include="..\..\SqlServer\DubUrl.Provider.SqlServer\DubUrl.Provider.SqlServer.csproj" />

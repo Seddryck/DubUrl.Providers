@@ -1,12 +1,12 @@
 using DubUrl.ProviderTesting;
 using NUnit.Framework;
 
-namespace DubUrl.Provider.Spark.QA.Infrastructure;
+namespace DubUrl.Provider.Spark.QA.infrastructure;
 
 public sealed class QaManifestTests
 {
     [Test, Category("Manifest")]
     public void ManifestIsValid()
         => QaManifest.Validate(Path.Combine(AppContext.BaseDirectory, "qa-manifest.json"),
-            "spark", "Connection", "Querying", "ODBC");
+            "spark", "Connection", "Querying", "ODBC", "Schema");
 }

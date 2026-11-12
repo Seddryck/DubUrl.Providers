@@ -35,7 +35,7 @@ public abstract partial class ProviderContract : SchemaContract
     protected abstract GeneratedColumnStorage DiscoveryGenerationStorage { get; }
     protected abstract int? ExpectedDiscoveredStringLength { get; }
 
-    private static string[] ScenarioNames()
+    protected static string[] ScenarioNames()
     {
         using var stream = typeof(ProviderContract).Assembly.GetManifestResourceStream("SharedScenarios.json")!;
         return JsonSerializer.Deserialize<string[]>(stream)!;
@@ -55,7 +55,8 @@ public abstract partial class ProviderContract : SchemaContract
     private IDialect dialect = null!;
     private string prefix = "";
     private FeatureExpectation expectation = null!;
-    private string Name(string suffix) => prefix + suffix;
+    protected virtual string NormalizeTestName(string name) => name;
+    private string Name(string suffix) => NormalizeTestName(prefix + suffix);
     private string Q(string name) => dialect.Renderer.Render(name, "identity");
     private string Q(DatabaseObjectName name) => dialect.SchemaSqlRenderer.RenderObjectName(dialect, name.Catalog, name.Database, name.Schema, name.Name);
     private void Execute(string sql) => ExecuteScript(database, sql);
@@ -73,6 +74,7 @@ public abstract partial class ProviderContract : SchemaContract
         expectation = FeatureExpectations[scenario];
         Assert.That(expectation.Evidence, Is.Not.Empty);
         TestContext.Out.WriteLine($"Expectation: {expectation.Outcome}. {expectation.Evidence}");
+        if (expectation.Outcome == ExpectedOutcome.Inapplicable) Assert.Ignore(expectation.Evidence);
         using var connection = CreateConnection();
         database = connection; connection.Open(); dialect = CreateDialect();
         prefix = "Qa" + Guid.NewGuid().ToString("N")[..8] + "_";
@@ -260,14 +262,17 @@ public abstract partial class ProviderContract : SchemaContract
         Assert.That(ObjectExists(database, schema.Tables.Values.Single().Identity, false), Is.False); return;
     }
 
+    protected virtual IReadOnlyList<string> DeploymentCommands(SchemaScriptRenderer renderer, SchemaModel schema)
+        => [renderer.Render(schema)];
+
     private bool Deploy(SchemaModel schema, SchemaCreationOptions options = SchemaCreationOptions.None, bool setup = false)
     {
         Track(schema);
         try
         {
-            var sql = new SchemaScriptRenderer(dialect, options).Render(schema);
+            var commands = DeploymentCommands(new SchemaScriptRenderer(dialect, options), schema);
             if (!setup && expectation.Outcome == ExpectedOutcome.RendererRejects) Assert.Fail("Renderer accepted an explicitly unsupported scenario.");
-            Execute(sql);
+            foreach (var command in commands) Execute(command);
         }
         catch (NotSupportedException error) when (!setup && expectation.Outcome == ExpectedOutcome.RendererRejects)
         { Assert.That(error.Message, Does.Contain(expectation.ErrorCodes.Single()).IgnoreCase); return false; }
@@ -318,6 +323,7 @@ public abstract partial class ProviderContract : SchemaContract
     }
 
     protected virtual TablePhysicalOptions? PhysicalOptions(string scenario) => null;
+    protected virtual bool VerifyNativeCharacterKeySemantics => false;
 
     private void Keys(string scenario)
     {
@@ -329,9 +335,47 @@ public abstract partial class ProviderContract : SchemaContract
         if (!Deploy(new([table]))) return;
         var value = native is null ? "1" : "'STD'";
         Execute($"INSERT INTO {Q(table.Identity)} VALUES ({value},2)");
-        Assert.That(() => Execute($"INSERT INTO {Q(table.Identity)} VALUES ({value},2)"), Throws.InstanceOf<DbException>());
+        var duplicate = $"INSERT INTO {Q(table.Identity)} VALUES ({value},2)";
+        if (expectation.Outcome == ExpectedOutcome.Informational)
+        {
+            Execute(duplicate);
+            Assert.That(Convert.ToInt64(Scalar($"SELECT COUNT(*) FROM {Q(table.Identity)}")), Is.EqualTo(2));
+        }
+        else Assert.That(() => Execute(duplicate), Throws.InstanceOf<DbException>());
         if (composite) Execute($"INSERT INTO {Q(table.Identity)} VALUES ({value},3)");
+        if (native is not null && VerifyNativeCharacterKeySemantics)
+            NativeCharacterKeys(table, native);
     }
+
+    private void NativeCharacterKeys(Table primary, NativeDatabaseType native)
+    {
+        var code = new VarLengthColumn("code", DbType.AnsiString, 20, nativeType: native);
+        var unique = new Table(Name("unique"), [code], [new UniquenessConstraint([code])]);
+        var child = new Table(Name("child"), [code],
+            [new ForeignKey(Name("fk"), ["code"], unique.Name, ["code"])]);
+        Assert.That(Deploy(new([child, unique])), Is.True);
+
+        var primaryName = Q(primary.Identity);
+        var uniqueName = Q(unique.Identity);
+        var childName = Q(child.Identity);
+        Execute($"INSERT INTO {uniqueName} VALUES ('STD')");
+        Execute($"INSERT INTO {childName} VALUES ('STD')");
+        Assert.That(() => Execute($"INSERT INTO {uniqueName} VALUES ('STD')"), Throws.InstanceOf<DbException>());
+        Assert.That(() => Execute($"INSERT INTO {childName} VALUES ('missing')"), Throws.InstanceOf<DbException>());
+        Assert.That(() => Execute($"INSERT INTO {primaryName} VALUES ('{new string('x', 21)}', 2)"), Throws.InstanceOf<DbException>());
+
+        if (native.Name.Equals("CHAR", StringComparison.OrdinalIgnoreCase))
+        {
+            Assert.That(() => Execute($"INSERT INTO {primaryName} VALUES ('STD ', 2)"), Throws.InstanceOf<DbException>());
+            Execute($"INSERT INTO {childName} VALUES ('STD ')");
+        }
+        else
+        {
+            Execute($"INSERT INTO {primaryName} VALUES ('STD ', 2)");
+            Assert.That(() => Execute($"INSERT INTO {childName} VALUES ('STD ')"), Throws.InstanceOf<DbException>());
+        }
+    }
+
     private SchemaModel RelationshipSchema(bool composite = true)
     {
         var b = Id("b"); var a = Id("a");
@@ -345,8 +389,16 @@ public abstract partial class ProviderContract : SchemaContract
         var parent = schema.Tables.Values.Single(t => t.Name == Name("parent"));
         var child = schema.Tables.Values.Single(t => t.Name == Name("child"));
         Execute($"INSERT INTO {Q(parent.Identity)} VALUES (1,2)"); Execute($"INSERT INTO {Q(child.Identity)} VALUES (1,2)");
-        Assert.That(() => Execute($"INSERT INTO {Q(child.Identity)} VALUES (3,4)"), Throws.InstanceOf<DbException>());
-        if (scenario == "CompositeForeignKey") Assert.That(() => Execute($"INSERT INTO {Q(child.Identity)} VALUES (2,1)"), Throws.InstanceOf<DbException>());
+        if (expectation.Outcome == ExpectedOutcome.Informational)
+        {
+            Execute($"INSERT INTO {Q(child.Identity)} VALUES (3,4)");
+            Assert.That(Convert.ToInt64(Scalar($"SELECT COUNT(*) FROM {Q(child.Identity)}")), Is.EqualTo(2));
+        }
+        else
+        {
+            Assert.That(() => Execute($"INSERT INTO {Q(child.Identity)} VALUES (3,4)"), Throws.InstanceOf<DbException>());
+            if (scenario == "CompositeForeignKey") Assert.That(() => Execute($"INSERT INTO {Q(child.Identity)} VALUES (2,1)"), Throws.InstanceOf<DbException>());
+        }
         if (scenario == "DependencyDrop")
         {
             if (!Deploy(schema, SchemaCreationOptions.DropIfExists)) return;
@@ -480,13 +532,19 @@ public abstract partial class ProviderContract : SchemaContract
     {
         var feature = DiscoveryFeature(scenario);
         if (scenario == "DiscoveryTableFilter") Deploy(new([new Table(Name("unrelated"), [Id()])]));
-        SchemaFeature[] features = scenario == "DiscoveryUnique" ? [.. basic, feature, SchemaFeature.Indexes] : [.. basic, feature];
-        var inspected = await Inspect(features, scenario is "DiscoveryViews" or "DiscoverySchemaFilter" ? null : [table], partial: scenario != "DiscoveryUnique");
+        var informational = expectation.Outcome == ExpectedOutcome.Informational;
+        SchemaFeature[] features = scenario == "DiscoveryUnique" && !informational ? [.. basic, feature, SchemaFeature.Indexes] : [.. basic, feature];
+        var inspected = await Inspect(features, scenario is "DiscoveryViews" or "DiscoverySchemaFilter" ? null : [table], partial: scenario != "DiscoveryUnique" || informational);
         Assert.That(inspected.IsSuccess, Is.True, string.Join(",", inspected.Diagnostics.Select(d => d.Code)));
         if (expectation.Outcome == ExpectedOutcome.NotEnforced && scenario != "DiscoveryIndexes")
         {
             VerifyUnsupportedDiscovery(scenario, inspected, feature);
             return;
+        }
+        if (informational)
+        {
+            Assert.That(inspected.IsComplete, Is.False);
+            Assert.That(inspected.Diagnostics.Any(item => item.Feature == feature && item.Coverage == MetadataCoverage.Unrepresentable), Is.True);
         }
         await VerifyDiscoveredSchema(scenario, table, indexes, portable, inspected, basic);
     }
@@ -509,7 +567,7 @@ public abstract partial class ProviderContract : SchemaContract
             Assert.That(result.Diagnostics.Where(d => d.Code == "SDI005").Select(d => d.Feature), Is.EqualTo(new[] { SchemaFeature.ForeignKeys }));
             Assert.That(result.IsComplete, Is.False); return;
         }
-        Assert.That(result.IsComplete, Is.True, string.Join(",", result.Diagnostics.Select(d => d.Code)));
+        Assert.That(result.IsComplete, Is.EqualTo(expectation.Outcome != ExpectedOutcome.Informational), string.Join(",", result.Diagnostics.Select(d => d.Code)));
         Assert.That(result.Schema!.Tables.Count, Is.EqualTo(2));
         var key = result.Schema.Tables.Values.Single(t => t.Name == child.Name).Constraints.OfType<ForeignKey>().Single();
         Assert.That(key.SourceColumns, Is.EqualTo(new[] { "x", "y" })); Assert.That(key.TargetColumns, Is.EqualTo(new[] { "b", "a" })); return;
@@ -576,7 +634,7 @@ public abstract partial class ProviderContract : SchemaContract
     private async Task VerifyDiscoveredSchema(string scenario, Table table, Index[] indexes, View portable, SchemaInspectionResult inspected, SchemaFeature[] basic)
     {
         var actual = inspected.Schema!.Tables.Values.Single(t => t.Name == table.Name);
-        if (scenario == "DiscoveryUnique")
+        if (scenario == "DiscoveryUnique" && expectation.Outcome != ExpectedOutcome.Informational)
         {
             Assert.That(inspected.IsComplete, Is.True);
             Assert.That(inspected.Coverage[SchemaFeature.UniqueConstraints], Is.EqualTo(MetadataCoverage.Available));

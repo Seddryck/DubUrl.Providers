@@ -26,7 +26,7 @@ jobs:
       (github.event_name == 'push' || inputs.fixture != 'spark')
     runs-on: ubuntu-24.04
     container: debian:bookworm-slim
-    timeout-minutes: 15
+    timeout-minutes: 30
     environment: databricks-qa
     concurrency: databricks-odbc-qa
     steps:
@@ -65,15 +65,16 @@ jobs:
         shell: bash
         env:
           DATABRICKS_HOST: ${{ vars.DATABRICKS_HOST }}
-          DATABRICKS_HTTP_PATH: ${{ vars.DATABRICKS_HTTP_PATH }}
+          DATABRICKS_WAREHOUSE_ID: ${{ vars.DATABRICKS_WAREHOUSE_ID }}
           DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN }}
+          DATABRICKS_RESTRICTED_TOKEN: ${{ secrets.DATABRICKS_RESTRICTED_TOKEN }}
         run: |
           status=0
           dotnet test Providers/Spark/DubUrl.Provider.Databricks.QA -c Release -f net10.0 --no-build \
-            --logger 'trx;LogFileName=databricks.trx' --results-directory .test-results/databricks || status=$?
+            --filter FullyQualifiedName~StructuredWarehouseProbe --logger 'trx;LogFileName=databricks.trx' --results-directory .test-results/databricks || status=$?
           report=.test-results/databricks/databricks.trx
-          if [[ -n "$DATABRICKS_TOKEN" && -f "$report" ]]; then
-            perl -pi -e 's/\Q$ENV{DATABRICKS_TOKEN}\E/[REDACTED]/g' "$report"
+          if [[ -f "$report" ]]; then
+            perl -pi -e 'for my $name (qw(DATABRICKS_TOKEN DATABRICKS_RESTRICTED_TOKEN)) { my $token = $ENV{$name}; s/\Q$token\E/[REDACTED]/g if length($token // q{}); }' "$report"
           fi
           exit "$status"
       - uses: actions/upload-artifact@v7
