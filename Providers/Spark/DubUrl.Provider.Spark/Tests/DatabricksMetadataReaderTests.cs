@@ -18,7 +18,8 @@ public sealed class DatabricksMetadataReaderTests
             _ when sql.Contains("FROM system.information_schema.tables") => Rows("catalog_name schema_name table_name",
                 ["c", "s", "child"], ["c", "other", "parent"], ["c", "other", "unrelated"]),
             _ when sql.Contains("FROM system.information_schema.columns") => Rows("catalog_name schema_name table_name column_name ordinal type_name nullable",
-                ["c", "s", "child", "id", 1, "INT", "YES"], ["c", "other", "parent", "id", 1, "INT", "YES"]),
+                ["c", "s", "child", "id", 1, "INT", "YES"], ["c", "other", "parent", "id", 1, "INT", "YES"],
+                ["c", "other", "parent", "namespace", 2, "VARCHAR(255)", "YES"]),
             _ when sql.Contains("FROM system.information_schema.key_column_usage") => Rows(
                 "catalog_name schema_name table_name column_name ordinal kind key_name target_catalog target_schema target_table target_column",
                 ["c", "s", "child", "id", 1, "FOREIGN KEY", "fk", "c", "other", "parent", "id"]),
@@ -29,7 +30,8 @@ public sealed class DatabricksMetadataReaderTests
         }, sql => sql switch
         {
             "SHOW CREATE TABLE `c`.`s`.`child`" => throw new CatalogAccessException(),
-            "SHOW CREATE TABLE `c`.`other`.`parent`" => "CREATE TABLE `c`.`other`.`parent` (`id` INT DEFAULT 1) USING DELTA",
+            "SHOW CREATE TABLE `c`.`other`.`parent`" =>
+                "CREATE TABLE `c`.`other`.`parent` (`id` INT DEFAULT 1, `namespace` VARCHAR(255) DEFAULT current_catalog()) USING DELTA",
             _ => throw new AssertionException($"Unexpected catalog query {sql}"),
         });
 
@@ -45,7 +47,8 @@ public sealed class DatabricksMetadataReaderTests
         Assert.That(metadata.Tables.Select(table => table.Identity), Is.EquivalentTo(new[] { child, parent }));
         var parentMetadata = metadata.Tables.Single(table => table.Identity == parent);
         Assert.That(parentMetadata.Checks.Single().Name, Is.EqualTo("id_check"));
-        Assert.That(parentMetadata.Columns.Single().Default, Is.EqualTo(1));
+        Assert.That(parentMetadata.Columns.Single(column => column.Name == "id").Default, Is.EqualTo(1));
+        Assert.That(parentMetadata.Columns.Single(column => column.Name == "namespace").Default, Is.Null);
         foreach (var feature in new[] { SchemaFeature.Checks, SchemaFeature.Defaults })
         {
             Assert.That(metadata.Coverage[feature], Is.EqualTo(MetadataCoverage.Inaccessible));
@@ -53,6 +56,8 @@ public sealed class DatabricksMetadataReaderTests
                 && diagnostic.Coverage == MetadataCoverage.Inaccessible).Object, Is.EqualTo(child));
         }
         Assert.That(metadata.Diagnostics.Any(diagnostic => diagnostic.Feature == SchemaFeature.Checks
+            && diagnostic.Coverage == MetadataCoverage.Unrepresentable && diagnostic.Object == parent), Is.True);
+        Assert.That(metadata.Diagnostics.Any(diagnostic => diagnostic.Feature == SchemaFeature.Defaults
             && diagnostic.Coverage == MetadataCoverage.Unrepresentable && diagnostic.Object == parent), Is.True);
     }
 

@@ -85,7 +85,8 @@ internal static class SparkCatalogDefinition
             "CURRENT_USER" or "CURRENT_USER()" => ColumnDefaultExpression.CurrentUser,
             "SESSION_USER" or "SESSION_USER()" => ColumnDefaultExpression.SessionUser,
             "CURRENT_SCHEMA" or "CURRENT_SCHEMA()" => ColumnDefaultExpression.CurrentSchema,
-            "CURRENT_DATABASE" or "CURRENT_DATABASE()" => ColumnDefaultExpression.CurrentDatabase,
+            "CURRENT_DATABASE" or "CURRENT_DATABASE()" or "CURRENT_CATALOG" or "CURRENT_CATALOG()" =>
+                ColumnDefaultExpression.CurrentDatabase,
             _ when normalized == Normalize(SparkColumnDefaults.UtcTimestamp) => ColumnDefaultExpression.CurrentUtcTimestamp(),
             _ => null,
         };
