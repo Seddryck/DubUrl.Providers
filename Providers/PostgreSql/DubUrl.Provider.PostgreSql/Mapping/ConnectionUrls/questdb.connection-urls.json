@@ -1,0 +1,25 @@
+{
+  "routes": [
+    {
+      "id": "quest-npgsql",
+      "api": "ADO.NET",
+      "driver": "Npgsql",
+      "scheme": "questdb",
+      "locations": [
+        "server"
+      ],
+      "tls": "nativeVerified",
+      "note": "Uses the fixed qdb database. Verified TLS requires QuestDB Enterprise PGWire TLS.",
+      "fields": {
+        "port": {
+          "layout": "port",
+          "default": 8812
+        }
+      },
+      "auth": [
+        "password"
+      ],
+      "providerInvariant": "Npgsql"
+    }
+  ]
+}

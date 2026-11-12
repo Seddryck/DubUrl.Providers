@@ -1,0 +1,98 @@
+name: Connection URL catalog
+
+on:
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Catalog release version (MAJOR.MINOR.PATCH)
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Validate and package the connection URL catalog
+    runs-on: windows-latest
+    env:
+      CATALOG_VERSION: ${{ inputs.version || '0.0.0' }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 10.0.401
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+      - name: Verify catalog and provider behavior
+        shell: pwsh
+        run: |
+          dotnet test QA/DubUrl.Providers.Testing -c Release -f net10.0 -p:TargetFrameworks=net10.0 --filter FullyQualifiedName~ConnectionUrlCatalogTest --logger trx --results-directory artifacts/catalog-tests
+          if ($LASTEXITCODE) { throw 'Connection URL catalog tests failed.' }
+          $result = Get-ChildItem artifacts/catalog-tests -Filter '*.trx'
+          if (@($result).Count -ne 1) { throw 'Expected one connection URL catalog test result.' }
+          $counters = ([xml](Get-Content $result.FullName -Raw)).TestRun.ResultSummary.Counters
+          if ([int]$counters.executed -eq 0 -or $counters.passed -ne $counters.executed) { throw 'Connection URL catalog tests did not all pass.' }
+      - name: Validate schema and package the tested catalog
+        shell: pwsh
+        run: |
+          python -m pip install --only-binary=:all: jsonschema==4.26.0
+          if ($LASTEXITCODE) { throw 'Could not install the catalog validator.' }
+          $coreVersion = dotnet msbuild QA/DubUrl.Providers.Testing/DubUrl.Providers.Testing.csproj -getProperty:DubUrlVersion
+          if ($LASTEXITCODE) { throw 'Could not read the Core package version.' }
+          python build/package_connection_url_catalog.py --catalog QA/DubUrl.Providers.Testing/obj/Release/net10.0/connection-url-catalog.json --schema connection-urls/schema.json --output artifacts/catalog-release --version $env:CATALOG_VERSION --commit $env:GITHUB_SHA --core-version $coreVersion
+      - uses: actions/upload-artifact@v7
+        with:
+          name: connection-url-catalog
+          path: artifacts/catalog-release
+          if-no-files-found: error
+
+  publish:
+    name: Publish the connection URL catalog
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
+    needs: validate
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    concurrency:
+      group: connection-url-catalog-${{ inputs.version }}
+      cancel-in-progress: false
+    env:
+      GH_TOKEN: ${{ github.token }}
+      CATALOG_VERSION: ${{ inputs.version }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@v7
+        with:
+          name: connection-url-catalog
+          path: artifacts/catalog-release
+      - name: Publish the validated artifact
+        shell: bash
+        run: |
+          tag="connection-url-catalog-v$CATALOG_VERSION"
+          bundle=connection-url-catalog.zip
+          cd artifacts/catalog-release
+          sha256sum --check "$bundle.sha256"
+          jq -e --arg version "$CATALOG_VERSION" --arg commit "$GITHUB_SHA" \
+            '.catalogVersion == $version and .sourceCommit == $commit' <(unzip -p "$bundle" manifest.json)
+          tag_ref="refs/tags/$tag"
+          existing_tag=$(git ls-remote --refs origin "$tag_ref")
+          if [[ -n "$existing_tag" ]]; then
+            git fetch --no-tags origin "$tag_ref"
+            [[ $(git rev-parse 'FETCH_HEAD^{commit}') == "$GITHUB_SHA" ]]
+          fi
+          if gh release view "$tag" >/dev/null 2>&1; then
+            existing=$(mktemp -d)
+            gh release download "$tag" --pattern "$bundle" --pattern "$bundle.sha256" --dir "$existing"
+            cmp "$bundle" "$existing/$bundle"
+            cmp "$bundle.sha256" "$existing/$bundle.sha256"
+          else
+            gh release create "$tag" "$bundle" "$bundle.sha256" --target "$GITHUB_SHA" --latest=false \
+              --title "Connection URL catalog $CATALOG_VERSION" --notes "Connection URL builder catalog for provider source revision $GITHUB_SHA."
+          fi

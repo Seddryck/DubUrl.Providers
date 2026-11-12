@@ -1,0 +1,40 @@
+{
+  "routes": [
+    {
+      "id": "ibm-db2",
+      "api": "ADO.NET",
+      "driver": "IBM.Data.Db2",
+      "platforms": [
+        "Windows",
+        "Linux"
+      ],
+      "scheme": "db2",
+      "locations": [
+        "requiredDatabase"
+      ],
+      "fields": {
+        "port": {
+          "layout": "port",
+          "placeholder": "50000"
+        }
+      },
+      "auth": [
+        "password",
+        {
+          "id": "integrated",
+          "label": "Kerberos (OS identity)",
+          "fields": {
+            "targetPrincipal": {
+              "layout": "text",
+              "label": "Kerberos target principal",
+              "required": true,
+              "queryKey": "TargetPrincipal"
+            }
+          }
+        },
+        "driver"
+      ],
+      "providerInvariant": "IBM.Data.Db2"
+    }
+  ]
+}

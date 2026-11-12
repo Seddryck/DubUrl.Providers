@@ -1,0 +1,67 @@
+{
+  "routes": [
+    {
+      "id": "firebird-native",
+      "api": "ADO.NET",
+      "driver": "FirebirdSql.Data.FirebirdClient",
+      "scheme": "firebird",
+      "locations": [
+        "firebirdServer",
+        "firebirdFile"
+      ],
+      "note": "Firebird wire encryption is configured with driver-specific options.",
+      "auth": [
+        "password",
+        {
+          "id": "integrated",
+          "platforms": [
+            "Windows"
+          ],
+          "note": "Windows trusted authentication uses Win_Sspi."
+        }
+      ],
+      "providerInvariant": "FirebirdSql.Data.FirebirdClient"
+    }
+  ],
+  "locations": {
+    "firebirdServer": {
+      "label": "Server database",
+      "transport": "TCP",
+      "fields": {
+        "host": {
+          "layout": "host",
+          "required": true,
+          "url": "host"
+        },
+        "port": {
+          "layout": "port",
+          "default": 3050,
+          "url": "port"
+        },
+        "serverFile": {
+          "layout": "text",
+          "label": "Database alias or server file path",
+          "required": true
+        }
+      },
+      "path": [
+        "serverFile"
+      ]
+    },
+    "firebirdFile": {
+      "label": "Local server database",
+      "transport": "Local Firebird server",
+      "fixedHost": "localhost",
+      "fields": {
+        "serverFile": {
+          "layout": "text",
+          "label": "Database alias or server file path",
+          "required": true
+        }
+      },
+      "path": [
+        "serverFile"
+      ]
+    }
+  }
+}

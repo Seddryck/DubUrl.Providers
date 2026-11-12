@@ -1,0 +1,53 @@
+{
+  "routes": [
+    {
+      "id": "snowflake-native",
+      "api": "ADO.NET",
+      "driver": "Snowflake.Data",
+      "scheme": "snowflake",
+      "locations": [
+        "accountDatabase"
+      ],
+      "tls": "fixed",
+      "note": "The authority is the Snowflake account identifier. Warehouse and role are runtime settings in this proposal.",
+      "auth": [
+        "password",
+        {
+          "id": "browser",
+          "note": "Experimental. Configure the Snowflake OAuth integration, client ID and callback."
+        },
+        "driver"
+      ],
+      "providerInvariant": "Snowflake.Data"
+    }
+  ],
+  "locations": {
+    "accountDatabase": {
+      "transport": "HTTPS",
+      "requires": {
+        "schema": "database"
+      },
+      "fields": {
+        "account": {
+          "layout": "text",
+          "label": "Account identifier",
+          "required": true,
+          "placeholder": "myorg-myaccount",
+          "url": "host"
+        },
+        "database": {
+          "layout": "text",
+          "label": "Database"
+        },
+        "schema": {
+          "layout": "text",
+          "label": "Schema"
+        }
+      },
+      "path": [
+        "database",
+        "schema"
+      ]
+    }
+  }
+}

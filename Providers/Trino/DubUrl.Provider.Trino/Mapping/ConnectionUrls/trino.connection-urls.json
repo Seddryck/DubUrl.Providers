@@ -1,0 +1,58 @@
+{
+  "routes": [
+    {
+      "id": "nreco",
+      "api": "ADO.NET",
+      "driver": "NReco.PrestoAdo",
+      "scheme": "trino",
+      "locations": [
+        "catalogSchema"
+      ],
+      "tls": "trino",
+      "fields": {
+        "port": {
+          "layout": "port",
+          "default": 8080
+        }
+      },
+      "auth": [
+        "userOnly",
+        {
+          "id": "password",
+          "requiresTls": true
+        }
+      ],
+      "providerInvariant": "NReco.PrestoAdo"
+    }
+  ],
+  "tlsPolicies": {
+    "trino": {
+      "modes": [
+        {
+          "id": "default",
+          "label": "Driver default (HTTPS)",
+          "transport": "HTTPS"
+        },
+        {
+          "id": "verified",
+          "label": "HTTPS (system trust)",
+          "via": "url",
+          "query": {
+            "UseSsl": "true"
+          },
+          "secure": true,
+          "transport": "HTTPS"
+        },
+        {
+          "id": "http",
+          "label": "HTTP (development only)",
+          "via": "url",
+          "query": {
+            "UseSsl": "false"
+          },
+          "transport": "HTTP"
+        }
+      ]
+    }
+  }
+}

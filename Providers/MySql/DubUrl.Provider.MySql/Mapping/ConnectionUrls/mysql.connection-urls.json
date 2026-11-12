@@ -1,0 +1,61 @@
+{
+  "routes": [
+    {
+      "id": "mysqlconnector",
+      "api": "ADO.NET",
+      "driver": "MySqlConnector",
+      "scheme": "mysql",
+      "locations": [
+        "requiredDatabase"
+      ],
+      "tls": "mysql",
+      "fields": {
+        "port": {
+          "layout": "port",
+          "default": 3306
+        }
+      },
+      "auth": [
+        "password",
+        {
+          "id": "certificate",
+          "note": "The account may also require a database password."
+        }
+      ],
+      "providerInvariant": "MySqlConnector"
+    },
+    {
+      "id": "mysql-data",
+      "api": "ADO.NET",
+      "driver": "MySql.Data",
+      "scheme": "mysql",
+      "locations": [
+        "requiredDatabase"
+      ],
+      "tls": "mysql",
+      "note": "Register the alternative MySql.Data mapper explicitly. The URL alone selects the default mapper.",
+      "fields": {
+        "port": {
+          "layout": "port",
+          "default": 3306
+        }
+      },
+      "auth": [
+        "password",
+        {
+          "id": "integrated",
+          "platforms": [
+            "Windows",
+            "Linux"
+          ],
+          "note": "MySQL Enterprise Kerberos and matching client plugin."
+        },
+        {
+          "id": "certificate",
+          "note": "PEM files or PFX/P12. This certificate route disables pooling. Bundle mode uses system trust."
+        }
+      ],
+      "providerInvariant": "MySql.Data"
+    }
+  ]
+}

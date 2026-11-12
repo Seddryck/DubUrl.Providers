@@ -1,0 +1,61 @@
+{
+  "routes": [
+    {
+      "id": "ssas-tabular-adomd",
+      "api": "ADOMD.NET",
+      "driver": "Microsoft.AnalysisServices.AdomdClient",
+      "scheme": "ssastabular",
+      "locations": [
+        "ssas"
+      ],
+      "auth": [
+        {
+          "id": "driver",
+          "label": "Integrated identity (ADOMD client)"
+        }
+      ],
+      "providerInvariant": "Microsoft.AnalysisServices.AdomdClient"
+    }
+  ],
+  "locations": {
+    "ssas": {
+      "transport": "TCP",
+      "exclusive": [
+        [
+          "instance",
+          "port"
+        ]
+      ],
+      "fields": {
+        "host": {
+          "layout": "host",
+          "required": true,
+          "url": "host"
+        },
+        "port": {
+          "layout": "port",
+          "url": "port"
+        },
+        "instance": {
+          "layout": "text",
+          "label": "Instance"
+        },
+        "catalog": {
+          "layout": "text",
+          "label": "Catalog",
+          "required": true
+        }
+      },
+      "path": [
+        {
+          "field": "instance",
+          "fallback": "~",
+          "fallbackWhen": [
+            "port"
+          ]
+        },
+        "catalog"
+      ]
+    }
+  }
+}

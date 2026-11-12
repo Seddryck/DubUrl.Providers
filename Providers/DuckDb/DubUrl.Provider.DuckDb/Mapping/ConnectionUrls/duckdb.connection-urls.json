@@ -1,0 +1,47 @@
+{
+  "routes": [
+    {
+      "id": "duckdb-native",
+      "api": "ADO.NET",
+      "driver": "DuckDB.NET",
+      "scheme": "duckdb",
+      "locations": [
+        "file",
+        "memory"
+      ],
+      "auth": [
+        "none",
+        {
+          "id": "fileKey",
+          "locations": [
+            "file"
+          ],
+          "note": "Requires a compatible encrypted DuckDB database file and native DuckDB provider."
+        }
+      ],
+      "providerInvariant": "DuckDB.NET.Data"
+    },
+    {
+      "id": "duckdb-adbc",
+      "api": "ADBC",
+      "driver": "DuckDB ADBC",
+      "scheme": "adbc+duckdb",
+      "locations": [
+        "file",
+        "memory"
+      ],
+      "note": "Requires the DubUrl ADBC provider and a discoverable native DuckDB library.",
+      "auth": [
+        "none"
+      ],
+      "providerInvariant": "DubUrl.Provider.DuckDb.Adbc"
+    }
+  ],
+  "authentication": {
+    "fileKey": {
+      "label": "Database encryption key",
+      "via": "runtime",
+      "library": "ConnectionAuthentication.FilePassword(…)"
+    }
+  }
+}

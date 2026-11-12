@@ -1,0 +1,61 @@
+{
+  "routes": [
+    {
+      "id": "simba-trino",
+      "api": "ODBC",
+      "driver": "Simba Trino ODBC",
+      "scheme": "odbc+trino",
+      "locations": [
+        "catalogSchema"
+      ],
+      "tls": "trinoOdbc",
+      "fields": {
+        "port": {
+          "layout": "port",
+          "default": 8080
+        }
+      },
+      "auth": [
+        "userOnly",
+        {
+          "id": "driver",
+          "label": "LDAP username and password (vendor driver)",
+          "requiresTls": true,
+          "tlsOverride": "fixed"
+        },
+        {
+          "id": "integrated",
+          "label": "Kerberos (OS identity)",
+          "requiresTls": true,
+          "tlsOverride": "fixed"
+        },
+        {
+          "id": "driver",
+          "label": "OIDC (vendor driver)",
+          "requiresTls": true
+        }
+      ],
+      "providerInvariant": "System.Data.Odbc"
+    }
+  ],
+  "tlsPolicies": {
+    "trinoOdbc": {
+      "modes": [
+        {
+          "id": "default",
+          "label": "Driver default"
+        },
+        {
+          "id": "on",
+          "label": "Enable TLS",
+          "via": "url",
+          "query": {
+            "SSL": "1"
+          },
+          "secure": true,
+          "transport": "HTTPS"
+        }
+      ]
+    }
+  }
+}
