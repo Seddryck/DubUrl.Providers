@@ -226,7 +226,7 @@ internal static class SparkSchemaQa
             return Task.CompletedTask;
         }).GetAwaiter().GetResult();
 
-    private static async Task WithScratchAsync(ConnectionUrl url, Func<DbConnection, string, string, Task> run)
+    internal static async Task WithScratchAsync(ConnectionUrl url, Func<DbConnection, string, string, Task> run)
     {
         DbProviderFactories.RegisterFactory("System.Data.Odbc", OdbcFactory.Instance);
         using var connection = (DbConnection)url.Open();

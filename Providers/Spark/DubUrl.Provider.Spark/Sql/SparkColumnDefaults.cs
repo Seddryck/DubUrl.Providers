@@ -12,8 +12,11 @@ internal static class SparkColumnDefaults
 
     internal static ColumnDefaultPlan? Plan(IDialect dialect, ColumnDefaultContext context)
     {
-        if (context.Column.DefaultExpression is not { FractionalSecondsPrecision: null or 6 } expression)
+        if (context.Column.DefaultExpression is not { } expression)
             return null;
+        if (expression.FractionalSecondsPrecision is not (null or 6))
+            throw new NotSupportedException(
+                $"The {expression.Kind} default for '{context.Table}.{context.Column.Name}' supports fractional seconds precision 6. Omit the precision or specify 6.");
 
         var sqlType = context.SqlType;
         var databricks = dialect is DatabricksSqlDialect;
@@ -28,6 +31,10 @@ internal static class SparkColumnDefaults
                 => new(AsTimestamp("current_timestamp()", sqlType)),
             ColumnDefaultKind.CurrentUtcTimestamp when sqlType == "TIMESTAMP_NTZ"
                 => new(UtcTimestamp),
+            ColumnDefaultKind.CurrentTimestamp when databricks
+                => throw new NotSupportedException("Use TIMESTAMP or TIMESTAMP_NTZ for a Databricks session-local timestamp default."),
+            ColumnDefaultKind.CurrentUtcTimestamp when databricks
+                => throw new NotSupportedException("Use TIMESTAMP_NTZ for a Databricks UTC timestamp default."),
             ColumnDefaultKind.CurrentUser when databricks && boundedText
                 => new("current_user()", 320, false, ColumnDefaultKind.SessionUser),
             ColumnDefaultKind.SessionUser when databricks && boundedText

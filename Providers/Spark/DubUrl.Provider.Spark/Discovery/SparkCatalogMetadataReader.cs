@@ -11,7 +11,7 @@ public abstract class SparkCatalogMetadataReader : CatalogSchemaMetadataReader, 
 {
     private readonly ConditionalWeakTable<MetadataView, object> hiddenDefinitions = new();
 
-    public new async Task<SchemaMetadata> ReadAsync(DbConnection connection, DiscoveryOptions options, CancellationToken cancellationToken = default)
+    public new virtual async Task<SchemaMetadata> ReadAsync(DbConnection connection, DiscoveryOptions options, CancellationToken cancellationToken = default)
     {
         var metadata = await base.ReadAsync(connection, options, cancellationToken).ConfigureAwait(false);
         if (options.Tables.Count == 0 && options.Features.Contains(SchemaFeature.Views)

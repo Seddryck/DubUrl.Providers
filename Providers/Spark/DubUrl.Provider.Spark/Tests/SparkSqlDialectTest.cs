@@ -197,6 +197,22 @@ public sealed class SparkSqlDialectTest
     }
 
     [Test]
+    public void DatabricksDefaultDiagnosticsIdentifyPrecisionTypeAndLength()
+    {
+        static DubUrl.Schema.Schema Model(Column column) => new([new Table("defaults", [column])]);
+        var renderer = new SchemaScriptRenderer(Databricks());
+        Assert.That(() => renderer.Plan(Model(new Column("stamp", DbType.DateTime2,
+                defaultExpression: ColumnDefaultExpression.CurrentTimestamp(3)))),
+            Throws.Exception.With.Message.Contains("precision 6"));
+        Assert.That(() => renderer.Plan(Model(new Column("stamp", DbType.DateTime,
+                defaultExpression: ColumnDefaultExpression.CurrentUtcTimestamp()))),
+            Throws.Exception.With.Message.Contains("Use TIMESTAMP_NTZ"));
+        Assert.That(() => renderer.Plan(Model(new VarLengthColumn("principal", DbType.String, 319,
+                defaultExpression: ColumnDefaultExpression.CurrentUser))),
+            Throws.Exception.With.Message.Contains("length of at least 320"));
+    }
+
+    [Test]
     public void DatabricksIdentityRequiresBigintAndPreservesGenerationOptions()
     {
         static DubUrl.Schema.Schema Model(DbType type) => new([new Table("t",

@@ -160,6 +160,50 @@ public sealed class DatabricksOdbcTests : OdbcContract
         });
     }
 
+    [Test, Category("ODBC")]
+    public void QualifyCatalogDefaultAfterChangingTheInsertSessionCatalog()
+    {
+        var url = CreateLiveConnectionUrl();
+        SparkSchemaQa.WithScratch(url, (connection, catalog, schema) =>
+        {
+            var dialect = url.Dialect;
+            var quote = dialect.SchemaSqlRenderer;
+            var target = quote.RenderObjectName(dialect, catalog, null, schema, "catalog_probe");
+            var otherCatalog = DubUrl.Providers.QA.Contracts.Schema.QaSql.Rows(connection, "SHOW CATALOGS")
+                .Select(row => row[0]).OfType<string>().FirstOrDefault(name => name != catalog && name is "samples" or "system");
+            if (otherCatalog is null)
+                Assert.Ignore("The catalog-default probe requires a second catalog visible to the QA principal.");
+
+            SparkSchemaQa.Execute(connection, $"""
+                CREATE TABLE {target} (id INT, catalog_value STRING DEFAULT current_catalog())
+                USING DELTA TBLPROPERTIES ('delta.feature.allowColumnDefaults' = 'supported')
+                """);
+            SparkSchemaQa.Execute(connection, $"USE CATALOG {quote.RenderIdentifier(dialect, otherCatalog!)}");
+            Assert.That(SparkSchemaQa.Scalar(connection, "SELECT current_catalog()"), Is.EqualTo(otherCatalog));
+            SparkSchemaQa.Execute(connection, $"INSERT INTO {target} (id) VALUES (1)");
+            var storedCatalog = SparkSchemaQa.Scalar(connection, $"SELECT catalog_value FROM {target}");
+            TestContext.WriteLine($"Stored current_catalog() as '{storedCatalog}' after changing the session to '{otherCatalog}'.");
+            Assert.That(storedCatalog, Is.EqualTo(catalog).Or.EqualTo(otherCatalog));
+        });
+    }
+
+    [Test, Category("ODBC")]
+    public void DeltaRejectsNamedSequences()
+    {
+        var url = CreateLiveConnectionUrl();
+        SparkSchemaQa.WithScratch(url, (connection, catalog, schema) =>
+        {
+            var dialect = url.Dialect;
+            var sequence = new DatabaseObjectName("id_sequence", schema, catalog: catalog);
+            var quoted = dialect.SchemaSqlRenderer.RenderObjectName(dialect, catalog, null, schema, sequence.Name);
+            var error = Assert.Catch<DbException>(() => SparkSchemaQa.Execute(connection, $"CREATE SEQUENCE {quoted} START WITH 1"))!;
+            Assert.That(error.Message, Does.Contain("PARSE_SYNTAX_ERROR").Or.Contain("UNSUPPORTED"));
+            var model = new DubUrl.Schema.Schema([new Table("sequence_default",
+                [new Column("id", DbType.Int64, defaultExpression: ColumnDefaultExpression.NextSequenceValue(sequence))])]);
+            Assert.That(() => new SchemaScriptRenderer(dialect).Plan(model),
+                Throws.Exception.With.Message.Contains("external named-sequence defaults"));
+        });
+    }
 
     [Test, Category("ODBC")]
     public void DeltaIdentitySupportsExplicitValuesAndResetsOnReplacement()
@@ -219,7 +263,15 @@ public sealed class DatabricksOdbcTests : OdbcContract
             var quote = dialect.SchemaSqlRenderer;
             var target = quote.RenderObjectName(dialect, catalog, null, schema, table.Name);
             SparkSchemaQa.Execute(connection, $"USE SCHEMA {quote.RenderIdentifier(dialect, schema)}");
+            SparkSchemaQa.Execute(connection, "SET TIME ZONE '+05:00'");
+            TimeOnly ReadClock(string sql) => TimeOnly.Parse((string)SparkSchemaQa.Scalar(connection, sql)!,
+                System.Globalization.CultureInfo.InvariantCulture);
+            var before = ReadClock("SELECT CAST(current_time() AS STRING)");
             SparkSchemaQa.Execute(connection, $"INSERT INTO {target} (id) VALUES (1)");
+            var after = ReadClock("SELECT CAST(current_time() AS STRING)");
+            var inserted = ReadClock($"SELECT CAST(clock AS STRING) FROM {target} WHERE id = 1");
+            Assert.That(inserted == after || inserted.IsBetween(before, after), Is.True,
+                $"Stored TIME {inserted:HH:mm:ss.ffffff} is outside the insert interval {before:HH:mm:ss.ffffff} to {after:HH:mm:ss.ffffff}.");
             Assert.That(SparkSchemaQa.Scalar(connection, $"SELECT COUNT(*) FROM {target} WHERE " +
                 "effective_user = current_user() AND session_identity = session_user() AND clock IS NOT NULL"), Is.EqualTo(1));
             foreach (var expression in new[] { ColumnDefaultExpression.CurrentSchema, ColumnDefaultExpression.CurrentDatabase })
