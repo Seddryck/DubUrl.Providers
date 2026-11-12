@@ -250,7 +250,7 @@ public sealed class DatabricksOdbcTests : OdbcContract
             var table = new Table("comment_table",
                 [new Column("absent", DbType.Int32), new Column("empty", DbType.Int32, description: "")], description: "");
             var sql = url.ScriptSchema(new DubUrl.Schema.Schema([table]));
-            Assert.That(sql, Does.Contain("`empty` INT COMMENT ''").And.Contain("USING DELTA COMMENT ''"));
+            Assert.That(sql, Does.Contain("USING DELTA;").And.Not.Contain(" COMMENT "));
             SparkSchemaQa.Execute(connection, sql);
 
             var info = $"{quote.RenderIdentifier(dialect, catalog)}.information_schema";
@@ -258,12 +258,9 @@ public sealed class DatabricksOdbcTests : OdbcContract
             var tableComment = SparkSchemaQa.Scalar(connection, $"SELECT comment FROM {info}.tables {scope}");
             var emptyComment = SparkSchemaQa.Scalar(connection, $"SELECT comment FROM {info}.columns {scope} AND column_name = 'empty'");
             var absentComment = SparkSchemaQa.Scalar(connection, $"SELECT comment FROM {info}.columns {scope} AND column_name = 'absent'");
-            TestContext.WriteLine($"Catalog comments for table, empty column, and absent column were {Describe(tableComment)}, {Describe(emptyComment)}, and {Describe(absentComment)}.");
-            Assert.That(tableComment, Is.EqualTo(DBNull.Value).Or.EqualTo(""));
-            Assert.That(emptyComment, Is.EqualTo(DBNull.Value).Or.EqualTo(""));
+            Assert.That(tableComment, Is.EqualTo(DBNull.Value));
+            Assert.That(emptyComment, Is.EqualTo(DBNull.Value));
             Assert.That(absentComment, Is.EqualTo(DBNull.Value));
-
-            static string Describe(object? comment) => comment is DBNull ? "NULL" : $"\"{comment}\"";
         });
     }
 

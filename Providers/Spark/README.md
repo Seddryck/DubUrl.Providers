@@ -44,7 +44,7 @@ Use the shortcut path in the URL. The mapper rejects a raw HTTP endpoint path an
 
 ## Databricks Delta schema generation
 
-`ScriptSchema` exports the statements in deployment order, including Delta table properties and separate `ALTER TABLE` statements for enforced checks. Deploy a schema model or fluent builder to execute those commands on one connection.
+`ScriptSchema` exports the statements in deployment order, including Delta table properties and separate `ALTER TABLE` statements for enforced checks. Deploy a schema model or fluent builder to execute those commands on one connection. The shared schema model treats empty and whitespace-only descriptions as absent.
 
 `WithTimeType()` enables `TIME` columns and `current_time()` defaults on compatible compute. Databricks treats `current_user()` and `session_user()` as aliases. Supply insert-session schema and catalog values in the insert itself. Databricks `current_database()` is an alias for `current_schema()`. Generate UUID values in the insert because Delta rejects the nondeterministic default. [TIME type](https://docs.databricks.com/aws/en/sql/language-manual/data-types/time-type) · [Session user](https://docs.databricks.com/aws/en/sql/language-manual/functions/session_user) · [Current database](https://docs.databricks.com/aws/en/sql/language-manual/functions/current_database)
 
