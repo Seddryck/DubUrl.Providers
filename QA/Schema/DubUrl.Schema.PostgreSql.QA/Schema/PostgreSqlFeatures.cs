@@ -62,8 +62,8 @@ public sealed partial class PostgreSqlSchemaTests
             ["DiscoveryPartial"] = FeatureExpectation.Supported,
             ["DiscoveryStrict"] = FeatureExpectation.Supported,
             ["DiscoveryRoundTrip"] = FeatureExpectation.Supported,
-            ["NativeVarcharKey"] = new(ExpectedOutcome.RendererRejects,"The provider does not register these explicit native type names.","native type"),
-            ["NativeCharKey"] = new(ExpectedOutcome.RendererRejects,"The provider does not register these explicit native type names.","native type"),
+            ["NativeVarcharKey"] = FeatureExpectation.Supported,
+            ["NativeCharKey"] = FeatureExpectation.Supported,
             ["ExpressionIndexDiagnostic"] = FeatureExpectation.Supported,
             ["FilteredIndexDiagnostic"] = FeatureExpectation.Supported,
             ["AggregateViewDiagnostic"] = FeatureExpectation.Supported,
@@ -75,6 +75,7 @@ public sealed partial class PostgreSqlSchemaTests
         };
     protected override void ExecuteScript(DbConnection connection,string script) => QaSql.Execute(connection,script);
     protected override string DatabaseErrorCode(DbException exception) => ((PostgresException)exception).SqlState;
+    protected override bool VerifyNativeCharacterKeySemantics => true;
     protected override string CurrentSchema(DbConnection connection) => "public";
     protected override DatabaseObjectName QualifiedName(DbConnection connection,string name) => new(name,schema:CurrentSchema(connection));
     protected override ISchemaMetadataReader? CreateMetadataReader() => new PostgreSqlMetadataReader();
