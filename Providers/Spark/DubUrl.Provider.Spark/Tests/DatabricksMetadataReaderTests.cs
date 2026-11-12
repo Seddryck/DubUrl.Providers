@@ -23,7 +23,8 @@ public sealed class DatabricksMetadataReaderTests
                 "catalog_name schema_name table_name column_name ordinal kind key_name target_catalog target_schema target_table target_column",
                 ["c", "s", "child", "id", 1, "FOREIGN KEY", "fk", "c", "other", "parent", "id"]),
             "SHOW TBLPROPERTIES `c`.`s`.`child`" => throw new CatalogAccessException(),
-            "SHOW TBLPROPERTIES `c`.`other`.`parent`" => Rows("key value", ["delta.constraints.id_check", "coalesce((id >= 0), true)"]),
+            "SHOW TBLPROPERTIES `c`.`other`.`parent`" => Rows("key value",
+                ["delta.constraints.id_check", "coalesce((id >= 0), true)"], ["delta.constraints.raw_check", "id >= 0"]),
             _ => throw new AssertionException($"Unexpected catalog query {sql}"),
         }, sql => sql switch
         {
@@ -48,8 +49,11 @@ public sealed class DatabricksMetadataReaderTests
         foreach (var feature in new[] { SchemaFeature.Checks, SchemaFeature.Defaults })
         {
             Assert.That(metadata.Coverage[feature], Is.EqualTo(MetadataCoverage.Inaccessible));
-            Assert.That(metadata.Diagnostics.Single(diagnostic => diagnostic.Feature == feature).Object, Is.EqualTo(child));
+            Assert.That(metadata.Diagnostics.Single(diagnostic => diagnostic.Feature == feature
+                && diagnostic.Coverage == MetadataCoverage.Inaccessible).Object, Is.EqualTo(child));
         }
+        Assert.That(metadata.Diagnostics.Any(diagnostic => diagnostic.Feature == SchemaFeature.Checks
+            && diagnostic.Coverage == MetadataCoverage.Unrepresentable && diagnostic.Object == parent), Is.True);
     }
 
     [Test]

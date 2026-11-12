@@ -74,7 +74,12 @@ internal static class SparkSchemaQa
             Execute(connection, url.ScriptSchema(new DubUrl.Schema.Schema([table])));
 
             var target = url.Dialect.SchemaSqlRenderer.RenderObjectName(url.Dialect, catalog, null, schema, table.Name);
+            var before = Convert.ToInt64(Scalar(connection, "SELECT unix_micros(current_timestamp())"));
             Execute(connection, $"INSERT INTO {target} (id) VALUES (1)");
+            var after = Convert.ToInt64(Scalar(connection, "SELECT unix_micros(current_timestamp())"));
+            var storedUtc = Convert.ToInt64(Scalar(connection, $"SELECT timestampdiff(MICROSECOND, " +
+                $"TIMESTAMP_NTZ '1970-01-01 00:00:00', utc_stamp) FROM {target} WHERE id = 1"));
+            Assert.That(storedUtc, Is.InRange(before, after));
             Execute(connection, $"INSERT INTO {target} (id, text, nil, amount) VALUES (2, NULL, 5, 2.00)");
             Assert.That(Scalar(connection, $"SELECT COUNT(*) FROM {target} WHERE id = 1 AND text = 'Café\\'s value' " +
                 "AND nil IS NULL AND amount = 1.25 AND CAST(local_stamp AS DATE) = local_date " +

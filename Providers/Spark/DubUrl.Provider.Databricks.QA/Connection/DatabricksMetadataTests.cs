@@ -41,6 +41,7 @@ public sealed class DatabricksMetadataTests
                     ) USING DELTA TBLPROPERTIES ('delta.feature.allowColumnDefaults' = 'supported')
                     """);
                 SparkSchemaQa.Execute(connection, $"ALTER TABLE {child} ADD CONSTRAINT ordered_check CHECK (coalesce((ref_b >= 0), true))");
+                SparkSchemaQa.Execute(connection, $"ALTER TABLE {child} ADD CONSTRAINT rejects_unknown CHECK (ref_a >= 0)");
                 SparkSchemaQa.Execute(connection, $"CREATE TABLE {Name("unselected", schema)} (id BIGINT GENERATED ALWAYS AS IDENTITY) USING DELTA");
 
                 var childIdentity = new MetadataName("child", schema, Catalog: catalog);
@@ -74,7 +75,7 @@ public sealed class DatabricksMetadataTests
                 Assert.That(generated.Expression?.Arguments?.Single(), Is.EqualTo(new MetadataExpression("column", "note")));
                 Assert.That(mapped.Checks.Single().Name, Is.EqualTo("ordered_check"));
                 Assert.That(metadata.Diagnostics.Select(diagnostic => diagnostic.Feature),
-                    Is.EquivalentTo(new[] { SchemaFeature.PrimaryKeys, SchemaFeature.ForeignKeys }));
+                    Is.EquivalentTo(new[] { SchemaFeature.PrimaryKeys, SchemaFeature.ForeignKeys, SchemaFeature.Checks }));
 
                 var inspector = new SchemaInspector();
                 Assert.That(inspector.Map(metadata, options).IsSuccess, Is.False);

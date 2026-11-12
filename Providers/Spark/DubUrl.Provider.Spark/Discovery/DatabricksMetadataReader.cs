@@ -160,18 +160,23 @@ public sealed class DatabricksMetadataReader : SparkCatalogMetadataReader
     private static void IncludeReferences(HashSet<MetadataName> selected, List<CatalogRow> tables, List<CatalogRow> keys)
     {
         var available = tables.Select(Identity).ToHashSet();
-        var references = keys.Where(row => row.Text("kind") == "FOREIGN KEY").ToLookup(Identity);
+        var references = keys.Where(row => row.Text("kind") == "FOREIGN KEY")
+            .GroupBy(row => (Source: Identity(row), Key: row.Text("key_name")))
+            .Where(group => group.All(HasVisibleTarget))
+            .ToLookup(group => group.Key.Source, group => group.First());
         var queue = new Queue<MetadataName>(selected);
         while (queue.TryDequeue(out var source))
         {
             foreach (var row in references[source])
             {
-                if (row.Text("target_table") is not { } name) continue;
-                var target = new MetadataName(name, row.Text("target_schema"), Catalog: row.Text("target_catalog"));
+                var target = new MetadataName(row.Text("target_table")!, row.Text("target_schema"), Catalog: row.Text("target_catalog"));
                 if (available.Contains(target) && selected.Add(target)) queue.Enqueue(target);
             }
         }
     }
+
+    private static bool HasVisibleTarget(CatalogRow row)
+        => row.Text("target_table") is not null && row.Text("target_column") is not null;
 
     private static bool MatchesScope(MetadataName name, DiscoveryOptions options)
         => options.Databases.Count == 0
@@ -209,8 +214,7 @@ public sealed class DatabricksMetadataReader : SparkCatalogMetadataReader
         List<CatalogRow> indexRows, List<CatalogRow> checkRows, DiscoveryOptions options, Action<SchemaFeature, string> diagnose)
     {
         var name = Identity(row);
-        var invisible = keyRows.Where(key => Identity(key) == name && key.Text("kind") == "FOREIGN KEY"
-            && (key.Text("target_table") is null || key.Text("target_column") is null))
+        var invisible = keyRows.Where(key => Identity(key) == name && key.Text("kind") == "FOREIGN KEY" && !HasVisibleTarget(key))
             .Select(key => key.Text("key_name")).ToHashSet(StringComparer.Ordinal);
         if (invisible.Count > 0 && options.Features.Contains(SchemaFeature.ForeignKeys))
         {
@@ -220,17 +224,7 @@ public sealed class DatabricksMetadataReader : SparkCatalogMetadataReader
             keyRows = keyRows.Where(key => Identity(key) != name || !invisible.Contains(key.Text("key_name"))).ToList();
         }
 
-        // Only a check emitted by DubUrl has this null-preserving wrapper. The shared metadata model
-        // can represent its comparison; other predicates are diagnosed by the base reader.
-        checkRows = checkRows.Select(check =>
-        {
-            var sql = check.Text("expression")?.Trim();
-            const string prefix = "coalesce((";
-            const string suffix = "), true)";
-            return sql is not null && sql.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)
-                && sql.EndsWith(suffix, StringComparison.OrdinalIgnoreCase)
-                ? check.With(("expression", sql[prefix.Length..^suffix.Length])) : check;
-        }).ToList();
+        if (checkRows.Count > 0) checkRows = PortableChecks(name, columnRows, checkRows, diagnose);
 
         var table = base.MapTable(row, columnRows, keyRows, indexRows, checkRows, options, diagnose);
         if (table.PrimaryKey is not null) DiagnoseKey(SchemaFeature.PrimaryKeys);
@@ -240,6 +234,36 @@ public sealed class DatabricksMetadataReader : SparkCatalogMetadataReader
 
         void DiagnoseKey(SchemaFeature feature) =>
             diagnose(feature, "Databricks keys are informational. Schema document v1 cannot preserve their lack of enforcement.");
+    }
+
+    private static List<CatalogRow> PortableChecks(MetadataName table, List<CatalogRow> columnRows, List<CatalogRow> checkRows,
+        Action<SchemaFeature, string> diagnose)
+    {
+        var checks = new List<CatalogRow>();
+        var requiredColumns = columnRows.Where(row => Identity(row) == table && row.Bool("nullable") == false)
+            .Select(row => row.Text("column_name")).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        foreach (var check in checkRows.Where(row => Identity(row) == table))
+        {
+            var sql = check.Text("expression")?.Trim() ?? "";
+            const string prefix = "coalesce((";
+            const string suffix = "), true)";
+            if (sql.StartsWith(prefix, StringComparison.OrdinalIgnoreCase) && sql.EndsWith(suffix, StringComparison.OrdinalIgnoreCase))
+                checks.Add(check.With(("expression", sql[prefix.Length..^suffix.Length])));
+            else if (DiscoveryExpressions.TryCheck(sql, check.Text("check_name"), out var comparison)
+                && (!IsNonNull(comparison!.Left) || !IsNonNull(comparison.Right)))
+            {
+                diagnose(SchemaFeature.Checks, "A Delta comparison check can reject NULL, which the portable comparison does not preserve.");
+            }
+            else checks.Add(check);
+        }
+        return checks;
+
+        bool IsNonNull(MetadataExpression expression) => expression.Kind switch
+        {
+            "column" => requiredColumns.Contains(expression.Name),
+            "value" => expression.Value is not null and not DBNull,
+            _ => false,
+        };
     }
 
     private sealed record TableScope(List<CatalogRow> Tables, HashSet<MetadataName> Names, List<CatalogRow>? Keys);
