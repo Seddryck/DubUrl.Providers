@@ -30,3 +30,74 @@ jobs:
 
   schema-qa:
     uses: ./.github/workflows/schema-qa.yml
+
+  schema-coverage:
+    if: ${{ !cancelled() }}
+    needs: schema-qa
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+      - run: python -m pip install defusedxml==0.7.1
+      - name: Test schema QA preprocessing
+        run: python -m unittest discover -s QA/Schema
+      - uses: actions/download-artifact@v7
+        with:
+          pattern: schema-qa-*
+          path: artifacts/schema-reports
+      - name: Generate schema coverage JSON
+        run: |
+          python QA/Schema/build_coverage.py \
+            --artifacts artifacts/schema-reports \
+            --output artifacts/schema-coverage/schema-coverage.v1.json \
+            --commit "$GITHUB_SHA" \
+            --run-url "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/attempts/$GITHUB_RUN_ATTEMPT"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: schema-coverage
+          path: artifacts/schema-coverage/schema-coverage.v1.json
+          if-no-files-found: error
+          overwrite: true
+
+  publish-schema-coverage:
+    if: >-
+      !cancelled() && needs.schema-coverage.result == 'success' &&
+      github.repository == 'Seddryck/DubUrl.Providers' && github.ref == 'refs/heads/main'
+    needs: schema-coverage
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    concurrency:
+      group: publish-schema-coverage
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v7
+        with:
+          name: schema-coverage
+          path: artifacts/schema-coverage
+      - name: Publish the coverage snapshot
+        shell: bash
+        run: |
+          main=$(git ls-remote origin refs/heads/main | cut -f1)
+          if [[ "$main" != "$GITHUB_SHA" ]]; then
+            echo 'A newer main revision has superseded this run.'
+            exit 0
+          fi
+          ref=refs/heads/schema-coverage
+          previous=$(git ls-remote origin "$ref")
+          parents=()
+          if [[ -n "$previous" ]]; then
+            git fetch --depth=1 origin "$ref"
+            parents=(-p FETCH_HEAD)
+          fi
+          blob=$(git hash-object -w artifacts/schema-coverage/schema-coverage.v1.json)
+          tree=$(printf '100644 blob %s\tschema-coverage.v1.json\n' "$blob" | git mktree)
+          commit=$(git -c user.name='github-actions[bot]' \
+            -c user.email='41898282+github-actions[bot]@users.noreply.github.com' \
+            commit-tree "$tree" "${parents[@]}" -m "Publish schema coverage for $GITHUB_SHA")
+          git push origin "$commit:$ref"

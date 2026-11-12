@@ -12,6 +12,6 @@ Spark 3.5.8 was qualified with the Debian x64 package `simbaspark_2.11.0.1009-2_
 bash Providers/Spark/DubUrl.Provider.Spark.QA/infrastructure/run-qa.sh
 ```
 
-For GitHub Actions, register an approved Linux x64 runner with label `duburl-spark-qa` and add `SPARK_ODBC_DRIVER_VERSION` as a repository Actions variable. Dispatch **Spark and Databricks live ODBC QA** with fixture `spark`. Before the workflow exists on `main`, pushing a reviewed commit to `qa/odbc-connectivity` runs Spark QA when the version variable is configured.
+For GitHub Actions, register a Linux x64 runner with label `duburl-spark-qa` and add `SPARK_ODBC_DRIVER_VERSION` as a repository Actions variable. The shared schema QA matrix on `main` then runs Spark and includes its results in the published coverage report. You can also dispatch **Spark, Databricks, and Hive live ODBC QA** with fixture `spark`.
 
 The shared schema contract creates a disposable Spark namespace and sends the command plan through Simba ODBC in native SQL mode. The driver’s translation mode cannot resolve all catalog-qualified writes. The test report includes a reason for each expected renderer rejection or skipped case.

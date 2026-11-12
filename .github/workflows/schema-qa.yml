@@ -72,3 +72,15 @@ jobs:
         with:
           name: schema-qa-${{ matrix.database }}${{ matrix.variant }}
           path: artifacts/results/${{ matrix.database }}
+          overwrite: true
+
+  odbc-schema-qa:
+    if: github.repository == 'Seddryck/DubUrl.Providers' && github.ref == 'refs/heads/main'
+    strategy:
+      fail-fast: false
+      matrix:
+        fixture: [spark, databricks, hive]
+    uses: ./.github/workflows/qa-spark-databricks-odbc.yml
+    with:
+      fixture: ${{ matrix.fixture }}
+      schema-matrix: true
