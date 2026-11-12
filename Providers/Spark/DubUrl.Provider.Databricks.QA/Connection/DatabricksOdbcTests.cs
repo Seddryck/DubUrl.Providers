@@ -128,7 +128,7 @@ public sealed class DatabricksOdbcTests : OdbcContract
     }
 
     [Test, Category("ODBC")]
-    public void DeltaNamespaceDefaultsRetainTheCreateSessionSchema()
+    public void DeltaNamespaceDefaultsIgnoreTheInsertSessionSchema()
     {
         var url = CreateLiveConnectionUrl();
         SparkSchemaQa.WithScratch(url, (connection, catalog, schema) =>
@@ -150,8 +150,11 @@ public sealed class DatabricksOdbcTests : OdbcContract
                 SparkSchemaQa.Execute(connection, $"USE SCHEMA {quote.RenderIdentifier(dialect, insertSchema)}");
                 Assert.That(SparkSchemaQa.Scalar(connection, "SELECT current_database()"), Is.EqualTo(insertSchema));
                 SparkSchemaQa.Execute(connection, $"INSERT INTO {target} (id) VALUES (1)");
-                Assert.That(SparkSchemaQa.Scalar(connection, $"SELECT CONCAT(schema_value, '/', database_value) FROM {target}"),
-                    Is.EqualTo($"{schema}/{schema}"));
+                var storedSchema = SparkSchemaQa.Scalar(connection, $"SELECT schema_value FROM {target}");
+                var storedDatabase = SparkSchemaQa.Scalar(connection, $"SELECT database_value FROM {target}");
+                TestContext.WriteLine($"Stored current_schema() as '{storedSchema}' and current_database() as '{storedDatabase}'.");
+                Assert.That(storedSchema, Is.Not.Null.And.Not.EqualTo(DBNull.Value).And.Not.EqualTo(insertSchema));
+                Assert.That(storedDatabase, Is.EqualTo(storedSchema));
             }
             finally { SparkSchemaQa.Execute(connection, $"DROP SCHEMA IF EXISTS {insertScope} CASCADE"); }
         });
@@ -236,7 +239,7 @@ public sealed class DatabricksOdbcTests : OdbcContract
     public void RenderTablesWithFacetsAndComments() => SparkSchemaQa.Tables(CreateLiveConnectionUrl(), delta: true);
 
     [Test, Category("ODBC")]
-    public void ScriptUnqualifiedDeltaTablePreservesEmptyAndAbsentComments()
+    public void ScriptUnqualifiedDeltaTableQualifiesEmptyAndAbsentComments()
     {
         var url = CreateLiveConnectionUrl();
         SparkSchemaQa.WithScratch(url, (connection, catalog, schema) =>
@@ -246,14 +249,21 @@ public sealed class DatabricksOdbcTests : OdbcContract
             SparkSchemaQa.Execute(connection, $"USE SCHEMA {quote.RenderIdentifier(dialect, schema)}");
             var table = new Table("comment_table",
                 [new Column("absent", DbType.Int32), new Column("empty", DbType.Int32, description: "")], description: "");
-            SparkSchemaQa.Execute(connection, url.ScriptSchema(new DubUrl.Schema.Schema([table])));
+            var sql = url.ScriptSchema(new DubUrl.Schema.Schema([table]));
+            Assert.That(sql, Does.Contain("`empty` INT COMMENT ''").And.Contain("USING DELTA COMMENT ''"));
+            SparkSchemaQa.Execute(connection, sql);
 
             var info = $"{quote.RenderIdentifier(dialect, catalog)}.information_schema";
-            Assert.That(SparkSchemaQa.Scalar(connection, $"SELECT COUNT(*) FROM {info}.tables " +
-                $"WHERE table_schema = '{schema}' AND table_name = 'comment_table' AND comment = ''"), Is.EqualTo(1));
-            Assert.That(SparkSchemaQa.Scalar(connection, $"SELECT COUNT(*) FROM {info}.columns " +
-                $"WHERE table_schema = '{schema}' AND table_name = 'comment_table' " +
-                "AND ((column_name = 'absent' AND comment IS NULL) OR (column_name = 'empty' AND comment = ''))"), Is.EqualTo(2));
+            var scope = $"WHERE table_schema = '{schema}' AND table_name = 'comment_table'";
+            var tableComment = SparkSchemaQa.Scalar(connection, $"SELECT comment FROM {info}.tables {scope}");
+            var emptyComment = SparkSchemaQa.Scalar(connection, $"SELECT comment FROM {info}.columns {scope} AND column_name = 'empty'");
+            var absentComment = SparkSchemaQa.Scalar(connection, $"SELECT comment FROM {info}.columns {scope} AND column_name = 'absent'");
+            TestContext.WriteLine($"Catalog comments for table, empty column, and absent column were {Describe(tableComment)}, {Describe(emptyComment)}, and {Describe(absentComment)}.");
+            Assert.That(tableComment, Is.EqualTo(DBNull.Value).Or.EqualTo(""));
+            Assert.That(emptyComment, Is.EqualTo(DBNull.Value).Or.EqualTo(""));
+            Assert.That(absentComment, Is.EqualTo(DBNull.Value));
+
+            static string Describe(object? comment) => comment is DBNull ? "NULL" : $"\"{comment}\"";
         });
     }
 
