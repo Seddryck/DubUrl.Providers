@@ -59,6 +59,19 @@ jobs:
           odbcinst -i -d -f "$RUNNER_TEMP/databricks-odbc.ini"
           odbcinst -q -d -n 'Databricks ODBC Driver' >/dev/null
           dpkg-query -W databricksodbc | tee .test-results/databricks/driver.txt
+      - name: Build the Schema candidate
+        shell: bash
+        run: |
+          version=0.0.0-schema-qa.pr50
+          schema_dir="$GITHUB_WORKSPACE/artifacts/schema-source"
+          feed="$GITHUB_WORKSPACE/artifacts/schema-feed"
+          git init "$schema_dir"
+          git -C "$schema_dir" fetch --depth 1 https://github.com/Seddryck/DubUrl.Schema.git 93e16bd7e2dd59c6d905cbdd9269dd37d9aa17bb
+          git -C "$schema_dir" checkout --detach FETCH_HEAD
+          for project in DubUrl.Schema DubUrl.Schema.Documents; do
+            dotnet pack "$schema_dir/$project" -c Release -p:TargetFrameworks=net10.0 -p:Version="$version" -p:PackageIcon= -o "$feed"
+          done
+          echo "SchemaPackageVersion=$version" >> "$GITHUB_ENV"
       - name: Build Databricks QA
         run: dotnet build Providers/Spark/DubUrl.Provider.Databricks.QA -c Release -f net10.0
       - name: Run Databricks Free Edition shared contracts and live DDL tests
