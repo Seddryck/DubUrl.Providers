@@ -41,3 +41,11 @@ odbc+databricks://<host>[:<port>]/cluster/<workspace-id>/<cluster-id>[/<catalog>
 The warehouse form generates `HTTPPath=/sql/1.0/warehouses/<warehouse-id>`. The cluster form generates `HTTPPath=/sql/protocolv1/o/<workspace-id>/<cluster-id>`. Find the hostname and IDs in the compute resource's connection details. The optional trailing segments map to the driver's `Catalog` and `Schema` settings. Include a catalog when specifying a schema.
 
 Use the shortcut path in the URL. The mapper rejects a raw HTTP endpoint path and the `HTTPPath`, `Catalog`, and `Schema` query options. Other driver options can still be passed in the query string. [Databricks ODBC connection details](https://docs.databricks.com/aws/en/integrations/odbc/compute)
+
+## Databricks Delta schema generation
+
+`ScriptSchema` exports the statements in deployment order, including Delta table properties and separate `ALTER TABLE` statements for enforced checks. Deploy a schema model or fluent builder to execute those commands on one connection.
+
+`WithTimeType()` enables `TIME` columns and `current_time()` defaults on compatible compute. Databricks treats `current_user()` and `session_user()` as aliases. Supply insert-session schema and catalog values in the insert itself. Databricks `current_database()` is an alias for `current_schema()`. Generate UUID values in the insert because Delta rejects the nondeterministic default. [TIME type](https://docs.databricks.com/aws/en/sql/language-manual/data-types/time-type) · [Session user](https://docs.databricks.com/aws/en/sql/language-manual/functions/session_user) · [Current database](https://docs.databricks.com/aws/en/sql/language-manual/functions/current_database)
+
+Use `WithInformationalKeys()` to accept Unity Catalog's informational primary and foreign keys. Use `WithInformationalKeys(supportsUnique: true)` on compute that supports informational `UNIQUE` and foreign keys that reference it. Deployment checks the visible keys of existing parent tables before applying replacement commands. [Databricks key constraints](https://docs.databricks.com/aws/en/sql/language-manual/sql-ref-syntax-ddl-create-table-constraint) · [Unity Catalog metadata visibility](https://docs.databricks.com/aws/en/sql/language-manual/sql-ref-information-schema)

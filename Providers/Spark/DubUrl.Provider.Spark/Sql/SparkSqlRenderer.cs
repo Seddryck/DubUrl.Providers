@@ -4,7 +4,8 @@ using DubUrl.Querying.Dialects.Renderers;
 namespace DubUrl.Provider.Spark.Sql;
 
 internal sealed class SparkSqlRenderer() : AnsiRenderer(
-    new ValueFormatter().With<string>(new SparkStringFormatter()).With<char>(new SparkStringFormatter()).With(new SparkBinaryFormatter()),
+    new ValueFormatter().With<string>(new SparkStringFormatter()).With<char>(new SparkStringFormatter())
+        .With(new SparkBinaryFormatter()).With(new PrefixFormatter<DateTimeOffset>("TIMESTAMP_LTZ", new TimestampTimeZoneFormatter())),
     new NullFormatter(), new SparkIdentifierFormatter());
 
 internal sealed class SparkStringFormatter : IValueFormatter<string>, IValueFormatter<char>

@@ -62,6 +62,9 @@ internal static class SparkSchemaQa
                 new Column("text", DbType.String, "Café's value"),
                 new Column("nil", DbType.Int32, DBNull.Value),
                 new NumericColumn("amount", DbType.Decimal, 10, 2, 1.25m),
+                new Column("literal_date", DbType.Date, new DateOnly(2024, 3, 10)),
+                new Column("literal_local", DbType.DateTime2, new DateTime(2024, 3, 10, 2, 30, 0).AddTicks(1_234_560)),
+                new Column("literal_instant", DbType.DateTimeOffset, new DateTimeOffset(2024, 3, 10, 2, 30, 0, TimeSpan.FromHours(-8)).AddTicks(1_234_560)),
                 new Column("local_stamp", DbType.DateTime2, defaultExpression: ColumnDefaultExpression.CurrentTimestamp(6)),
                 new Column("utc_stamp", DbType.DateTime2, defaultExpression: ColumnDefaultExpression.CurrentUtcTimestamp(6)),
                 new Column("local_date", DbType.Date, defaultExpression: ColumnDefaultExpression.CurrentDate),
@@ -75,6 +78,8 @@ internal static class SparkSchemaQa
             Execute(connection, $"INSERT INTO {target} (id, text, nil, amount) VALUES (2, NULL, 5, 2.00)");
             Assert.That(Scalar(connection, $"SELECT COUNT(*) FROM {target} WHERE id = 1 AND text = 'Café\\'s value' " +
                 "AND nil IS NULL AND amount = 1.25 AND CAST(local_stamp AS DATE) = local_date " +
+                "AND literal_date = DATE '2024-03-10' AND literal_local = TIMESTAMP_NTZ '2024-03-10 02:30:00.123456' " +
+                "AND literal_instant = TIMESTAMP_LTZ '2024-03-10 10:30:00.123456Z' " +
                 "AND timestampdiff(SECOND, utc_stamp, local_stamp) BETWEEN 17999 AND 18001"), Is.EqualTo(1));
             Assert.That(Scalar(connection, $"SELECT COUNT(*) FROM {target} WHERE id = 2 AND text IS NULL " +
                 "AND nil = 5 AND amount = 2.00"), Is.EqualTo(1));

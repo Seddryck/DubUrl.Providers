@@ -56,9 +56,18 @@ internal sealed class SparkSchemaSqlRenderer : StandardSchemaSqlRenderer, ITable
             throw new NotSupportedException("Databricks primary key columns cannot be nullable.");
         if (column.NotNullable || primary)
             specification += " NOT NULL";
+        var clauses = ColumnDefinitionClauses.Nullability | ColumnDefinitionClauses.Comment | ColumnDefinitionClauses.Generation;
+        const string timestampLiteralPrefix = "TIMESTAMP ";
+        if (column.Type == "TIMESTAMP_NTZ"
+            && column.DefaultExpression is { } defaultSql
+            && defaultSql.StartsWith(timestampLiteralPrefix + "'", StringComparison.Ordinal))
+        {
+            specification += " DEFAULT TIMESTAMP_NTZ " + defaultSql[timestampLiteralPrefix.Length..];
+            clauses |= ColumnDefinitionClauses.Default;
+        }
         if (column.Description is not null)
             specification += " COMMENT " + SparkStringFormatter.Quote(column.Description);
-        return new(specification, ColumnDefinitionClauses.Nullability | ColumnDefinitionClauses.Comment | ColumnDefinitionClauses.Generation);
+        return new(specification, clauses);
     }
 
     public override string RenderIdentity(IDialect dialect, string type, long seed, long increment)
