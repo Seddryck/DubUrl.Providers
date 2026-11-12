@@ -69,7 +69,7 @@ jobs:
           git -C "$schema_dir" fetch --depth 1 https://github.com/Seddryck/DubUrl.Schema.git 93e16bd7e2dd59c6d905cbdd9269dd37d9aa17bb
           git -C "$schema_dir" checkout --detach FETCH_HEAD
           for project in DubUrl.Schema DubUrl.Schema.Documents; do
-            dotnet pack "$schema_dir/$project" -c Release -p:TargetFrameworks=net10.0 -p:Version="$version" -p:PackageIcon= -o "$feed"
+            dotnet pack "$schema_dir/$project" -c Release -p:Version="$version" -p:PackageIcon= -o "$feed"
           done
           echo "SchemaPackageVersion=$version" >> "$GITHUB_ENV"
       - name: Build Databricks QA
