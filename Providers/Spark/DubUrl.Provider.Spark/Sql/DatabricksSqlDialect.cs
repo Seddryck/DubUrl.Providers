@@ -50,6 +50,26 @@ public sealed class DatabricksSqlDialect : SparkSqlDialect
         return dialect;
     }
 
+    internal bool SupportsVariant { get; private set; }
+
+    /// <summary>Enables JSON storage in VARIANT on compute that supports Delta VARIANT columns.</summary>
+    public DatabricksSqlDialect WithVariantType()
+    {
+        var dialect = (DatabricksSqlDialect)MemberwiseClone();
+        dialect.SupportsVariant = true;
+        return dialect;
+    }
+
+    internal bool UsesNameBasedColumnMapping { get; private set; }
+
+    /// <summary>Enables Delta name-based column mapping, including support for spaces in field names.</summary>
+    public DatabricksSqlDialect WithNameBasedColumnMapping()
+    {
+        var dialect = (DatabricksSqlDialect)MemberwiseClone();
+        dialect.UsesNameBasedColumnMapping = true;
+        return dialect;
+    }
+
     public override SparkSqlDialect WithCatalogRules(string catalog, SparkCatalogNameRules rules, bool isCurrent = false)
         => throw new NotSupportedException("Databricks SQL uses Unity Catalog naming rules.");
 

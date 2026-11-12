@@ -18,7 +18,12 @@ internal static class SparkSqlSyntax
             var character = sql[i++];
             if (char.IsWhiteSpace(character))
                 continue;
-            if (character is '\'' or '"' or '`')
+            if (character == '/' && i < sql.Length && sql[i] == '*')
+            {
+                var end = sql.IndexOf("*/", i + 1, StringComparison.Ordinal);
+                i = end < 0 ? sql.Length : end + 2;
+            }
+            else if (character is '\'' or '"' or '`')
             {
                 while (i < sql.Length)
                 {

@@ -4,12 +4,29 @@ using System.Globalization;
 using System.Runtime.CompilerServices;
 using DubUrl.Discovery;
 using DubUrl.Provider.Spark.Sql;
+using DubUrl.Schema;
 
 namespace DubUrl.Provider.Spark.Discovery;
 
-public abstract class SparkCatalogMetadataReader : CatalogSchemaMetadataReader, ISchemaMetadataReader
+public abstract class SparkCatalogMetadataReader : CatalogSchemaMetadataReader, IStructuredColumnMetadataReader
 {
     private readonly ConditionalWeakTable<MetadataView, object> hiddenDefinitions = new();
+    private readonly ConditionalWeakTable<MetadataColumn, StructuredColumnMetadata> structuredTypes = new();
+
+    public async Task<StructuredSchemaMetadata> ReadWithStructuredTypesAsync(DbConnection connection,
+        DiscoveryOptions options, CancellationToken cancellationToken)
+    {
+        var metadata = await ReadAsync(connection, options, cancellationToken).ConfigureAwait(false);
+        var types = new Dictionary<StructuredColumnIdentity, StructuredColumnMetadata>();
+        foreach (var table in metadata.Tables)
+        foreach (var column in table.Columns)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (structuredTypes.TryGetValue(column, out var type))
+                types.Add(new(table.Identity, column.Name), type);
+        }
+        return new(metadata, types);
+    }
 
     public new virtual async Task<SchemaMetadata> ReadAsync(DbConnection connection, DiscoveryOptions options, CancellationToken cancellationToken = default)
     {
@@ -25,14 +42,17 @@ public abstract class SparkCatalogMetadataReader : CatalogSchemaMetadataReader, 
                 new("SDS001", SchemaFeature.Views, MetadataCoverage.Inaccessible,
                     "At least one visible view has a definition that the current user cannot read.")] };
         }
-        if (options.AllowPartial && metadata.Tables.Any(table => table.Columns.Any(column => column.Type is null || column.Nullable is null)))
+        if (options.AllowPartial && metadata.Tables.Any(table => table.Columns.Any(IsUnmappedScalar)))
         {
             var coverage = metadata.Coverage.ToDictionary(pair => pair.Key, pair => pair.Value);
             coverage[SchemaFeature.Columns] = MetadataCoverage.Unrepresentable;
             metadata = metadata with { Coverage = coverage, Tables = metadata.Tables
-                .Where(table => table.Columns.All(column => column.Type is not null && column.Nullable is not null)).ToArray() };
+                .Where(table => !table.Columns.Any(IsUnmappedScalar)).ToArray() };
         }
         return metadata;
+
+        bool IsUnmappedScalar(MetadataColumn column) => (column.Type is null || column.Nullable is null)
+            && !structuredTypes.TryGetValue(column, out _);
     }
 
     protected override MetadataView MapView(MetadataName identity, MetadataColumn[] inventory, string? sql)
@@ -47,6 +67,8 @@ public abstract class SparkCatalogMetadataReader : CatalogSchemaMetadataReader, 
     {
         var type = row.Text("type_name")?.Split('(')[0].Trim().ToUpperInvariant();
         var column = base.MapColumn(row);
+        if (row.Bool("structured") == true)
+            return column with { Type = DbType.Object, Length = null, Precision = null, Scale = null };
         return type switch
         {
             "TINYINT" => column with { Type = DbType.SByte },
@@ -61,6 +83,26 @@ public abstract class SparkCatalogMetadataReader : CatalogSchemaMetadataReader, 
     }
 
     protected override MetadataColumn MapCatalogColumn(CatalogRow row, DiscoveryOptions options, Action<SchemaFeature, string> diagnose)
+    {
+        var structured = ReadStructuredType(row);
+        if (row.Text("type_name") is { } sql && sql.Equals("STRING", StringComparison.OrdinalIgnoreCase)
+            && row.Text("comment") is { } comment && comment.StartsWith(SparkStructuredTypes.JsonTextCommentPrefix, StringComparison.Ordinal))
+        {
+            structured = new(new(new JsonType(), StructuredStorage.JsonText), MetadataCoverage.Available);
+            var description = comment[SparkStructuredTypes.JsonTextCommentPrefix.Length..];
+            row = row.With(("comment", description.Length == 0 ? null : description));
+        }
+        if (structured is null)
+            return MapColumnDetails(row, options, diagnose);
+
+        var column = MapColumnDetails(row.With(("structured", true)), options, diagnose);
+        structuredTypes.Add(column, structured);
+        return column;
+    }
+
+    private protected virtual StructuredColumnMetadata? ReadStructuredType(CatalogRow row) => null;
+
+    private MetadataColumn MapColumnDetails(CatalogRow row, DiscoveryOptions options, Action<SchemaFeature, string> diagnose)
     {
         var definition = row.Text("column_definition");
         if (definition is null && row.Bool("definition_required") == true)

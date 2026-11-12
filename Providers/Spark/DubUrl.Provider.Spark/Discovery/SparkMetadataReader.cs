@@ -1,10 +1,13 @@
 using System.Data.Common;
 using DubUrl.Discovery;
+using DubUrl.Schema;
 
 namespace DubUrl.Provider.Spark.Discovery;
 
 public sealed class SparkMetadataReader : SparkCatalogMetadataReader
 {
+    private protected override StructuredColumnMetadata? ReadStructuredType(CatalogRow row) => SparkStructuredCatalogType.ReadSpark(row);
+
     private static readonly IReadOnlySet<SchemaFeature> Unsupported = new HashSet<SchemaFeature>
     {
         SchemaFeature.PrimaryKeys, SchemaFeature.ForeignKeys, SchemaFeature.UniqueConstraints,
@@ -79,22 +82,25 @@ public sealed class SparkMetadataReader : SparkCatalogMetadataReader
                 return;
             }
 
+            var columns = description.TakeWhile(column => !string.IsNullOrWhiteSpace(column.Text("col_name"))
+                && column.Text("col_name")?.StartsWith("# ", StringComparison.Ordinal) != true).ToArray();
+            var parquet = description.LastOrDefault(row => row.Text("col_name") == "Provider")?.Text("data_type")
+                ?.Equals("PARQUET", StringComparison.OrdinalIgnoreCase) == true;
             string? ddl = null;
-            if (isView || NeedsDefinition(options))
+            if (isView || NeedsDefinition(options) || columns.Any(column => SparkStructuredCatalogType.IsStructured(column.Text("data_type"))))
             {
                 try { ddl = await ScalarAsync(connection, $"SHOW CREATE TABLE {target}", cancellationToken).ConfigureAwait(false); }
                 catch (DbException) { }
             }
             var definitions = !isView && !string.IsNullOrWhiteSpace(ddl) ? SparkCatalogDefinition.Columns(ddl) : null;
             var ordinal = 0;
-            foreach (var column in description.TakeWhile(column => !string.IsNullOrWhiteSpace(column.Text("col_name"))
-                    && column.Text("col_name")?.StartsWith("# ", StringComparison.Ordinal) != true))
+            foreach (var column in columns)
             {
                 var name = column.Text("col_name")!;
                 results.Add(relation.With(("column_name", name), ("ordinal", ++ordinal), ("nullable", true),
                     ("type_name", column.Text("data_type")), ("comment", column.Text("comment")),
                     ("column_definition", definitions?.GetValueOrDefault(name)), ("definition_required", !isView && NeedsDefinition(options)),
-                    ("definition", isView ? ddl : null)));
+                    ("definition", isView ? ddl : null), ("parquet", parquet)));
             }
             if (isView && ordinal == 0) results.Add(relation.With(("definition", ddl)));
         }
