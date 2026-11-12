@@ -35,29 +35,6 @@ internal class PgsqlSchemaSqlRenderer : PostgreSqlSchemaSqlRenderer, IUniqueCons
 {
     internal new static PgsqlSchemaSqlRenderer Default { get; } = new();
 
-    public override string RenderColumnType(IDialect dialect, string type, int? length, int precision, int scale, bool nativeType)
-    {
-        if (!nativeType || dialect is not PgsqlDialect)
-            return base.RenderColumnType(dialect, type, length, precision, scale, nativeType);
-
-        var characterType = type.ToUpperInvariant() switch
-        {
-            "CHAR" or "CHARACTER" => "CHAR",
-            "VARCHAR" or "CHARACTER VARYING" => "VARCHAR",
-            _ => null
-        };
-        if (characterType is null)
-            return base.RenderColumnType(dialect, type, length, precision, scale, nativeType);
-
-        const int maximumLength = 10_485_760;
-        if (precision != 0 || scale != 0 || length is 0 or < -1 or > maximumLength
-            || (length == -1 && characterType == "CHAR"))
-            throw new ArgumentException($"Invalid dimensions for PostgreSQL native {characterType}.");
-
-        // PostgreSQL interprets bare CHAR as CHAR(1) and bare VARCHAR as unbounded.
-        return length is > 0 ? $"{characterType}({length.Value.ToString(CultureInfo.InvariantCulture)})" : characterType;
-    }
-
     public virtual string? RenderStructuredType(IDialect dialect, StructuredColumnTypeContext context)
         => dialect is PgsqlDialect postgres && !context.IsKey && context.Column.Generation is null
             ? context.Type switch
