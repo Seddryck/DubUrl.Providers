@@ -66,6 +66,12 @@ public sealed class SparkStructuredTypeTests
         Reject(dialect, new VectorType(DbType.Single, 3), "Fixed-length vectors");
     }
 
+    [TestCase("a,b")]
+    [TestCase("a:b")]
+    [TestCase("a;b")]
+    public void SparkRejectsFieldNamesForbiddenByHiveMetastore(string field)
+        => Reject(Dialect(false), new StructType([new(field, Integer, true)]), "Hive metastore");
+
     [Test]
     public void DeltaRequiresEntireStructPathAndSupportsOptIns()
     {

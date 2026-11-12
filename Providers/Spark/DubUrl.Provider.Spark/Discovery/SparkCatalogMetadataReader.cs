@@ -86,11 +86,20 @@ public abstract class SparkCatalogMetadataReader : CatalogSchemaMetadataReader, 
     {
         var structured = ReadStructuredType(row);
         if (row.Text("type_name") is { } sql && sql.Equals("STRING", StringComparison.OrdinalIgnoreCase)
-            && row.Text("comment") is { } comment && comment.StartsWith(SparkStructuredTypes.JsonTextCommentPrefix, StringComparison.Ordinal))
+            && row.Text("comment") is { } comment)
         {
-            structured = new(new(new JsonType(), StructuredStorage.JsonText), MetadataCoverage.Available);
-            var description = comment[SparkStructuredTypes.JsonTextCommentPrefix.Length..];
-            row = row.With(("comment", description.Length == 0 ? null : description));
+            if (comment.StartsWith(SparkStructuredTypes.JsonTextCommentPrefix, StringComparison.Ordinal))
+            {
+                structured = new(new(new JsonType(), StructuredStorage.JsonText), MetadataCoverage.Available);
+                var description = comment[SparkStructuredTypes.JsonTextCommentPrefix.Length..];
+                row = row.With(("comment", description.Length == 0 ? null : description));
+            }
+            else if (comment.StartsWith(SparkStructuredTypes.LiteralCommentPrefix, StringComparison.Ordinal))
+            {
+                var description = comment[SparkStructuredTypes.LiteralCommentPrefix.Length..];
+                if (SparkStructuredTypes.IsTaggedComment(description))
+                    row = row.With(("comment", description));
+            }
         }
         if (structured is null)
             return MapColumnDetails(row, options, diagnose);

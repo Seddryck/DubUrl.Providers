@@ -21,19 +21,21 @@ internal static class SparkStructuredQa
         => WithScratchAsync(url, async (connection, catalog, schema) =>
         {
             var name = new DatabaseObjectName("structured", schema, catalog: catalog);
+            var itemField = delta ? "items, list" : "items list";
             var payload = Native(new StructType([
-                new("items, list", new ArrayType(new MapType(Text, new StructType([
+                new("name.dot", Text, true),
+                new(itemField, new ArrayType(new MapType(Text, new StructType([
                     new("count`", Integer, true), new("select", Boolean, true),
                 ]), true), true), true),
-                new("name.dot", Text, true),
             ]));
             var json = new StructuredColumnType(new JsonType(), StructuredStorage.JsonText);
             const string description = "Caller’s JSON text and \\ escapes";
+            const string plainDescription = "[duburl:json-text:v1] is a literal comment";
             var model = new DubUrl.Schema.Schema([new Table(name, [
                 new Column("id", DbType.Int32),
                 new Column("payload", payload, constraints: [new NullableConstraint()]),
                 new Column("document", json, description: description),
-                new Column("plain", DbType.String),
+                new Column("plain", DbType.String, description: plainDescription),
             ])]);
 
             var dialect = delta ? ((DatabricksSqlDialect)url.Dialect).WithNameBasedColumnMapping() : url.Dialect;
@@ -42,11 +44,11 @@ internal static class SparkStructuredQa
                 => new SchemaScriptDeployer().DeploySchema(url, new SchemaScriptRenderer(dialect, options).Plan(value));
 
             Deploy(model);
-            var populated = "named_struct('items, list', array(map('one', named_struct('count`', 7, 'select', CAST(NULL AS BOOLEAN)), " +
-                "'empty', NULL), NULL), 'name.dot', 'example')";
+            var populated = $"named_struct('name.dot', 'example', '{itemField}', array(map('one', named_struct('count`', 7, 'select', CAST(NULL AS BOOLEAN)), " +
+                "'empty', NULL), NULL))";
             Execute(connection, $"INSERT INTO {target} VALUES (1, {populated}, '{{\"a\":1}}', '{{\"a\":1}}'), " +
                 "(2, NULL, 'invalid JSON', NULL), (3, NULL, NULL, NULL)");
-            var items = "payload.`items, list`";
+            var items = $"payload.`{itemField}`";
             var entry = $"element_at(element_at({items}, 1), 'one')";
             Assert.That(Scalar(connection, $"SELECT size({items}) FROM {target} WHERE id=1"), Is.EqualTo(2));
             Assert.That(Scalar(connection, $"SELECT {entry}.`count``` FROM {target} WHERE id=1"), Is.EqualTo(7));
@@ -57,7 +59,7 @@ internal static class SparkStructuredQa
             Assert.That(Scalar(connection, $"SELECT document FROM {target} WHERE id=2"), Is.EqualTo("invalid JSON"));
             Assert.That(Scalar(connection, $"SELECT COUNT(*) FROM {target} WHERE id=3 AND payload IS NULL AND document IS NULL"), Is.EqualTo(1));
             Assert.That(() => Execute(connection, $"INSERT INTO {target} VALUES (4, " +
-                "named_struct('items, list', array(map(CAST(NULL AS STRING), named_struct('count`', 7, 'select', true))), 'name.dot', 'x'), NULL, NULL)"),
+                $"named_struct('name.dot', 'x', '{itemField}', array(map(CAST(NULL AS STRING), named_struct('count`', 7, 'select', true)))), NULL, NULL)"),
                 Throws.InstanceOf<DbException>());
             Assert.That(Scalar(connection, $"SELECT COUNT(*) FROM {target} WHERE id=4"), Is.EqualTo(0));
 
@@ -68,6 +70,7 @@ internal static class SparkStructuredQa
             Assert.That(columns["document"].StructuredType, Is.EqualTo(json));
             Assert.That(columns["document"].Description, Is.EqualTo(description));
             Assert.That(columns["plain"].StructuredType, Is.Null);
+            Assert.That(columns["plain"].Description, Is.EqualTo(plainDescription));
             await RoundTrip(discovered, options, url, value => Deploy(value, SchemaCreationOptions.DropIfExists));
         });
 

@@ -49,7 +49,11 @@ internal sealed class SparkSchemaSqlRenderer : StandardSchemaSqlRenderer, ITable
             throw new NotSupportedException("Spark 3.5 cannot apply a non-NULL default to CHAR or VARCHAR. Use an unbounded string column.");
 
         var jsonText = column.Type == SparkStructuredTypes.JsonTextSql;
-        var description = jsonText ? SparkStructuredTypes.JsonTextCommentPrefix + column.Description : column.Description;
+        var description = column.Description;
+        if (jsonText)
+            description = SparkStructuredTypes.JsonTextCommentPrefix + description;
+        else if (column.Type == "STRING" && description is not null && SparkStructuredTypes.IsTaggedComment(description))
+            description = SparkStructuredTypes.LiteralCommentPrefix + description;
         var specification = column.Generation switch
         {
             null => jsonText ? "STRING" : column.Type,

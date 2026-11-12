@@ -8,6 +8,8 @@ namespace DubUrl.Provider.Spark.Discovery;
 
 internal static class SparkStructuredCatalogType
 {
+    private static readonly JsonDocumentOptions TypeJsonOptions = new() { MaxDepth = SparkStructuredTypes.MaxDepth * 4 };
+
     internal static bool IsCollection(string name) => name.ToUpperInvariant() is "ARRAY" or "MAP" or "STRUCT";
 
     internal static bool IsStructured(string? sql)
@@ -38,7 +40,7 @@ internal static class SparkStructuredCatalogType
 
         if (row.Text("structured_json") is { } json)
         {
-            using var document = JsonDocument.Parse(json);
+            using var document = JsonDocument.Parse(json, TypeJsonOptions);
             var reader = new DeltaTypeReader();
             var type = reader.Read(document.RootElement, requiredPath: row.Bool("nullable") == false, depth: 0);
             if (reader.Coverage == MetadataCoverage.Available && type is ArrayType { Element: ScalarType { Type: DbType.Single } }
@@ -54,7 +56,7 @@ internal static class SparkStructuredCatalogType
         if (string.IsNullOrWhiteSpace(json)) return null;
         try
         {
-            using var document = JsonDocument.Parse(json);
+            using var document = JsonDocument.Parse(json, TypeJsonOptions);
             var columns = Property(document.RootElement, "columns");
             if (columns.ValueKind != JsonValueKind.Array) return null;
 

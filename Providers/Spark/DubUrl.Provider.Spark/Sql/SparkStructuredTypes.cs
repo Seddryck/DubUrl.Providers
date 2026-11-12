@@ -9,6 +9,7 @@ internal static class SparkStructuredTypes
     internal const int MaxDepth = 64;
     internal const string JsonTextSql = "STRING /* DubUrl JSON text */";
     internal const string JsonTextCommentPrefix = "[duburl:json-text:v1]";
+    internal const string LiteralCommentPrefix = "[duburl:literal-comment:v1]";
 
     private static readonly Dictionary<DbType, string> Scalars = new()
     {
@@ -28,6 +29,10 @@ internal static class SparkStructuredTypes
         pair => pair.Value, pair => pair.Key, StringComparer.OrdinalIgnoreCase);
 
     internal static ScalarType? ReadScalar(string name) => ScalarNames.TryGetValue(name, out var type) ? new(type) : null;
+
+    internal static bool IsTaggedComment(string comment)
+        => comment.StartsWith(JsonTextCommentPrefix, StringComparison.Ordinal)
+            || comment.StartsWith(LiteralCommentPrefix, StringComparison.Ordinal);
 
     internal static string Render(SparkSqlDialect dialect, StructuredColumnTypeContext context)
     {
@@ -98,6 +103,8 @@ internal static class SparkStructuredTypes
                         throw new NotSupportedException(delta is null
                             ? $"Spark Parquet cannot enforce NOT NULL on struct field '{field.Name}'."
                             : $"NOT NULL on struct field '{field.Name}' requires a NOT NULL column and enclosing structs, with no ARRAY or MAP ancestor.");
+                    if (delta is null && field.Name.IndexOfAny([',', ':', ';']) >= 0)
+                        throw new NotSupportedException($"Spark's Hive metastore rejects struct field '{field.Name}' because its name contains a comma, colon, or semicolon.");
                     if (delta is { UsesNameBasedColumnMapping: false } && field.Name.IndexOfAny([' ', ',', ';', '{', '}', '(', ')', '\n', '\t', '=']) >= 0)
                         throw new NotSupportedException($"Struct field '{field.Name}' requires Databricks WithNameBasedColumnMapping().");
                     var fieldType = RenderChild(field.Type, requiredPath && field.Nullable == false);

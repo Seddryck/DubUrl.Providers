@@ -154,20 +154,20 @@ public sealed class DatabricksMetadataReaderTests
             "SHOW VIEWS IN `spark_catalog`.`default`" => Rows("viewName"),
             "SHOW TABLES IN `spark_catalog`.`default`" => Rows("tableName", ["t"]),
             "DESCRIBE TABLE EXTENDED `spark_catalog`.`default`.`t`" => Rows("col_name data_type comment",
-                ["v", "struct<b,c:array<map<string,struct<a`b:int>>>,name:string>", null],
+                ["v", "struct<b c:array<map<string,struct<a`b:int>>>,name:string>", null],
                 ["x", "string", null], [null, null, null], ["Provider", "PARQUET", null]),
             _ => throw new AssertionException($"Unexpected catalog query {sql}"),
         }, sql => sql switch
         {
             "SHOW CREATE TABLE `spark_catalog`.`default`.`t`" =>
-                "CREATE TABLE t (v STRUCT<`b,c`: ARRAY<MAP<STRING, STRUCT<`a``b`: INT>>>, name: STRING>, x STRING) USING PARQUET",
+                "CREATE TABLE t (v STRUCT<`b c`: ARRAY<MAP<STRING, STRUCT<`a``b`: INT>>>, name: STRING>, x STRING) USING PARQUET",
             _ => throw new AssertionException($"Unexpected scalar query {sql}"),
         });
         IStructuredColumnMetadataReader reader = new SparkMetadataReader();
         var snapshot = await reader.ReadWithStructuredTypesAsync(connection, StructuredScope("spark_catalog", "default"), default);
         Assert.That(snapshot.Metadata.Tables.Single().Columns.Select(column => column.Name), Is.EqualTo(new[] { "v", "x" }));
         var structure = new StructType([
-            new("b,c", new ArrayType(new MapType(new ScalarType(DbType.String),
+            new("b c", new ArrayType(new MapType(new ScalarType(DbType.String),
                 new StructType([new("a`b", new ScalarType(DbType.Int32), true)]), true), true), true),
             new("name", new ScalarType(DbType.String), true),
         ]);

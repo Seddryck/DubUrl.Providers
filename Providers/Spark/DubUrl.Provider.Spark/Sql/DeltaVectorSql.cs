@@ -31,7 +31,8 @@ internal static class DeltaVectorSql
         {
             var tokens = SparkSqlSyntax.Tokenize(definition);
             var end = SparkCatalogDefinition.AfterType(tokens);
-            if (end < tokens.Count && TryDimension(tokens[end].Text, out var dimensions))
+            if (end == 5 && end < tokens.Count && tokens[1].Is("ARRAY") && tokens[3].Is("FLOAT")
+                && TryDimension(tokens[end].Text, out var dimensions))
                 vectors.Add((column, dimensions));
         }
         if (vectors.Count == 0)
