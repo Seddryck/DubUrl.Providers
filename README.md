@@ -124,3 +124,13 @@ Set `DUBURL_SNOWFLAKE_QA_CONNECTION_STRING` to a disposable Snowflake schema to 
     dotnet test QA/DubUrl.Providers.Testing -f net10.0 --filter "FullyQualifiedName=DubUrl.Provider.Snowflake.Tests.Schema.SnowflakeStructuredTypeLiveTests.AllFiveShapesRoundTrip"
 
 Use `SchemaInspector` with the registered provider reader to recover structured descriptors. Recognized types outside the model, such as DuckDB fixed arrays without a recognized component check or SingleStore vectors with unrepresentable component types, produce an incomplete discovery diagnostic. Legacy scalar columns and native type hints retain their rendering path.
+
+### Snowflake table annotations
+
+Snowflake table annotations preserve directly assigned user-defined tags with a single string value. Use the fully qualified tag name as the annotation key, for example `GOVERNANCE.TAGS.DATA_OWNER` or `GOVERNANCE."Sales.Tags"."Data Owner"`. Discovery requires a role that can see the table in Information Schema. Tags with multiple values produce an incomplete discovery diagnostic.
+
+Generated scripts apply tags after creating the table. Provision the referenced tag definitions in the target account before deployment. The deployment role needs the relevant database and schema privileges plus either account-level `APPLY TAG` or `APPLY` on each tag and `OWNERSHIP` on the table. If Snowflake rejects an assignment, for example because a tag is missing or a value is disallowed, schema deployment stops at the tag command and reports the provider error and failing command.
+
+To verify the live round trip, set `DUBURL_SNOWFLAKE_QA_CONNECTION_STRING` to a disposable schema and use a role that can also create and drop the test tags.
+
+    dotnet test QA/DubUrl.Providers.Testing -f net10.0 --filter "FullyQualifiedName=DubUrl.Provider.Snowflake.Tests.Schema.SnowflakeAnnotationTests.RoundTripsDirectTagsAndExcludesColumnTags"
