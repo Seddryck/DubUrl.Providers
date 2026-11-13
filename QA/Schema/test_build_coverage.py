@@ -113,6 +113,24 @@ class CoverageTests(unittest.TestCase):
                 self.assertEqual(coverage["generate"]["status"], "unsupported")
                 self.assertIn("rejects native array columns", coverage["generate"]["evidence"][0]["note"])
 
+    def test_catalog_evidence_verifies_inspection_for_the_tested_variants(self):
+        sql_server = [("StructuredTypeTests", "CatalogDistinguishesJsonArraysFromNativeArrayColumns", "Passed", None)]
+        self.trx("SqlServer", sql_server)
+        self.trx("SqlServer-2025", sql_server)
+        self.trx("PostgreSql", [
+            ("GeneratedColumnDiscoveryTests", "PostgreSql17CatalogOnlyExposesStoredGeneratedColumns", "Passed", None),
+        ])
+        targets = self.targets()
+        for target in ("SqlServer", "SqlServer-2025"):
+            array = targets[target]["coverage"]["native-array"]
+            self.assertEqual(array["inspect"]["status"], "unsupported")
+            self.assertEqual(array["generate"]["status"], "unverified")
+        postgres = targets["PostgreSql"]["coverage"]
+        self.assertEqual(postgres["virtual-computed"]["inspect"]["status"], "unsupported")
+        self.assertIn("PostgreSQL 17", postgres["virtual-computed"]["inspect"]["evidence"][0]["note"])
+        self.assertEqual(postgres["virtual-computed"]["generate"]["status"], "unverified")
+        self.assertEqual(postgres["stored-computed"]["inspect"]["status"], "supported")
+
     def test_unit_rejections_use_separate_evidence_for_each_operation(self):
         self.trx("rejections", [
             ("SchemaCoverageRejectionTests", "RendererRejects_SqlServer_native-map", "Passed", None),
