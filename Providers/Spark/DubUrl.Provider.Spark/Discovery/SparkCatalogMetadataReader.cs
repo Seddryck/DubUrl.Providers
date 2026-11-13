@@ -13,6 +13,14 @@ public abstract class SparkCatalogMetadataReader : CatalogSchemaMetadataReader, 
     private readonly ConditionalWeakTable<MetadataView, object> hiddenDefinitions = new();
     private readonly ConditionalWeakTable<MetadataColumn, StructuredColumnMetadata> structuredTypes = new();
 
+    protected MetadataColumn WithAnnotations(MetadataColumn column, IReadOnlyDictionary<string, string> annotations)
+    {
+        var updated = column with { Annotations = annotations };
+        if (structuredTypes.TryGetValue(column, out var structured))
+            structuredTypes.Add(updated, structured);
+        return updated;
+    }
+
     public async Task<StructuredSchemaMetadata> ReadWithStructuredTypesAsync(DbConnection connection,
         DiscoveryOptions options, CancellationToken cancellationToken)
     {

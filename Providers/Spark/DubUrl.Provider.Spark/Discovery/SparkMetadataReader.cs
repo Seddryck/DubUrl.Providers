@@ -1,5 +1,7 @@
 using System.Data.Common;
+using System.Text.Json;
 using DubUrl.Discovery;
+using DubUrl.Providers;
 using DubUrl.Schema;
 
 namespace DubUrl.Provider.Spark.Discovery;
@@ -8,11 +10,12 @@ public sealed class SparkMetadataReader : SparkCatalogMetadataReader
 {
     private Dictionary<MetadataName, IReadOnlyDictionary<string, string>?>? tableAnnotations;
     protected override bool SupportsAnnotations => true;
+    protected override bool SupportsColumnAnnotations => true;
     private protected override StructuredColumnMetadata? ReadStructuredType(CatalogRow row) => SparkStructuredCatalogType.ReadSpark(row);
 
     public override Task<SchemaMetadata> ReadAsync(DbConnection connection, DiscoveryOptions options, CancellationToken cancellationToken = default)
     {
-        if (!options.Features.Contains(SchemaFeature.Annotations))
+        if (!options.Features.Contains(SchemaFeature.Annotations) && !options.Features.Contains(SchemaFeature.ColumnAnnotations))
             return base.ReadAsync(connection, options, cancellationToken);
 
         var snapshot = (SparkMetadataReader)MemberwiseClone();
@@ -23,13 +26,15 @@ public sealed class SparkMetadataReader : SparkCatalogMetadataReader
     private async Task<SchemaMetadata> ReadWithAnnotationsAsync(DbConnection connection, DiscoveryOptions options, CancellationToken cancellationToken)
     {
         var metadata = await base.ReadAsync(connection, options, cancellationToken).ConfigureAwait(false);
+        var features = options.Features.Where(feature => feature is SchemaFeature.Annotations or SchemaFeature.ColumnAnnotations);
         var failures = tableAnnotations!.Where(pair => pair.Value is null)
-            .Select(pair => new DiscoveryDiagnostic("SDS002", SchemaFeature.Annotations, MetadataCoverage.Inaccessible,
-                "Table properties could not be read.", pair.Key)).ToArray();
+            .SelectMany(pair => features.Select(feature => new DiscoveryDiagnostic("SDS002", feature,
+                MetadataCoverage.Inaccessible, "Table properties could not be read.", pair.Key))).ToArray();
         if (failures.Length == 0)
             return metadata;
         var coverage = metadata.Coverage.ToDictionary(pair => pair.Key, pair => pair.Value);
-        coverage[SchemaFeature.Annotations] = MetadataCoverage.Inaccessible;
+        foreach (var failure in failures)
+            coverage[failure.Feature] = failure.Coverage;
         return metadata with
         {
             Coverage = coverage,
@@ -99,7 +104,7 @@ public sealed class SparkMetadataReader : SparkCatalogMetadataReader
             var target = QualifiedName(identity);
             var relation = Row(("catalog_name", identity.Catalog), ("schema_name", identity.Schema), ("table_name", identity.Name));
             if (sql == TablesSql && !options.Features.Contains(SchemaFeature.Comments)
-                && !options.Features.Contains(SchemaFeature.Annotations))
+                && tableAnnotations is null)
             {
                 results.Add(relation);
                 return;
@@ -117,7 +122,8 @@ public sealed class SparkMetadataReader : SparkCatalogMetadataReader
                     {
                         var properties = await QueryAsync(connection, $"SHOW TBLPROPERTIES {target}", cancellationToken).ConfigureAwait(false);
                         tableAnnotations[identity] = SparkTableProperties.Read(properties,
-                            key => SparkTableProperties.IsReserved(key) || (delta && SparkTableProperties.IsDelta(key)));
+                            key => !ColumnAnnotationProperty.IsReserved(key)
+                                && (SparkTableProperties.IsReserved(key) || (delta && SparkTableProperties.IsDelta(key))));
                     }
                     catch (DbException)
                     {
@@ -156,8 +162,35 @@ public sealed class SparkMetadataReader : SparkCatalogMetadataReader
         List<CatalogRow> indexRows, List<CatalogRow> checkRows, DiscoveryOptions options, Action<SchemaFeature, string> diagnose)
     {
         var table = base.MapTable(row, columnRows, keyRows, indexRows, checkRows, options, diagnose);
-        return tableAnnotations?.GetValueOrDefault(table.Identity) is { } annotations
-            ? table with { Annotations = annotations }
+        if (tableAnnotations?.GetValueOrDefault(table.Identity) is not { } properties)
+            return table;
+
+        if (options.Features.Contains(SchemaFeature.ColumnAnnotations))
+            table = MapColumnAnnotations(table, properties, diagnose);
+        return options.Features.Contains(SchemaFeature.Annotations)
+            ? table with { Annotations = properties.Where(pair => !ColumnAnnotationProperty.IsReserved(pair.Key)).ToDictionary(StringComparer.Ordinal) }
             : table;
+    }
+
+    private MetadataTable MapColumnAnnotations(MetadataTable table, IReadOnlyDictionary<string, string> properties,
+        Action<SchemaFeature, string> diagnose)
+    {
+        var stored = properties.Where(pair => ColumnAnnotationProperty.IsReserved(pair.Key)).ToArray();
+        if (stored.Length == 0) return table;
+        try
+        {
+            if (stored.Length != 1)
+                throw new JsonException();
+            var annotations = ColumnAnnotationProperty.Decode(stored[0].Value);
+            if (annotations.Keys.Except(table.Columns.Select(column => column.Name), StringComparer.Ordinal).Any())
+                diagnose(SchemaFeature.ColumnAnnotations, "The stored annotations reference a missing column.");
+            return table with { Columns = table.Columns.Select(column => annotations.TryGetValue(column.Name, out var values)
+                ? WithAnnotations(column, values) : column).ToArray() };
+        }
+        catch (JsonException)
+        {
+            diagnose(SchemaFeature.ColumnAnnotations, "The stored column annotations are malformed or ambiguous.");
+            return table;
+        }
     }
 }

@@ -13,6 +13,31 @@ namespace DubUrl.Provider.Spark.Tests;
 public sealed class DatabricksMetadataReaderTests
 {
     [Test]
+    public async Task SparkReadsColumnAnnotationsWithNativeCommentsAndFiltersTheStorageProperty()
+    {
+        using var connection = Connection(sql => sql switch
+        {
+            "SHOW NAMESPACES IN `spark_catalog`" => Rows("namespace", ["default"]),
+            "SHOW VIEWS IN `spark_catalog`.`default`" => Rows("viewName"),
+            "SHOW TABLES IN `spark_catalog`.`default`" => Rows("tableName", ["t"]),
+            "DESCRIBE TABLE EXTENDED `spark_catalog`.`default`.`t`" =>
+                Rows("col_name data_type comment", ["id", "int", "Identifier"], [null, null, null]),
+            "SHOW TBLPROPERTIES `spark_catalog`.`default`.`t`" => Rows("key value",
+                ["duburl.column.annotations.v1", """{"id":{"owner":"team"},"removed":{"owner":"old"}}"""], ["myapp.source", "erp"]),
+            _ => throw new AssertionException($"Unexpected catalog query {sql}"),
+        });
+        ISchemaMetadataReader reader = new SparkMetadataReader();
+        var options = StructuredScope("spark_catalog", "default") with
+        { Features = [SchemaFeature.Annotations, SchemaFeature.ColumnAnnotations, SchemaFeature.Comments] };
+        var metadata = await reader.ReadAsync(connection, options);
+        var table = metadata.Tables.Single();
+        Assert.That(table.Annotations.Keys, Is.EqualTo(new[] { "myapp.source" }));
+        Assert.That(table.Columns.Single().Comment, Is.EqualTo("Identifier"));
+        Assert.That(table.Columns.Single().Annotations["owner"], Is.EqualTo("team"));
+        Assert.That(metadata.Diagnostics.Single().Message, Does.Contain("missing column"));
+    }
+
+    [Test]
     public async Task ClosureReadsDetailsOnlyForSelectedAndReferencedTables()
     {
         var propertyQueries = new List<string>();
