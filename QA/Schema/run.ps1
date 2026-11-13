@@ -2,7 +2,7 @@
 param(
     [Parameter(Mandatory)][ValidateSet('PostgreSql','Sqlite','DuckDb','SqlServer','Oracle','SingleStore','MySql')][string]$Database,
     [ValidateSet('net10.0')][string]$Framework = 'net10.0',
-    [string]$DubUrlVersion = '0.62.0',
+    [string]$DubUrlVersion = '0.66.0',
     [string]$Version = '0.0.0',
     [string]$ResultsDirectory
 )

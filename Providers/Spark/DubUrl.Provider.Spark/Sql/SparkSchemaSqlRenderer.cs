@@ -1,4 +1,5 @@
 using DubUrl.Querying.Dialects;
+using DubUrl.Provider.Spark.Discovery;
 using DubUrl.Schema;
 using DubUrl.Schema.Constraints;
 using DubUrl.Schema.Renderers;
@@ -7,7 +8,7 @@ namespace DubUrl.Provider.Spark.Sql;
 
 internal sealed class SparkSchemaSqlRenderer : StandardSchemaSqlRenderer, ITableDefinitionSqlRenderer,
     IColumnDefinitionSqlRenderer, ITableDescriptionSqlRenderer, IColumnDefaultSqlRenderer, ISchemaCommandSqlRenderer,
-    IStructuredColumnSqlRenderer
+    IStructuredColumnSqlRenderer, ITableAnnotationSqlRenderer
 {
     public static new SparkSchemaSqlRenderer Instance { get; } = new();
 
@@ -116,6 +117,23 @@ internal sealed class SparkSchemaSqlRenderer : StandardSchemaSqlRenderer, ITable
         if (delta.UsesNameBasedColumnMapping)
             properties.Add("'delta.columnMapping.mode' = 'name'");
         return properties.Count == 0 ? " USING DELTA" : $" USING DELTA TBLPROPERTIES ({string.Join(", ", properties)})";
+    }
+
+    public IReadOnlyList<SchemaSqlCommand> PlanTableAnnotations(IDialect dialect, DatabaseObjectName table,
+        IReadOnlyDictionary<string, string> annotations)
+    {
+        if (annotations.Count == 0)
+            return [];
+
+        var name = RenderObjectName(dialect, table.Catalog, table.Database, table.Schema, table.Name);
+        foreach (var key in annotations.Keys)
+        {
+            if (key.Length == 0 || SparkTableProperties.IsReserved(key) || (dialect is DatabricksSqlDialect && SparkTableProperties.IsDelta(key)))
+                throw new NotSupportedException($"Table property '{key}' cannot be set as an annotation on {name}.");
+        }
+        var properties = annotations.OrderBy(annotation => annotation.Key, StringComparer.Ordinal).Select(annotation =>
+            $"{SparkStringFormatter.Quote(annotation.Key)} = {SparkStringFormatter.Quote(annotation.Value)}");
+        return [new($"ALTER TABLE {name} SET TBLPROPERTIES ({string.Join(", ", properties)});", SchemaSqlOperation.Comment, table.ToString())];
     }
 
     public IReadOnlyList<SchemaSqlCommand> PlanTableChecks(IDialect dialect, DatabaseObjectName table,

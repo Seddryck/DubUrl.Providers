@@ -30,7 +30,8 @@ public sealed class HiveSchemaTests
         DbProviderFactories.RegisterFactory("System.Data.Odbc", OdbcFactory.Instance);
         var url = new ConnectionUrl(HiveQaDatabase.GetUrl(useNativeQuery: true));
         var name = "duburl_schema_" + Guid.NewGuid().ToString("N");
-        var table = new Table(name, [new Column("id", DbType.Int32)]);
+        var table = new Table(new DatabaseObjectName(name), [new Column("id", DbType.Int32)], null, null, null,
+            new Dictionary<string, string> { ["myapp.source"] = "hive-qa" });
         var plan = new SchemaScriptRenderer(url.Dialect).Plan(new DubUrl.Schema.Schema([table]));
         var target = url.Dialect.SchemaSqlRenderer.RenderObjectName(url.Dialect, null, null, null, name);
 
@@ -40,6 +41,15 @@ public sealed class HiveSchemaTests
         {
             foreach (var command in plan)
                 QaSql.Execute(connection, command.CommandText);
+
+            using (var properties = connection.CreateCommand())
+            {
+                properties.CommandText = $"SHOW TBLPROPERTIES {target} ('myapp.source')";
+                using var property = properties.ExecuteReader();
+                Assert.That(property.Read(), Is.True);
+                Assert.That(property.GetString(0), Is.EqualTo("myapp.source"));
+                Assert.That(property.GetString(1), Is.EqualTo("hive-qa"));
+            }
 
             using var query = connection.CreateCommand();
             query.CommandText = $"SELECT id FROM {target} WHERE 1 = 0";
