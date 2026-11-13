@@ -31,9 +31,43 @@ jobs:
   schema-qa:
     uses: ./.github/workflows/schema-qa.yml
 
+  databricks:
+    name: Databricks Free Edition ODBC
+    if: github.repository == 'Seddryck/DubUrl.Providers' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    container: debian:bookworm-slim
+    timeout-minutes: 30
+    environment: databricks-qa
+    concurrency: databricks-odbc-qa
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/databricks-odbc-qa
+      - name: Run Databricks warehouse tests
+        shell: bash
+        env:
+          DOTNET_CLI_TELEMETRY_OPTOUT: 1
+          DOTNET_NOLOGO: 1
+          DATABRICKS_HOST: ${{ vars.DATABRICKS_HOST }}
+          DATABRICKS_WAREHOUSE_ID: ${{ vars.DATABRICKS_WAREHOUSE_ID }}
+          DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN }}
+          DATABRICKS_RESTRICTED_TOKEN: ${{ secrets.DATABRICKS_RESTRICTED_TOKEN }}
+        run: bash Providers/Spark/DubUrl.Provider.Databricks.QA/infrastructure/run-qa.sh
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: schema-qa-Databricks
+          path: |
+            .test-results/databricks/databricks.trx
+            .test-results/databricks/driver.txt
+          include-hidden-files: true
+          overwrite: true
+          if-no-files-found: warn
+
   schema-coverage:
     if: ${{ !cancelled() }}
-    needs: schema-qa
+    needs: [schema-qa, databricks]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7

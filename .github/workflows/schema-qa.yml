@@ -79,7 +79,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        fixture: [spark, databricks, hive]
+        fixture: [spark, hive]
     uses: ./.github/workflows/qa-spark-databricks-odbc.yml
     with:
       fixture: ${{ matrix.fixture }}
