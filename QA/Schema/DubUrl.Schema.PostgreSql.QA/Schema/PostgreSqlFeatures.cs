@@ -9,7 +9,10 @@ namespace DubUrl.Provider.PostgreSql.QA;
 
 public sealed partial class PostgreSqlSchemaTests
 {
-    protected override IReadOnlyDictionary<string,FeatureExpectation> FeatureExpectations { get; } =
+    private IReadOnlyDictionary<string, FeatureExpectation> featureExpectations = null!;
+    protected override IReadOnlyDictionary<string, FeatureExpectation> FeatureExpectations => featureExpectations;
+
+    private static IReadOnlyDictionary<string, FeatureExpectation> CreateFeatureExpectations(int serverMajor) =>
         new Dictionary<string,FeatureExpectation>
         {
             ["ReplaceTable"] = FeatureExpectation.Supported,
@@ -27,7 +30,9 @@ public sealed partial class PostgreSqlSchemaTests
             ["IdentityDefault"] = FeatureExpectation.Supported,
             ["IdentitySeedIncrement"] = FeatureExpectation.Supported,
             ["GeneratedStored"] = FeatureExpectation.Supported,
-            ["GeneratedVirtual"] = new(ExpectedOutcome.RendererRejects,"The published PostgreSQL renderer supports only stored generated columns.","virtual"),
+            ["GeneratedVirtual"] = serverMajor >= 18
+                ? FeatureExpectation.Supported
+                : new(ExpectedOutcome.RendererRejects,"Virtual generated columns require PostgreSQL 18 or later.","virtual"),
             ["SinglePrimaryKey"] = FeatureExpectation.Supported,
             ["CompositePrimaryKey"] = FeatureExpectation.Supported,
             ["SingleUnique"] = FeatureExpectation.Supported,

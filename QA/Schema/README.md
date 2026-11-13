@@ -65,6 +65,8 @@ The runner builds only the selected fixture and framework, provisions a disposab
 
 CI runs the database suites on .NET 10, including separate runs for PostgreSQL 17 and 18 and for SQL Server 2022 and 2025. The unit matrix still covers .NET 8, 9 and 10, with embedded DuckDB integration cases in the .NET 10 entry. PostgreSQL, SQL Server, Oracle, SingleStore and MySQL use Linux. SQLite and DuckDB use Windows. SchemaContract and DiscoveryContract are shared internally through `DubUrl.Schema.QA`, which is not published as a NuGet package. Provider connection, raw driver metadata and application-level integration tests remain in DubUrl.
 
+To plan virtual generated columns, qualify `PgsqlDialect` with `WithServerVersion` for PostgreSQL 18 or later. The shared QA fixture uses the connected server version to verify deployment on 18 and renderer rejection on 17.
+
 To use a deliberately configured disposable database without provisioning, run `dotnet test` directly and set the matching `DUBURL_*_QA_CONNECTION_STRING` variable. Discovery tests also require `DUBURL_POSTGRESQL_DISCOVERY_QA_CONNECTION_STRING` or `DUBURL_SQLSERVER_DISCOVERY_QA_CONNECTION_STRING`. The normal runner sets all required variables and fails on skips.
 
 The Oracle structured-type fixtures use the pinned Oracle Free image, including its vector and JSON modifier catalog fields. The disposable container provisions a default tablespace with automatic segment space management when the image's default lacks it.
