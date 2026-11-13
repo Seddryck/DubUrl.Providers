@@ -5,11 +5,16 @@ using DubUrl.Schema.Renderers;
 
 namespace DubUrl.Provider.Hive.Sql;
 
-internal sealed class HiveSchemaSqlRenderer : StandardSchemaSqlRenderer, ITableAnnotationSqlRenderer, IColumnAnnotationSqlRenderer
+internal sealed class HiveSchemaSqlRenderer : StandardSchemaSqlRenderer, ITableAnnotationSqlRenderer, IColumnAnnotationSqlRenderer,
+    IColumnDefinitionSqlRenderer
 {
     internal static new HiveSchemaSqlRenderer Instance { get; } = new();
 
     public override bool SupportsCommentRendering => true;
+
+    public ColumnDefinitionPlan? RenderColumnDefinition(IDialect dialect, ColumnDefinitionContext column)
+        => column.Nullable ? new(column.Type, ColumnDefinitionClauses.Nullability) : null;
+
     public override string RenderColumnComment(IDialect dialect, string description) => " COMMENT " + Quote(description);
     public override string RenderIdentifier(IDialect dialect, string name) => QuoteIdentifier(name);
     public override string RenderObjectName(IDialect dialect, string? catalog, string? database, string? schema, string name)
