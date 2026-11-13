@@ -38,7 +38,7 @@ if ($commitRef -and (($commitRef -split '\s+')[0] -cne $SourceCommit)) {
     throw "Release tag '$tag' belongs to a different commit."
 }
 
-$releaseOptions = if ($Version.Contains('-')) { @('--prerelease', '--latest=false') } else { @('--latest') }
+[string[]] $releaseOptions = if ($Version.Contains('-')) { '--prerelease', '--latest=false' } else { '--latest' }
 $releaseJson = gh release view $tag --json isDraft,targetCommitish,assets 2>$null
 if ($LASTEXITCODE -eq 0) {
     $release = $releaseJson | ConvertFrom-Json
