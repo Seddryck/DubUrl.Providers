@@ -2,14 +2,13 @@
 
 Provider implementation packages, database-free unit tests, and real database QA for DubUrl.
 
-The projects under Providers use released DubUrl Core packages. This branch builds the hierarchy API from the Schema source commit pinned in the QA setup script. Prepare that dependency before building and testing in the same PowerShell session.
+The projects under Providers use released DubUrl Core and DubUrl.Schema packages. Use the following commands to build and test.
 
-    ./build/Initialize-SchemaQa.ps1
     dotnet build DubUrl.Providers.slnx
     dotnet test QA/DubUrl.Providers.Testing
     dotnet test DubUrl.BulkCopy.Testing
 
-The provider unit suite compiles the tests alongside their owning provider and runs without a database. Pass `-SourceCommit <sha>` to the setup script to test a different Schema revision.
+The provider unit suite compiles the tests alongside their owning provider and runs without a database. Schema source-compatibility QA can opt into a local package with `./build/Initialize-SchemaQa.ps1 -SourceCommit <sha>` before building in the same PowerShell session.
 
 For SQL Server, a table-level `Hierarchy` generates a unique `hierarchyid` column named `node_path` and keeps the declared primary key. With parent existence enforced, `parent_path` is a persisted computed column with a self-referencing foreign key. Insert the root using `hierarchyid::GetRoot()` before inserting its children. `SchemaScriptRenderer.PreflightHierarchies` reports `HierarchyId` and whether the foreign key will enforce parent existence.
 

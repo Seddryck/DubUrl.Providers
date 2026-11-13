@@ -6,7 +6,7 @@ using DubUrl.Schema;
 using DubUrl.Schema.Builders;
 using NUnit.Framework;
 
-namespace DubUrl.Providers.Testing;
+namespace DubUrl.Provider.SqlServer.Tests.Schema;
 
 public class SqlServerHierarchyTests
 {
