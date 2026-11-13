@@ -9,12 +9,14 @@ using DubUrl.Schema;
 namespace DubUrl.Provider.Snowflake.Discovery;
 
 /// <summary>Read-only column discovery for Snowflake standard tables.</summary>
-public sealed class SnowflakeMetadataReader : CatalogSchemaMetadataReader, IStructuredColumnMetadataReader
+public sealed class SnowflakeMetadataReader : CatalogSchemaMetadataReader, ISchemaMetadataReader, IStructuredColumnMetadataReader
 {
     private readonly ConditionalWeakTable<MetadataColumn, StructuredColumnMetadata> structuredTypes = new();
+    protected override bool SupportsColumnAnnotations => true;
 
     protected override IReadOnlySet<SchemaFeature> UnsupportedFeatures { get; } = Enum.GetValues<SchemaFeature>()
-        .Where(feature => feature is not (SchemaFeature.Tables or SchemaFeature.Columns or SchemaFeature.Comments)).ToHashSet();
+        .Where(feature => feature is not (SchemaFeature.Tables or SchemaFeature.Columns or SchemaFeature.Comments
+            or SchemaFeature.ColumnAnnotations)).ToHashSet();
 
     private const string StandardTables = """
         t.table_type = 'BASE TABLE' AND t.table_schema <> 'INFORMATION_SCHEMA'
@@ -37,6 +39,68 @@ public sealed class SnowflakeMetadataReader : CatalogSchemaMetadataReader, IStru
 
     // Standard tables can declare unenforced keys. Discovery does not report them as portable constraints.
     protected override string KeysSql => "SELECT 1 WHERE FALSE";
+
+    public new async Task<SchemaMetadata> ReadAsync(DbConnection connection, DiscoveryOptions options,
+        CancellationToken cancellationToken = default)
+    {
+        var metadata = await base.ReadAsync(connection, options, cancellationToken).ConfigureAwait(false);
+        if (!options.Features.Contains(SchemaFeature.ColumnAnnotations)) return metadata;
+
+        var tables = new List<MetadataTable>(metadata.Tables.Count);
+        var diagnostics = metadata.Diagnostics.ToList();
+        foreach (var table in metadata.Tables)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            try
+            {
+                var rows = await ReadColumnTagsAsync(connection, table.Identity, cancellationToken).ConfigureAwait(false);
+                var tags = rows.ToLookup(row => row.Text("COLUMN_NAME"), StringComparer.Ordinal);
+                tables.Add(table with { Columns = table.Columns.Select(column =>
+                    AddTags(table.Identity, column, tags[column.Name], diagnostics)).ToArray() });
+            }
+            catch (DbException)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                diagnostics.Add(new("SDI002", SchemaFeature.ColumnAnnotations, MetadataCoverage.Inaccessible,
+                    "Snowflake column tags could not be read.", table.Identity));
+                tables.Add(table);
+            }
+        }
+        return metadata with { Tables = tables, Diagnostics = diagnostics };
+    }
+
+    private static Task<List<CatalogRow>> ReadColumnTagsAsync(DbConnection connection, MetadataName table, CancellationToken cancellationToken)
+    {
+        var database = SnowflakeStructuredTypes.QuoteIdentifier(table.Database!);
+        var target = string.Join('.', database, SnowflakeStructuredTypes.QuoteIdentifier(table.Schema!),
+            SnowflakeStructuredTypes.QuoteIdentifier(table.Name));
+        return QueryAsync(connection, $"""
+            SELECT COLUMN_NAME, TAG_DATABASE, TAG_SCHEMA, TAG_NAME, TAG_VALUE
+            FROM TABLE({database}.INFORMATION_SCHEMA.TAG_REFERENCES_ALL_COLUMNS(?, 'TABLE'))
+            WHERE DOMAIN = 'COLUMN' AND LEVEL = 'COLUMN' AND APPLY_METHOD = 'MANUAL' AND TAG_DATABASE <> 'SNOWFLAKE'
+            """, cancellationToken, ("1", target));
+    }
+
+    private MetadataColumn AddTags(MetadataName table, MetadataColumn column, IEnumerable<CatalogRow> rows,
+        List<DiscoveryDiagnostic> diagnostics)
+    {
+        var annotations = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var group in rows.GroupBy(row => SnowflakeColumnTags.Key(row.Text("TAG_DATABASE")!, row.Text("TAG_SCHEMA")!,
+            row.Text("TAG_NAME")!), StringComparer.Ordinal))
+        {
+            var values = group.Select(row => row.Text("TAG_VALUE")).Distinct(StringComparer.Ordinal).ToArray();
+            if (values is [string value] && value.EnumerateRunes().Count() <= 256)
+                annotations.Add(group.Key, value);
+            else
+                diagnostics.Add(new("SDI009", SchemaFeature.ColumnAnnotations, MetadataCoverage.Unrepresentable,
+                    $"Snowflake tag '{group.Key}' on column '{column.Name}' does not have a single writable text value.", table));
+        }
+        if (annotations.Count == 0) return column;
+        var annotated = column with { Annotations = annotations };
+        if (structuredTypes.TryGetValue(column, out var type))
+            structuredTypes.Add(annotated, type);
+        return annotated;
+    }
 
     public async Task<StructuredSchemaMetadata> ReadWithStructuredTypesAsync(DbConnection connection,
         DiscoveryOptions options, CancellationToken cancellationToken)
