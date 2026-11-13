@@ -131,7 +131,7 @@ internal class PgsqlSchemaSqlRenderer : PostgreSqlSchemaSqlRenderer, IUniqueCons
 
     public override string RenderGenerated(IDialect dialect, string type, string expression, bool stored)
         => stored ? RenderGeneratedColumn(type, expression, true)
-            : throw new NotSupportedException("PostgreSQL does not support virtual generated columns.");
+            : throw new NotSupportedException("The PostgreSQL schema renderer does not support virtual generated columns.");
 }
 
 internal sealed class CockRoachSchemaSqlRenderer : PgsqlSchemaSqlRenderer

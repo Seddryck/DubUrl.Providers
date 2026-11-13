@@ -107,6 +107,7 @@ public sealed class SchemaCoverageRejectionTests
         "Sqlite" => Dialect<SqliteDialect>().WithServerVersion(new(3, 50)),
         "DuckDb" => Dialect<DuckDbDialect>(),
         "PostgreSql" => Dialect<PgsqlDialect>().WithServerVersion(new(17, 0)),
+        "PostgreSql-18" => Dialect<PgsqlDialect>().WithServerVersion(new(18, 0)),
         "SqlServer" => Dialect<TSqlDialect>().WithServerVersion(new(16, 0)),
         "SqlServer-2025" => Dialect<TSqlDialect>().WithServerVersion(new(17, 0)),
         "Oracle" => Dialect<OracleDialect>().WithServerVersion(new(23, 26)),

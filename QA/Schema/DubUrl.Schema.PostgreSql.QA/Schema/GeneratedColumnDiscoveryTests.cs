@@ -1,6 +1,7 @@
-using DubUrl.Discovery;
 using DubUrl.Provider.PostgreSql.Discovery;
 using DubUrl.Provider.PostgreSql.QA;
+using DubUrl.Schema;
+using DubUrl.Schema.Constraints;
 using Npgsql;
 using NUnit.Framework;
 using static DubUrl.Providers.QA.Contracts.Schema.TypedDefaultChecks;
@@ -12,38 +13,49 @@ namespace DubUrl.Schema.PostgreSql.QA;
 public sealed class GeneratedColumnDiscoveryTests
 {
     [Test]
-    public async Task PostgreSql17CatalogOnlyExposesStoredGeneratedColumns()
+    public async Task DiscoveryPreservesGeneratedColumnStorage()
     {
         await using var connection = new NpgsqlConnection(PostgreSqlTestDatabase.ProviderConnectionString);
         await connection.OpenAsync();
-        Assert.That(connection.PostgreSqlVersion.Major, Is.EqualTo(17));
+        var major = connection.PostgreSqlVersion.Major;
+        if (Environment.GetEnvironmentVariable("DUBURL_POSTGRESQL_QA_MAJOR") is { Length: > 0 } expectedMajor)
+            Assert.That(major.ToString(), Is.EqualTo(expectedMajor));
+        Assert.That(major, Is.AnyOf(17, 18));
 
         var name = "qa_generated_inspection_" + Guid.NewGuid().ToString("N");
         var target = $"public.{name}";
+        const string virtualColumn = "virtual_copy int GENERATED ALWAYS AS (source) VIRTUAL";
         try
         {
-            var rejected = Assert.Throws<PostgresException>(() => Execute(connection,
-                $"CREATE TABLE {target} (source int, copy int GENERATED ALWAYS AS (source) VIRTUAL)"));
-            Assert.That(rejected!.SqlState, Is.EqualTo(PostgresErrorCodes.SyntaxError));
-
-            Execute(connection, $"CREATE TABLE {target} (source int, copy int GENERATED ALWAYS AS (source) STORED)");
-            Assert.That(Scalar(connection, $"SELECT attgenerated::text FROM pg_catalog.pg_attribute "
-                + $"WHERE attrelid = '{target}'::regclass AND attname = 'copy'"), Is.EqualTo("s"));
-
-            var identity = new MetadataName(name, "public");
-            var metadata = await new PostgreSqlMetadataReader().ReadAsync(connection, new()
+            if (major == 17)
             {
-                Tables = [identity],
-                Features = [SchemaFeature.Tables, SchemaFeature.Columns, SchemaFeature.Generation]
-            }, CancellationToken.None);
-            var generation = metadata.Tables.Single(table => table.Identity == identity).Columns
-                .Single(column => column.Name == "copy").Generation;
-            Assert.That(generation?.Stored, Is.True);
-            Assert.That(generation?.Expression, Is.Not.Null);
+                var rejected = Assert.Throws<PostgresException>(() =>
+                    Execute(connection, $"CREATE TABLE {target} (source int, {virtualColumn})"));
+                Assert.That(rejected!.SqlState, Is.EqualTo(PostgresErrorCodes.SyntaxError));
+            }
+
+            var virtualDefinition = major == 18 ? ", " + virtualColumn : "";
+            Execute(connection, $"CREATE TABLE {target} (source int, "
+                + $"stored_copy int GENERATED ALWAYS AS (source) STORED{virtualDefinition})");
+
+            var table = await DiscoverAsync(connection, new PostgreSqlMetadataReader(), new(name, "public"));
+            Assert.That(table.Columns["source"].Generation, Is.Null);
+            AssertGeneratedColumn(table.Columns["stored_copy"], GeneratedColumnStorage.Stored);
+            if (major == 18)
+                AssertGeneratedColumn(table.Columns["virtual_copy"], GeneratedColumnStorage.Virtual);
         }
         finally
         {
             Execute(connection, $"DROP TABLE IF EXISTS {target}");
         }
+    }
+
+    private static void AssertGeneratedColumn(Column column, GeneratedColumnStorage storage)
+    {
+        Assert.That(column.Generation, Is.TypeOf<GeneratedColumnGeneration>());
+        var generation = (GeneratedColumnGeneration)column.Generation!;
+        Assert.That(generation.Storage, Is.EqualTo(storage));
+        Assert.That(generation.Expression, Is.TypeOf<ColumnIdentityExpression>()
+            .With.Property(nameof(ColumnIdentityExpression.Name)).EqualTo("source"));
     }
 }

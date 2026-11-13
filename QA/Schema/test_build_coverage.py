@@ -118,7 +118,11 @@ class CoverageTests(unittest.TestCase):
         self.trx("SqlServer", sql_server)
         self.trx("SqlServer-2025", sql_server)
         self.trx("PostgreSql", [
-            ("GeneratedColumnDiscoveryTests", "PostgreSql17CatalogOnlyExposesStoredGeneratedColumns", "Passed", None),
+            ("GeneratedColumnDiscoveryTests", "DiscoveryPreservesGeneratedColumnStorage", "Passed", None),
+        ])
+        self.trx("PostgreSql-18", [
+            ("GeneratedColumnDiscoveryTests", "DiscoveryPreservesGeneratedColumnStorage", "Passed", None),
+            ("PostgreSqlSchemaTests", "Shared_GeneratedVirtual", "Passed", "Expectation: RendererRejects. Stored only."),
         ])
         targets = self.targets()
         for target in ("SqlServer", "SqlServer-2025"):
@@ -130,6 +134,10 @@ class CoverageTests(unittest.TestCase):
         self.assertIn("PostgreSQL 17", postgres["virtual-computed"]["inspect"]["evidence"][0]["note"])
         self.assertEqual(postgres["virtual-computed"]["generate"]["status"], "unverified")
         self.assertEqual(postgres["stored-computed"]["inspect"]["status"], "supported")
+        postgres18 = targets["PostgreSql-18"]["coverage"]
+        self.assertEqual(postgres18["virtual-computed"]["inspect"]["status"], "supported")
+        self.assertEqual(postgres18["virtual-computed"]["generate"]["status"], "unsupported")
+        self.assertEqual(postgres18["stored-computed"]["inspect"]["status"], "supported")
 
     def test_unit_rejections_use_separate_evidence_for_each_operation(self):
         self.trx("rejections", [

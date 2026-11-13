@@ -83,7 +83,7 @@ public sealed class PostgreSqlMetadataReader : CatalogSchemaMetadataReader, IUni
           CASE WHEN c.is_identity='YES' THEN c.identity_start END AS identity_seed,
           CASE WHEN c.is_identity='YES' THEN c.identity_increment END AS identity_increment,
           CASE WHEN c.is_generated='ALWAYS' THEN c.generation_expression END AS generation_expression,
-          TRUE AS stored, col_description(pc.oid,a.attnum) AS comment,
+          (a.attgenerated = 's') AS stored, col_description(pc.oid,a.attnum) AS comment,
           a.attndims AS array_rank,a.atttypmod AS array_type_modifier,e.typname AS array_element,en.nspname AS array_element_schema,
           a.attcollation=at.typcollation AS array_default_collation,shape.conname AS array_rank_check,
           at.typtype='c' AS is_composite,at.oid AS composite_oid,at.typname AS composite_name,an.nspname AS composite_schema,
