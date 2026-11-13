@@ -1,5 +1,6 @@
 using DubUrl.Querying.Dialects;
 using DubUrl.Provider.Spark.Discovery;
+using DubUrl.Providers;
 using DubUrl.Schema;
 using DubUrl.Schema.Constraints;
 using DubUrl.Schema.Renderers;
@@ -8,11 +9,22 @@ namespace DubUrl.Provider.Spark.Sql;
 
 internal sealed class SparkSchemaSqlRenderer : StandardSchemaSqlRenderer, ITableDefinitionSqlRenderer,
     IColumnDefinitionSqlRenderer, ITableDescriptionSqlRenderer, IColumnDefaultSqlRenderer, ISchemaCommandSqlRenderer,
-    IStructuredColumnSqlRenderer, ITableAnnotationSqlRenderer
+    IStructuredColumnSqlRenderer, ITableAnnotationSqlRenderer, IColumnAnnotationSqlRenderer
 {
     public static new SparkSchemaSqlRenderer Instance { get; } = new();
 
     public override bool SupportsCommentRendering => true;
+
+    IReadOnlyList<SchemaSqlCommand> IColumnAnnotationSqlRenderer.PlanColumnAnnotations(IDialect dialect, DatabaseObjectName table,
+        IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>> annotations)
+    {
+        if (dialect is DatabricksSqlDialect)
+            throw new NotSupportedException("Spark column annotation properties are unavailable on Databricks.");
+        var target = RenderObjectName(dialect, table.Catalog, table.Database, table.Schema, table.Name);
+        var key = SparkStringFormatter.Quote(ColumnAnnotationProperty.Name);
+        var value = SparkStringFormatter.Quote(ColumnAnnotationProperty.Encode(annotations));
+        return [new($"ALTER TABLE {target} SET TBLPROPERTIES ({key} = {value});", SchemaSqlOperation.Comment, table.ToString())];
+    }
 
     public string RenderStructuredType(IDialect dialect, StructuredColumnTypeContext context)
         => SparkStructuredTypes.Render((SparkSqlDialect)dialect, context);

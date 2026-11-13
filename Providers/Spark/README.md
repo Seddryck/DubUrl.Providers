@@ -54,6 +54,8 @@ Use `WithInformationalKeys()` to accept Unity Catalog's informational primary an
 
 Spark and Databricks discover table annotations from `SHOW TBLPROPERTIES` and replay them using a separate `ALTER TABLE ... SET TBLPROPERTIES` statement. Databricks excludes `delta.` keys from annotations. Spark filters internal catalog properties and excludes `delta.` keys for Delta tables. Delta CHECK constraints continue to use their own discovery path.
 
+Spark and Hive preserve native column comments and store DubUrl column annotations as a JSON map in the reserved `dbu.column.annotations.v1` table property. Discovery keeps the reserved property out of the table annotations. If Spark redacts the property value, discovery reports incomplete column annotation coverage.
+
 ## Structured schema columns
 
 Spark 3.5.8 `spark_catalog` Parquet and Databricks Unity Catalog Delta support recursive native arrays, maps, and structs in schema models and v1 JSON and YAML documents. Arrays require nullable elements. Maps require non-null scalar keys and nullable values. Declare each struct field's nullability explicitly. Field order and spelling are preserved, including quoted names. Name collisions are checked using the catalog's identifier rules. Spark's Hive metastore rejects commas, colons, and semicolons in nested field names.
