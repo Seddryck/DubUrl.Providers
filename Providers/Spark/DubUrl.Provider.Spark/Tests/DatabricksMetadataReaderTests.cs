@@ -15,6 +15,7 @@ public sealed class DatabricksMetadataReaderTests
     [Test]
     public async Task ClosureReadsDetailsOnlyForSelectedAndReferencedTables()
     {
+        var propertyQueries = new List<string>();
         using var connection = Connection(sql => sql switch
         {
             _ when sql.Contains("FROM system.information_schema.tables") => Rows("catalog_name schema_name table_name",
@@ -25,9 +26,7 @@ public sealed class DatabricksMetadataReaderTests
             _ when sql.Contains("FROM system.information_schema.key_column_usage") => Rows(
                 "catalog_name schema_name table_name column_name ordinal kind key_name target_catalog target_schema target_table target_column",
                 ["c", "s", "child", "id", 1, "FOREIGN KEY", "fk", "c", "other", "parent", "id"]),
-            "SHOW TBLPROPERTIES `c`.`s`.`child`" => throw new CatalogAccessException(),
-            "SHOW TBLPROPERTIES `c`.`other`.`parent`" => Rows("key value",
-                ["delta.constraints.id_check", "coalesce((id >= 0), true)"], ["delta.constraints.raw_check", "id >= 0"]),
+            "SHOW TBLPROPERTIES `c`.`s`.`child`" or "SHOW TBLPROPERTIES `c`.`other`.`parent`" => Properties(sql),
             _ => throw new AssertionException($"Unexpected catalog query {sql}"),
         }, sql => sql switch
         {
@@ -43,15 +42,18 @@ public sealed class DatabricksMetadataReaderTests
         var metadata = await reader.ReadAsync(connection, new()
         {
             Tables = [child], IncludeReferencedTables = true,
-            Features = [SchemaFeature.Tables, SchemaFeature.Columns, SchemaFeature.ForeignKeys, SchemaFeature.Defaults, SchemaFeature.Checks],
+            Features = [SchemaFeature.Tables, SchemaFeature.Columns, SchemaFeature.ForeignKeys, SchemaFeature.Defaults,
+                SchemaFeature.Checks, SchemaFeature.Annotations],
         });
 
         Assert.That(metadata.Tables.Select(table => table.Identity), Is.EquivalentTo(new[] { child, parent }));
         var parentMetadata = metadata.Tables.Single(table => table.Identity == parent);
+        Assert.That(propertyQueries, Is.EquivalentTo(new[] { "SHOW TBLPROPERTIES `c`.`s`.`child`", "SHOW TBLPROPERTIES `c`.`other`.`parent`" }));
+        Assert.That(parentMetadata.Annotations, Is.EquivalentTo(new Dictionary<string, string> { ["myapp.Source"] = @"team's\data" }));
         Assert.That(parentMetadata.Checks.Single().Name, Is.EqualTo("id_check"));
         Assert.That(parentMetadata.Columns.Single(column => column.Name == "id").Default, Is.EqualTo(1));
         Assert.That(parentMetadata.Columns.Single(column => column.Name == "namespace").Default, Is.Null);
-        foreach (var feature in new[] { SchemaFeature.Checks, SchemaFeature.Defaults })
+        foreach (var feature in new[] { SchemaFeature.Checks, SchemaFeature.Defaults, SchemaFeature.Annotations })
         {
             Assert.That(metadata.Coverage[feature], Is.EqualTo(MetadataCoverage.Inaccessible));
             Assert.That(metadata.Diagnostics.Single(diagnostic => diagnostic.Feature == feature
@@ -61,6 +63,42 @@ public sealed class DatabricksMetadataReaderTests
             && diagnostic.Coverage == MetadataCoverage.Unrepresentable && diagnostic.Object == parent), Is.True);
         Assert.That(metadata.Diagnostics.Any(diagnostic => diagnostic.Feature == SchemaFeature.Defaults
             && diagnostic.Coverage == MetadataCoverage.Unrepresentable && diagnostic.Object == parent), Is.True);
+
+        DbDataReader Properties(string sql)
+        {
+            propertyQueries.Add(sql);
+            if (sql.Contains("`child`"))
+                throw new CatalogAccessException();
+            return Rows("key value", ["delta.constraints.id_check", "coalesce((id >= 0), true)"],
+                ["delta.constraints.raw_check", "id >= 0"], ["delta.feature.allowColumnDefaults", "supported"],
+                ["myapp.Source", @"team's\data"]);
+        }
+    }
+
+    [TestCase("PARQUET", true)]
+    [TestCase("delta", false)]
+    public async Task SparkFiltersInternalPropertiesAndAppliesDeltaPrefixByTableFormat(string format, bool keepDeltaKey)
+    {
+        using var connection = Connection(sql => sql switch
+        {
+            "SHOW NAMESPACES IN `spark_catalog`" => Rows("namespace", ["default"]),
+            "SHOW VIEWS IN `spark_catalog`.`default`" => Rows("viewName"),
+            "SHOW TABLES IN `spark_catalog`.`default`" => Rows("tableName", ["t"]),
+            "DESCRIBE TABLE EXTENDED `spark_catalog`.`default`.`t`" =>
+                Rows("col_name data_type comment", ["id", "int", null], [null, null, null], ["Provider", format, null]),
+            "SHOW TBLPROPERTIES `spark_catalog`.`default`.`t`" => Rows("key value",
+                ["myapp.Source", ""], ["delta.appendOnly", "true"], ["transient_lastDdlTime", "42"], ["numRows", "2"]),
+            _ => throw new AssertionException($"Unexpected catalog query {sql}"),
+        });
+        ISchemaMetadataReader reader = new SparkMetadataReader();
+        var options = StructuredScope("spark_catalog", "default") with { Features = [SchemaFeature.Annotations] };
+        var metadata = await reader.ReadAsync(connection, options);
+        var expected = new Dictionary<string, string> { ["myapp.Source"] = "" };
+        if (keepDeltaKey)
+            expected.Add("delta.appendOnly", "true");
+
+        Assert.That(metadata.Coverage[SchemaFeature.Annotations], Is.EqualTo(MetadataCoverage.Available));
+        Assert.That(metadata.Tables.Single().Annotations, Is.EquivalentTo(expected));
     }
 
     [Test]

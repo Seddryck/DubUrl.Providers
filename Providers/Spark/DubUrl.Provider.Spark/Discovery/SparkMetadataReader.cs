@@ -6,7 +6,36 @@ namespace DubUrl.Provider.Spark.Discovery;
 
 public sealed class SparkMetadataReader : SparkCatalogMetadataReader
 {
+    private Dictionary<MetadataName, IReadOnlyDictionary<string, string>?>? tableAnnotations;
+    protected override bool SupportsAnnotations => true;
     private protected override StructuredColumnMetadata? ReadStructuredType(CatalogRow row) => SparkStructuredCatalogType.ReadSpark(row);
+
+    public override Task<SchemaMetadata> ReadAsync(DbConnection connection, DiscoveryOptions options, CancellationToken cancellationToken = default)
+    {
+        if (!options.Features.Contains(SchemaFeature.Annotations))
+            return base.ReadAsync(connection, options, cancellationToken);
+
+        var snapshot = (SparkMetadataReader)MemberwiseClone();
+        snapshot.tableAnnotations = [];
+        return snapshot.ReadWithAnnotationsAsync(connection, options, cancellationToken);
+    }
+
+    private async Task<SchemaMetadata> ReadWithAnnotationsAsync(DbConnection connection, DiscoveryOptions options, CancellationToken cancellationToken)
+    {
+        var metadata = await base.ReadAsync(connection, options, cancellationToken).ConfigureAwait(false);
+        var failures = tableAnnotations!.Where(pair => pair.Value is null)
+            .Select(pair => new DiscoveryDiagnostic("SDS002", SchemaFeature.Annotations, MetadataCoverage.Inaccessible,
+                "Table properties could not be read.", pair.Key)).ToArray();
+        if (failures.Length == 0)
+            return metadata;
+        var coverage = metadata.Coverage.ToDictionary(pair => pair.Key, pair => pair.Value);
+        coverage[SchemaFeature.Annotations] = MetadataCoverage.Inaccessible;
+        return metadata with
+        {
+            Coverage = coverage,
+            Diagnostics = [.. metadata.Diagnostics, .. failures],
+        };
+    }
 
     private static readonly IReadOnlySet<SchemaFeature> Unsupported = new HashSet<SchemaFeature>
     {
@@ -69,7 +98,8 @@ public sealed class SparkMetadataReader : SparkCatalogMetadataReader
         {
             var target = QualifiedName(identity);
             var relation = Row(("catalog_name", identity.Catalog), ("schema_name", identity.Schema), ("table_name", identity.Name));
-            if (sql == TablesSql && !options.Features.Contains(SchemaFeature.Comments))
+            if (sql == TablesSql && !options.Features.Contains(SchemaFeature.Comments)
+                && !options.Features.Contains(SchemaFeature.Annotations))
             {
                 results.Add(relation);
                 return;
@@ -78,7 +108,23 @@ public sealed class SparkMetadataReader : SparkCatalogMetadataReader
             if (sql == TablesSql)
             {
                 var comment = description.LastOrDefault(row => row.Text("col_name") == "Comment")?.Text("data_type");
-                results.Add(relation.With(("comment", comment)));
+                relation = relation.With(("comment", comment));
+                if (tableAnnotations is not null)
+                {
+                    var delta = description.Any(row => row.Text("col_name") == "Provider"
+                        && string.Equals(row.Text("data_type"), "delta", StringComparison.OrdinalIgnoreCase));
+                    try
+                    {
+                        var properties = await QueryAsync(connection, $"SHOW TBLPROPERTIES {target}", cancellationToken).ConfigureAwait(false);
+                        tableAnnotations[identity] = SparkTableProperties.Read(properties,
+                            key => SparkTableProperties.IsReserved(key) || (delta && SparkTableProperties.IsDelta(key)));
+                    }
+                    catch (DbException)
+                    {
+                        tableAnnotations[identity] = null;
+                    }
+                }
+                results.Add(relation);
                 return;
             }
 
@@ -104,5 +150,14 @@ public sealed class SparkMetadataReader : SparkCatalogMetadataReader
             }
             if (isView && ordinal == 0) results.Add(relation.With(("definition", ddl)));
         }
+    }
+
+    protected override MetadataTable MapTable(CatalogRow row, List<CatalogRow> columnRows, List<CatalogRow> keyRows,
+        List<CatalogRow> indexRows, List<CatalogRow> checkRows, DiscoveryOptions options, Action<SchemaFeature, string> diagnose)
+    {
+        var table = base.MapTable(row, columnRows, keyRows, indexRows, checkRows, options, diagnose);
+        return tableAnnotations?.GetValueOrDefault(table.Identity) is { } annotations
+            ? table with { Annotations = annotations }
+            : table;
     }
 }
