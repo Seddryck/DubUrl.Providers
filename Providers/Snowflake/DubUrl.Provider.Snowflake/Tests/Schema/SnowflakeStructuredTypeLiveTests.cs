@@ -5,6 +5,7 @@ using DubUrl.Discovery;
 using DubUrl.Provider.Snowflake.Discovery;
 using DubUrl.Schema;
 using DubUrl.Schema.Constraints;
+using DubUrl.Schema.Documents;
 using NUnit.Framework;
 using Snowflake.Data.Client;
 
@@ -12,6 +13,69 @@ namespace DubUrl.Provider.Snowflake.Tests.Schema;
 
 public class SnowflakeStructuredTypeLiveTests
 {
+    [Test]
+    [Explicit("Requires a disposable Snowflake schema and CREATE TAG privileges.")]
+    public async Task ColumnTagsAndCommentsRoundTripThroughDocuments()
+    {
+        var connectionString = Environment.GetEnvironmentVariable("DUBURL_SNOWFLAKE_QA_CONNECTION_STRING")
+            ?? throw new InvalidOperationException("Configure a disposable Snowflake schema.");
+        await using var connection = new SnowflakeDbConnection { ConnectionString = connectionString };
+        await connection.OpenAsync();
+        await using var scope = connection.CreateCommand();
+        scope.CommandText = "SELECT CURRENT_DATABASE(), CURRENT_SCHEMA()";
+        string database;
+        string schema;
+        await using (var row = await scope.ExecuteReaderAsync())
+        {
+            Assert.That(await row.ReadAsync(), Is.True);
+            database = row.GetString(0);
+            schema = row.GetString(1);
+        }
+
+        var prefix = "DUBURL_TAG_" + Guid.NewGuid().ToString("N").ToUpperInvariant();
+        var source = prefix + "_SOURCE";
+        var target = prefix + "_TARGET";
+        var dialect = SnowflakeStructuredTypeTests.Dialect();
+        var renderer = new SchemaScriptRenderer(dialect);
+        var tagName = dialect.SchemaSqlRenderer.RenderObjectName(dialect, null, database, schema, prefix);
+        var column = new Column("ID", DbType.Int32, description: "Owner's description")
+        { Annotations = new Dictionary<string, string> { [tagName] = "analytics's data" } };
+
+        async Task<Table> Discover(string name)
+        {
+            var result = await new SchemaInspector().InspectAsync(connection, new SnowflakeMetadataReader(), new()
+            {
+                Tables = [new(name, schema, database)],
+                Features = [SchemaFeature.Tables, SchemaFeature.Columns, SchemaFeature.Comments, SchemaFeature.ColumnAnnotations]
+            });
+            Assert.That(result.IsComplete, Is.True, string.Join(", ", result.Diagnostics.Select(item => item.Message)));
+            return result.Schema!.Tables.Values.Single();
+        }
+
+        try
+        {
+            await ExecuteAsync(connection, $"CREATE TAG {tagName}");
+            foreach (var command in renderer.Plan(new([new Table(source, [column])])))
+                await ExecuteAsync(connection, command.CommandText);
+            var discovered = await Discover(source);
+            var original = discovered.Columns[column.Name];
+            Assert.That(original.Annotations.Values, Is.EqualTo(column.Annotations.Values));
+            var document = new SchemaDocumentExporter().Map(new([discovered]));
+            document.Tables.Single().Identity.Name = target;
+            foreach (var command in renderer.Plan(new SchemaDocumentMapper().Map(document)))
+                await ExecuteAsync(connection, command.CommandText);
+            var recreated = (await Discover(target)).Columns[column.Name];
+            Assert.That(recreated.Description, Is.EqualTo(column.Description));
+            Assert.That(recreated.Annotations, Is.EquivalentTo(original.Annotations));
+        }
+        finally
+        {
+            await ExecuteAsync(connection, $"DROP TABLE IF EXISTS {source}");
+            await ExecuteAsync(connection, $"DROP TABLE IF EXISTS {target}");
+            await ExecuteAsync(connection, $"DROP TAG IF EXISTS {tagName}");
+        }
+    }
+
     [Test]
     [Explicit("Requires a disposable schema in DUBURL_SNOWFLAKE_QA_CONNECTION_STRING.")]
     public async Task AllFiveShapesRoundTrip()

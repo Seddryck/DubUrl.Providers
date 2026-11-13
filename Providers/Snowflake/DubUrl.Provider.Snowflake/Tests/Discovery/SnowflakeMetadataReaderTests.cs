@@ -28,6 +28,24 @@ public class SnowflakeMetadataReaderTests
             typeof(SchemaDiscoveryAttribute))!).Create().Reader, Is.TypeOf<SnowflakeMetadataReader>());
 
     [Test]
+    public async Task ColumnTagsPreserveStructuredColumnEvidenceAndReportMultipleValues()
+    {
+        var commands = new List<CommandLog>();
+        var connection = Catalog(commands, () => Tables(Identity),
+            () => Columns(Column(Identity, "vector", 1, "VECTOR(INT, 4)", "YES")),
+            () => Result(["COLUMN_NAME", "TAG_DATABASE", "TAG_SCHEMA", "TAG_NAME", "TAG_VALUE"],
+                [["vector", "GOV", "TAGS", "OWNER", "analytics"],
+                 ["vector", "GOV", "TAGS", "MULTI", "one"], ["vector", "GOV", "TAGS", "MULTI", "two"]]));
+
+        var options = Options with { Features = [SchemaFeature.Tables, SchemaFeature.Columns, SchemaFeature.ColumnAnnotations] };
+        var result = await new SnowflakeMetadataReader().ReadWithStructuredTypesAsync(connection.Object, options, default);
+        Assert.That(result.Metadata.Tables.Single().Columns.Single().Annotations["GOV.TAGS.OWNER"], Is.EqualTo("analytics"));
+        Assert.That(result.StructuredColumns[new(Identity, "vector")].Type, Is.EqualTo(Native(new VectorType(DbType.Int32, 4))));
+        Assert.That(result.Metadata.Diagnostics.Single().Coverage, Is.EqualTo(MetadataCoverage.Unrepresentable));
+        Assert.That(commands.Last().Sql, Does.Contain("TAG_REFERENCES_ALL_COLUMNS").And.Contain("APPLY_METHOD = 'MANUAL'"));
+    }
+
+    [Test]
     public async Task InspectionPreservesTypesNullabilityAndQualifiedNames()
     {
         var other = Identity with { Name = "unselected" };
