@@ -1,7 +1,8 @@
 [CmdletBinding()]
 param(
     [ValidatePattern('^[0-9a-f]{40}$')]
-    [string] $SourceCommit,
+    # Use the hierarchy contract from Schema PR #39 until it is available in a published package.
+    [string] $SourceCommit = '93b78189e99b6ae9f9aef24030268523a4a49875',
     [string] $DubUrlVersion = '0.66.0'
 )
 

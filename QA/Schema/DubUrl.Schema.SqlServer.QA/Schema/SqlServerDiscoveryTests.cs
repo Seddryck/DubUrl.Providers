@@ -54,7 +54,7 @@ public sealed class SqlServerDiscoveryTests : DiscoveryContract
             var result = await new DubUrl.Schema.SchemaInspector().InspectAsync(connection, CreateReader(), options);
             Assert.That(result.IsComplete, Is.False);
             var diagnostics = result.Diagnostics.Where(item => item.Code == "SDI009").ToArray();
-            Assert.That(diagnostics, Has.Length.EqualTo(6));
+            Assert.That(diagnostics, Has.Length.EqualTo(5));
             Assert.That(diagnostics.Select(item => item.Object), Is.All.EqualTo(new MetadataName("sample", schema)));
             var filtered = await new DubUrl.Schema.SchemaInspector().InspectAsync(connection, CreateReader(),
                 options with { Schemas = [], Tables = [new("missing", schema)] });
