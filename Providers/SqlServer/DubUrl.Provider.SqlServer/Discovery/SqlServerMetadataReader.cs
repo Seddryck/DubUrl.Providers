@@ -9,10 +9,76 @@ using DubUrl.Schema.Constraints;
 
 namespace DubUrl.Provider.SqlServer.Discovery;
 
-public sealed class SqlServerMetadataReader : CatalogSchemaMetadataReader, IUniqueConstraintMetadataReader, IStructuredColumnMetadataReader
+public sealed class SqlServerMetadataReader : CatalogSchemaMetadataReader, ISchemaMetadataReader, IUniqueConstraintMetadataReader, IStructuredColumnMetadataReader
 {
     private readonly ConditionalWeakTable<MetadataKey, UniqueConstraintMetadata> nullPolicies = new();
     private readonly ConditionalWeakTable<MetadataColumn, StructuredColumnMetadata> structuredTypes = new();
+    protected override bool SupportsColumnAnnotations => true;
+
+    public new async Task<SchemaMetadata> ReadAsync(DbConnection connection, DiscoveryOptions options,
+        CancellationToken cancellationToken = default)
+    {
+        var metadata = await base.ReadAsync(connection, options, cancellationToken).ConfigureAwait(false);
+        if (!options.Features.Contains(SchemaFeature.ColumnAnnotations) || metadata.Tables.Count == 0)
+            return metadata;
+
+        List<CatalogRow> rows;
+        try
+        {
+            rows = await QueryAsync(connection, ColumnAnnotationsSql, cancellationToken).ConfigureAwait(false);
+        }
+        catch (DbException)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var coverage = metadata.Coverage.ToDictionary();
+            coverage[SchemaFeature.ColumnAnnotations] = MetadataCoverage.Inaccessible;
+            return metadata with { Coverage = coverage, Diagnostics = [.. metadata.Diagnostics,
+                new("SDI002", SchemaFeature.ColumnAnnotations, MetadataCoverage.Inaccessible,
+                    "SQL Server column extended properties could not be read.")] };
+        }
+
+        var diagnostics = metadata.Diagnostics.ToList();
+        var properties = rows.ToLookup(row => (Identity(row), row.Text("column_name")));
+        var tables = metadata.Tables.Select(table => table with
+        {
+            Columns = table.Columns.Select(column => AddAnnotations(table.Identity, column,
+                properties[(table.Identity, column.Name)], diagnostics)).ToArray()
+        }).ToArray();
+        return metadata with { Tables = tables, Diagnostics = diagnostics };
+    }
+
+    private MetadataColumn AddAnnotations(MetadataName table, MetadataColumn column, IEnumerable<CatalogRow> rows,
+        List<DiscoveryDiagnostic> diagnostics)
+    {
+        var annotations = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var row in rows)
+        {
+            var name = row.Text("property_name")!;
+            var value = row.Text("property_value");
+            if (TSqlSchemaSqlRenderer.IsColumnAnnotationName(name)
+                && value is { Length: <= TSqlSchemaSqlRenderer.MaxColumnAnnotationValueLength })
+                annotations.Add(name, value);
+            else
+                diagnostics.Add(new("SDI009", SchemaFeature.ColumnAnnotations, MetadataCoverage.Unrepresentable,
+                    $"SQL Server extended property '{name}' on column '{column.Name}' cannot be represented as writable text.", table));
+        }
+        if (annotations.Count == 0) return column;
+        var annotated = column with { Annotations = annotations };
+        if (structuredTypes.TryGetValue(column, out var type))
+            structuredTypes.Add(annotated, type);
+        return annotated;
+    }
+
+    private const string ColumnAnnotationsSql = """
+        SELECT s.name AS schema_name,t.name AS table_name,c.name AS column_name,ep.name AS property_name,
+          CASE WHEN CONVERT(sysname,SQL_VARIANT_PROPERTY(ep.value,'BaseType')) IN ('char','varchar','nchar','nvarchar')
+            THEN CONVERT(nvarchar(max),ep.value) END AS property_value
+        FROM sys.extended_properties ep
+        JOIN sys.tables t ON t.object_id=ep.major_id
+        JOIN sys.schemas s ON s.schema_id=t.schema_id
+        JOIN sys.columns c ON c.object_id=ep.major_id AND c.column_id=ep.minor_id
+        WHERE ep.class=1 AND ep.name<>N'MS_Description' AND t.is_ms_shipped=0
+        """;
 
     public async Task<StructuredSchemaMetadata> ReadWithStructuredTypesAsync(DbConnection connection,
         DiscoveryOptions options, CancellationToken cancellationToken)
