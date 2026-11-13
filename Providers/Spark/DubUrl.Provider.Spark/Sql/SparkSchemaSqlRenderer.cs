@@ -15,7 +15,7 @@ internal sealed class SparkSchemaSqlRenderer : StandardSchemaSqlRenderer, ITable
 
     public override bool SupportsCommentRendering => true;
 
-    public IReadOnlyList<SchemaSqlCommand> PlanColumnAnnotations(IDialect dialect, DatabaseObjectName table,
+    IReadOnlyList<SchemaSqlCommand> IColumnAnnotationSqlRenderer.PlanColumnAnnotations(IDialect dialect, DatabaseObjectName table,
         IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>> annotations)
     {
         if (dialect is DatabricksSqlDialect)
