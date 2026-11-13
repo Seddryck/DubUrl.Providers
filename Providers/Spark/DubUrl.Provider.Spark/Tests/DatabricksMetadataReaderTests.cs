@@ -13,34 +13,6 @@ namespace DubUrl.Provider.Spark.Tests;
 public sealed class DatabricksMetadataReaderTests
 {
     [Test]
-    public async Task ColumnTagsUseQualifiedColumnIdentityAndPreserveComments()
-    {
-        using var connection = Connection(sql => sql switch
-        {
-            _ when sql.Contains("information_schema.tables") && !sql.Contains("JOIN") =>
-                Rows("catalog_name schema_name table_name", ["c", "s", "items"]),
-            _ when sql.Contains("information_schema.columns") =>
-                Rows("catalog_name schema_name table_name column_name ordinal type_name nullable comment",
-                    ["c", "s", "items", "id", 1, "INT", "YES", "Identifier"]),
-            _ when sql.Contains("information_schema.column_tags") =>
-                Rows("catalog_name schema_name table_name column_name tag_name tag_value",
-                    ["c", "s", "items", "id", "owner", "team"], ["c", "other", "items", "id", "owner", "other"]),
-            _ => throw new AssertionException($"Unexpected catalog query {sql}"),
-        });
-
-        ISchemaMetadataReader reader = new DatabricksMetadataReader();
-        var metadata = await reader.ReadAsync(connection, new()
-        {
-            Catalogs = ["c"], Schemas = ["s"],
-            Features = [SchemaFeature.Tables, SchemaFeature.Columns, SchemaFeature.Comments, SchemaFeature.ColumnAnnotations]
-        });
-        var column = metadata.Tables.Single().Columns.Single();
-        Assert.That(column.Comment, Is.EqualTo("Identifier"));
-        Assert.That(column.Annotations, Is.EquivalentTo(new Dictionary<string, string> { ["owner"] = "team" }));
-        Assert.That(metadata.Coverage[SchemaFeature.ColumnAnnotations], Is.EqualTo(MetadataCoverage.Available));
-    }
-
-    [Test]
     public async Task ClosureReadsDetailsOnlyForSelectedAndReferencedTables()
     {
         var propertyQueries = new List<string>();
@@ -239,6 +211,34 @@ public sealed class DatabricksMetadataReaderTests
         ]);
         Assert.That(snapshot.StructuredColumns.Values.Single(), Is.EqualTo(new StructuredColumnMetadata(
             new(structure, StructuredStorage.Native), MetadataCoverage.Available)));
+    }
+
+    [Test]
+    public async Task ColumnTagsUseQualifiedColumnIdentityAndPreserveComments()
+    {
+        using var connection = Connection(sql => sql switch
+        {
+            _ when sql.Contains("information_schema.tables") && !sql.Contains("JOIN") =>
+                Rows("catalog_name schema_name table_name", ["c", "s", "items"]),
+            _ when sql.Contains("information_schema.columns") =>
+                Rows("catalog_name schema_name table_name column_name ordinal type_name nullable comment",
+                    ["c", "s", "items", "id", 1, "INT", "YES", "Identifier"]),
+            _ when sql.Contains("information_schema.column_tags") =>
+                Rows("catalog_name schema_name table_name column_name tag_name tag_value",
+                    ["c", "s", "items", "id", "owner", "team"], ["c", "other", "items", "id", "owner", "other"]),
+            _ => throw new AssertionException($"Unexpected catalog query {sql}"),
+        });
+
+        ISchemaMetadataReader reader = new DatabricksMetadataReader();
+        var metadata = await reader.ReadAsync(connection, new()
+        {
+            Catalogs = ["c"], Schemas = ["s"],
+            Features = [SchemaFeature.Tables, SchemaFeature.Columns, SchemaFeature.Comments, SchemaFeature.ColumnAnnotations]
+        });
+        var column = metadata.Tables.Single().Columns.Single();
+        Assert.That(column.Comment, Is.EqualTo("Identifier"));
+        Assert.That(column.Annotations, Is.EquivalentTo(new Dictionary<string, string> { ["owner"] = "team" }));
+        Assert.That(metadata.Coverage[SchemaFeature.ColumnAnnotations], Is.EqualTo(MetadataCoverage.Available));
     }
 
     private static DiscoveryOptions StructuredScope(string catalog = "c", string schema = "s")
