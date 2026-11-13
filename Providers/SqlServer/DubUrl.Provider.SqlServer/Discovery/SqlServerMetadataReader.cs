@@ -9,10 +9,70 @@ using DubUrl.Schema.Constraints;
 
 namespace DubUrl.Provider.SqlServer.Discovery;
 
-public sealed class SqlServerMetadataReader : CatalogSchemaMetadataReader, IUniqueConstraintMetadataReader, IStructuredColumnMetadataReader
+public sealed class SqlServerMetadataReader : CatalogSchemaMetadataReader, ISchemaMetadataReader,
+    IUniqueConstraintMetadataReader, IStructuredColumnMetadataReader
 {
     private readonly ConditionalWeakTable<MetadataKey, UniqueConstraintMetadata> nullPolicies = new();
     private readonly ConditionalWeakTable<MetadataColumn, StructuredColumnMetadata> structuredTypes = new();
+    protected override bool SupportsAnnotations => true;
+
+    public new async Task<SchemaMetadata> ReadAsync(DbConnection connection, DiscoveryOptions options,
+        CancellationToken cancellationToken = default)
+    {
+        var metadata = await base.ReadAsync(connection, options, cancellationToken).ConfigureAwait(false);
+        if (!options.Features.Contains(SchemaFeature.Annotations) || metadata.Tables.Count == 0)
+            return metadata;
+
+        List<CatalogRow> rows;
+        try
+        {
+            rows = await QueryAsync(connection, AnnotationsSql, cancellationToken).ConfigureAwait(false);
+        }
+        catch (DbException)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var coverage = metadata.Coverage.ToDictionary(pair => pair.Key, pair => pair.Value);
+            coverage[SchemaFeature.Annotations] = MetadataCoverage.Inaccessible;
+            return metadata with
+            {
+                Coverage = coverage,
+                Diagnostics = [.. metadata.Diagnostics, new("SDI002", SchemaFeature.Annotations,
+                    MetadataCoverage.Inaccessible, "SQL Server table extended properties could not be read.")]
+            };
+        }
+
+        var properties = rows.ToLookup(Identity);
+        var diagnostics = metadata.Diagnostics.ToList();
+        var tables = new List<MetadataTable>(metadata.Tables.Count);
+        foreach (var table in metadata.Tables)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var annotations = new Dictionary<string, string>(StringComparer.Ordinal);
+            foreach (var property in properties[table.Identity])
+            {
+                var name = property.Text("property_name")!;
+                var value = property.Text("property_value");
+                if (TSqlSchemaSqlRenderer.IsAnnotationName(name)
+                    && value is { Length: <= TSqlSchemaSqlRenderer.MaxExtendedPropertyValueLength })
+                    annotations.Add(name, value);
+                else
+                    diagnostics.Add(new("SDI009", SchemaFeature.Annotations, MetadataCoverage.Unrepresentable,
+                        $"SQL Server extended property '{name}' cannot be represented as a writable text annotation.", table.Identity));
+            }
+            tables.Add(annotations.Count == 0 ? table : table with { Annotations = annotations });
+        }
+        return metadata with { Tables = tables, Diagnostics = diagnostics };
+    }
+
+    private const string AnnotationsSql = """
+        SELECT s.name AS schema_name,t.name AS table_name,ep.name AS property_name,
+          CASE WHEN CONVERT(sysname,SQL_VARIANT_PROPERTY(ep.value,'BaseType')) IN ('char','varchar','nchar','nvarchar')
+            THEN CONVERT(nvarchar(max),ep.value) END AS property_value
+        FROM sys.extended_properties ep
+        JOIN sys.tables t ON t.object_id=ep.major_id
+        JOIN sys.schemas s ON s.schema_id=t.schema_id
+        WHERE ep.class=1 AND ep.minor_id=0 AND ep.name<>N'MS_Description' AND t.is_ms_shipped=0
+        """;
 
     public async Task<StructuredSchemaMetadata> ReadWithStructuredTypesAsync(DbConnection connection,
         DiscoveryOptions options, CancellationToken cancellationToken)
