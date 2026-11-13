@@ -18,7 +18,7 @@ public class SingleStoreDiscoveryTests
         var reader = attribute.Create().Reader;
         Assert.That(reader, Is.TypeOf<SingleStoreMetadataReader>());
         foreach (var feature in Enum.GetValues<SchemaFeature>())
-            Assert.That(reader.Capabilities[feature], Is.EqualTo(feature is SchemaFeature.ForeignKeys or SchemaFeature.Checks
+            Assert.That(reader.Capabilities[feature], Is.EqualTo(feature is SchemaFeature.ForeignKeys or SchemaFeature.Checks or SchemaFeature.Annotations
                 ? MetadataCoverage.Unsupported : MetadataCoverage.Available), feature.ToString());
     }
     [TestCase("SELECT `db`.`items`.`code` AS `label` FROM `db`.`items`", "SELECT `code` AS `label` FROM `db`.`items`")]
