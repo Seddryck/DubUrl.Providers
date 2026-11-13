@@ -9,6 +9,20 @@ namespace DubUrl.Provider.Oracle.Tests.Schema;
 
 public class OracleSchemaTests
 {
+    [Test]
+    public void ColumnAnnotationsUseQualifiedOracleDdlAndKeepTheComment()
+    {
+        var column = new Column("item code", DbType.Int32, description: "Identifier")
+        { Annotations = new Dictionary<string, string> { ["owner"] = "team's data" } };
+        var table = new Table(new DatabaseObjectName("items", "sales"), [column]);
+        var model = new DubUrl.Schema.Schema([table]);
+        var dialect = (OracleDialect)Dialect();
+        var plan = new SchemaScriptRenderer(dialect.WithServerVersion(new(19, 28))).Plan(model);
+        Assert.That(plan[1].CommandText, Is.EqualTo("""ALTER TABLE "sales"."items" MODIFY "item code" ANNOTATIONS (ADD "owner" 'team''s data')"""));
+        Assert.That(plan[2].CommandText, Does.Contain("""COMMENT ON COLUMN "sales"."items"."item code" IS 'Identifier'"""));
+        Assert.That(() => new SchemaScriptRenderer(dialect.WithServerVersion(new(19, 27))).Plan(model), Throws.TypeOf<NotSupportedException>());
+    }
+
     private static IDialect Dialect()
     {
         var builder = new DialectRegistryBuilder();

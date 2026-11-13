@@ -7,9 +7,21 @@ using DubUrl.Schema.Renderers;
 
 namespace DubUrl.Provider.Oracle.Schema.Generation;
 
-internal sealed class OracleSchemaSqlRenderer : StandardSchemaSqlRenderer, IUniqueConstraintSqlRenderer, IColumnDefaultSqlRenderer, IColumnDefinitionSqlRenderer, IStructuredColumnSqlRenderer
+internal sealed class OracleSchemaSqlRenderer : StandardSchemaSqlRenderer, IUniqueConstraintSqlRenderer, IColumnDefaultSqlRenderer, IColumnDefinitionSqlRenderer, IStructuredColumnSqlRenderer, IColumnAnnotationSqlRenderer
 {
     internal static OracleSchemaSqlRenderer Default { get; } = new();
+
+    public IReadOnlyList<SchemaSqlCommand> PlanColumnAnnotations(IDialect dialect, DatabaseObjectName table,
+        IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>> annotations)
+    {
+        if (dialect is OracleDialect { ServerVersion: { } version } && !OracleColumnAnnotations.Supports(version))
+            throw new NotSupportedException($"Oracle {version} does not support column annotations.");
+
+        var target = RenderObjectName(dialect, table.Catalog, table.Database, table.Schema, table.Name);
+        return annotations.Select(column => new SchemaSqlCommand(
+            $"ALTER TABLE {target} MODIFY {RenderIdentifier(dialect, column.Key)} ANNOTATIONS ({OracleColumnAnnotations.Render(column.Value)});",
+            SchemaSqlOperation.Comment, $"{table}.{column.Key}")).ToArray();
+    }
 
     public string? RenderStructuredType(IDialect dialect, StructuredColumnTypeContext context)
     {
