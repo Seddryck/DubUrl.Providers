@@ -165,8 +165,18 @@ public sealed class SqlServerMetadataReader : CatalogSchemaMetadataReader, IUniq
     private static string ColumnQuery(string vectorColumns) => $$"""
         SELECT s.name AS schema_name,t.name AS table_name,c.name AS column_name,c.column_id AS ordinal,
           ty.name AS type_name,ty.is_user_defined AS user_defined,c.is_nullable AS nullable,{{vectorColumns}}
+          CASE
+            WHEN ty.is_user_defined=1 THEN QUOTENAME(SCHEMA_NAME(ty.schema_id)) + '.' + QUOTENAME(ty.name)
+            WHEN ty.name IN ('binary','varbinary','char','varchar','nchar','nvarchar')
+              THEN CONCAT(ty.name,'(',CASE WHEN c.max_length=-1 THEN 'max'
+                WHEN ty.name IN ('nchar','nvarchar') THEN CONVERT(varchar(5),c.max_length/2)
+                ELSE CONVERT(varchar(5),c.max_length) END,')')
+            WHEN ty.name IN ('decimal','numeric') THEN CONCAT(ty.name,'(',c.precision,',',c.scale,')')
+            WHEN ty.name IN ('datetime2','datetimeoffset','time') THEN CONCAT(ty.name,'(',c.scale,')')
+            ELSE ty.name
+          END AS native_type_declaration,
           CASE WHEN ty.name IN ('nvarchar','nchar') AND c.max_length>0 THEN c.max_length/2 ELSE c.max_length END AS length,
-          c.precision,c.scale,dc.definition AS default_expression,
+          c.precision,c.scale,dc.name AS default_name,dc.definition AS default_expression,
           CONVERT(bigint,ic.seed_value) AS identity_seed,CONVERT(bigint,ic.increment_value) AS identity_increment,
           cc.definition AS generation_expression,cc.is_persisted AS stored,CONVERT(nvarchar(max),ep.value) AS comment,
           seq.sequence_name,seq.sequence_schema,seq.sequence_count,DB_NAME() AS sequence_database
@@ -216,6 +226,8 @@ public sealed class SqlServerMetadataReader : CatalogSchemaMetadataReader, IUniq
     protected override string IndexesSql => """
         SELECT s.name AS schema_name,t.name AS table_name,i.name AS index_name,i.is_unique AS unique_index,
           ic.key_ordinal AS ordinal,c.name AS column_name,ic.is_descending_key AS descending,
+          i.type_desc AS index_kind,i.filter_definition,
+          CASE WHEN ic.is_included_column=1 THEN QUOTENAME(c.name) END AS included_column,
           CASE WHEN i.has_filter=1 OR i.type NOT IN (1,2) OR EXISTS
             (SELECT 1 FROM sys.index_columns x WHERE x.object_id=i.object_id AND x.index_id=i.index_id AND x.is_included_column=1)
             THEN 1 ELSE 0 END AS unsupported
