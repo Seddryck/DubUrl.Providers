@@ -1,6 +1,14 @@
-name: Spark and Databricks live ODBC QA
+name: Spark, Databricks, and Hive live ODBC QA
 
 on:
+  workflow_call:
+    inputs:
+      fixture:
+        type: string
+        required: true
+      schema-matrix:
+        type: boolean
+        default: false
   push:
     branches: [qa/odbc-connectivity]
   workflow_dispatch:
@@ -23,7 +31,8 @@ jobs:
     name: Databricks Free Edition ODBC
     if: >-
       (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/qa/odbc-connectivity') &&
-      (github.event_name == 'push' || inputs.fixture != 'spark')
+      (inputs.fixture == 'databricks' || inputs.fixture == 'both' ||
+       (github.event_name == 'push' && !inputs.fixture))
     runs-on: ubuntu-24.04
     container: debian:bookworm-slim
     timeout-minutes: 30
@@ -80,16 +89,21 @@ jobs:
       - uses: actions/upload-artifact@v7
         if: always()
         with:
-          name: databricks-odbc-qa
-          path: .test-results/databricks
+          name: ${{ inputs.schema-matrix && 'schema-qa-Databricks' || 'databricks-odbc-qa' }}
+          path: |
+            .test-results/databricks/databricks.trx
+            .test-results/databricks/driver.txt
+          include-hidden-files: true
+          overwrite: true
           if-no-files-found: warn
 
   spark:
     name: Apache Spark Thrift Server ODBC
     if: >-
       (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/qa/odbc-connectivity') &&
-      ((github.event_name == 'push' && vars.SPARK_ODBC_DRIVER_VERSION != '') ||
-       (github.event_name == 'workflow_dispatch' && inputs.fixture != 'databricks'))
+      ((inputs.schema-matrix && inputs.fixture == 'spark' && vars.SPARK_ODBC_DRIVER_VERSION != '') ||
+       (!inputs.schema-matrix && (inputs.fixture == 'spark' || inputs.fixture == 'both')) ||
+       (github.event_name == 'push' && !inputs.fixture && vars.SPARK_ODBC_DRIVER_VERSION != ''))
     runs-on: [self-hosted, linux, x64, duburl-spark-qa]
     timeout-minutes: 20
     concurrency: spark-odbc-qa
@@ -107,6 +121,50 @@ jobs:
       - uses: actions/upload-artifact@v7
         if: always()
         with:
-          name: spark-odbc-qa
-          path: .test-results/spark
+          name: ${{ inputs.schema-matrix && 'schema-qa-Spark' || 'spark-odbc-qa' }}
+          path: |
+            .test-results/spark/*.trx
+            .test-results/spark/driver.txt
+          include-hidden-files: true
+          overwrite: true
+          if-no-files-found: warn
+
+  spark-coverage-unavailable:
+    if: inputs.schema-matrix && inputs.fixture == 'spark' && vars.SPARK_ODBC_DRIVER_VERSION == ''
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo '::notice::Spark schema QA needs a licensed runner and SPARK_ODBC_DRIVER_VERSION. Coverage is unverified.'
+
+  hive:
+    if: inputs.fixture == 'hive'
+    name: HiveServer2
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 10.0.401
+      - name: Prepare pinned Linux ODBC driver
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y unixodbc odbcinst libsasl2-2
+          curl --fail --silent --show-error --location --retry 3 \
+            https://downloads.cloudera.com/connectors/ClouderaHiveODBC-2.10.1.1001/Debian/clouderahiveodbc_2.10.1.1001-2_amd64.deb \
+            --output "$RUNNER_TEMP/cloudera-hive-odbc.deb"
+      - name: Run Hive ODBC and schema QA
+        run: |
+          export HIVE_ODBC_DEB="$RUNNER_TEMP/cloudera-hive-odbc.deb"
+          bash Providers/Hive/DubUrl.Provider.Hive.QA/infrastructure/run-qa.sh
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: ${{ inputs.schema-matrix && 'schema-qa-Hive' || 'hive-odbc-qa' }}
+          path: |
+            .test-results/hive/hive.trx
+            .test-results/hive/hive-driver.txt
+          include-hidden-files: true
+          overwrite: true
           if-no-files-found: warn

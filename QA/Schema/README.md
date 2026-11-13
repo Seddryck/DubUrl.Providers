@@ -1,5 +1,52 @@
 # Real-database schema QA
 
+## Published schema coverage
+
+The Build and schema QA workflow collects the TRX reports from the shared database matrix and
+its Spark, Databricks, and Hive ODBC matrix. It packages the report as the `schema-coverage`
+workflow artifact. On `main`, it also publishes the current snapshot on the dedicated
+`schema-coverage` branch. Consumers can retrieve
+[schema-coverage.v1.json](https://raw.githubusercontent.com/Seddryck/DubUrl.Providers/schema-coverage/schema-coverage.v1.json)
+before building documentation.
+
+The report includes all databases in `connection-urls/catalog-source.json`. A database can
+have multiple QA targets, such as SQL Server 2022 and 2025. Spark needs the licensed Simba
+runner and the repository's `SPARK_ODBC_DRIVER_VERSION` variable. Databricks uses the
+`databricks-qa` environment. Hive provisions HiveServer2 in its existing ODBC job.
+
+### Report format
+
+- `schemaVersion` is `1`. `providerCommit`, `runUrl`, `dubUrlVersion`, and
+  `dubUrlSchemaVersion` describe the source, CI run, and tested packages.
+- `features` lists the ordered table rows as `id`, `label`, and `group`.
+- `providers` lists the table columns as `id`, `label`, and `targets`. Each target has an
+  `id`, an engine `variant`, the name of its QA `artifact` when present, and a `coverage`
+  object keyed by feature ID. The `runUrl` identifies the workflow that produced the artifacts.
+  A provider without a configured schema QA target has one target with a null variant.
+- Each feature has an `inspect` cell and a `generate` cell. A cell has a `status` and an
+  `evidence` array. Evidence records the test identifier, coverage status, distinct TRX
+  outcomes, and a qualification when one applies.
+
+The statuses are `supported`, `limited`, `unsupported`, `unverified`, and `failed`.
+A passing test supports its declared expectation, including expected rejections.
+A failed mapped test takes precedence. Missing or skipped tests produce unverified coverage.
+If mapped tests pass with different coverage statuses, the cell reports limited coverage.
+
+Keep feature IDs stable in `coverage-cases.json`. Map shared scenarios to the operation
+they exercise and add focused rules for tests that verify individual features or variants.
+To check a set of downloaded artifacts locally, keep each report under its
+`schema-qa-<target>` directory and run:
+
+```sh
+python -m pip install defusedxml==0.7.1
+python -m unittest discover -s QA/Schema
+python QA/Schema/build_coverage.py --artifacts artifacts/schema-reports \
+  --output artifacts/schema-coverage/schema-coverage.v1.json \
+  --commit "$(git rev-parse HEAD)" --run-url 'https://github.com/Seddryck/DubUrl.Providers/actions/runs/RUN_ID'
+```
+
+## Running database fixtures
+
 ```powershell
 ./QA/run.ps1 -Database Sqlite -Framework net10.0
 ./QA/run.ps1 -Database DuckDb -Framework net10.0
