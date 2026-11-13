@@ -113,6 +113,38 @@ class CoverageTests(unittest.TestCase):
                 self.assertEqual(coverage["generate"]["status"], "unsupported")
                 self.assertIn("rejects native array columns", coverage["generate"]["evidence"][0]["note"])
 
+    def test_unit_rejections_use_separate_evidence_for_each_operation(self):
+        self.trx("rejections", [
+            ("SchemaCoverageRejectionTests", "RendererRejects_SqlServer_native-map", "Passed", None),
+            ("SchemaCoverageRejectionTests", "RendererRejects_SqlServer-2025_native-map", "NotExecuted", None),
+            ("SchemaCoverageRejectionTests", "InspectionRejects_Spark_foreign-keys", "Passed", None),
+            ("SchemaCoverageRejectionTests", "InspectionRejects_Spark_unique", "Failed", None),
+        ])
+        targets = self.targets()
+        sql_server = targets["SqlServer"]["coverage"]["native-map"]
+        self.assertEqual(sql_server["inspect"]["status"], "unverified")
+        self.assertEqual(sql_server["generate"]["status"], "unsupported")
+        self.assertEqual(sql_server["generate"]["evidence"][0]["artifact"], "schema-qa-rejections")
+        self.assertIn("SQL Server renderer rejects", sql_server["generate"]["evidence"][0]["note"])
+        self.assertEqual(targets["SqlServer-2025"]["coverage"]["native-map"]["generate"]["status"], "unverified")
+        spark = targets["Spark"]["coverage"]
+        self.assertEqual(spark["foreign-keys"]["inspect"]["status"], "unsupported")
+        self.assertEqual(spark["foreign-keys"]["generate"]["status"], "unverified")
+        self.assertEqual(spark["unique"]["inspect"]["status"], "failed")
+
+    def test_fixture_ddl_rejection_is_not_evidence_of_inspection(self):
+        self.trx("PostgreSql", [
+            ("PostgreSqlSchemaTests", "Shared_GeneratedVirtual", "Passed", "Expectation: RendererRejects. Stored only."),
+        ])
+        self.trx("MySql", [
+            ("MySqlBaselineTests", "Shared_DiscoveryIdentity", "Passed", "Expectation: RendererRejects. Custom seed rejected."),
+        ])
+        targets = self.targets()
+        virtual = targets["PostgreSql"]["coverage"]["virtual-computed"]
+        self.assertEqual(virtual["generate"]["status"], "unsupported")
+        self.assertEqual(virtual["inspect"]["status"], "unverified")
+        self.assertEqual(targets["MySql"]["coverage"]["identity"]["inspect"]["status"], "unverified")
+
     def test_hive_schema_cases_populate_distinct_operations(self):
         self.trx("Hive", [
             ("HiveSchemaTests", "InspectionReportsUnavailableDiscovery", "Passed", None),
@@ -121,6 +153,8 @@ class CoverageTests(unittest.TestCase):
         ])
         coverage = self.targets()["Hive"]["coverage"]
         self.assertEqual(coverage["tables"]["inspect"]["status"], "unsupported")
+        self.assertEqual(coverage["native-array"]["inspect"]["status"], "unsupported")
+        self.assertEqual(coverage["table-replacement"]["inspect"]["status"], "unverified")
         self.assertEqual(coverage["tables"]["generate"]["status"], "supported")
         self.assertEqual(coverage["comments"]["generate"]["status"], "unverified")
 

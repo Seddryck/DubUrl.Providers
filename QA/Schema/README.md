@@ -2,9 +2,9 @@
 
 ## Published schema coverage
 
-The Build and schema QA workflow collects the TRX reports from the shared database matrix and
-its Spark, Databricks, and Hive ODBC matrix. It packages the report as the `schema-coverage`
-workflow artifact. On `main`, it also publishes the current snapshot on the dedicated
+The Build and schema QA workflow collects the TRX reports from the shared database matrix,
+its Spark, Databricks, and Hive ODBC jobs, and the provider unit tests. It packages the
+report as the `schema-coverage` workflow artifact. On `main`, it publishes the snapshot on the dedicated
 `schema-coverage` branch. Consumers can retrieve
 [schema-coverage.v1.json](https://raw.githubusercontent.com/Seddryck/DubUrl.Providers/schema-coverage/schema-coverage.v1.json)
 before building documentation.
@@ -25,7 +25,8 @@ runner and the repository's `SPARK_ODBC_DRIVER_VERSION` variable. Databricks use
   A provider without a configured schema QA target has one target with a null variant.
 - Each feature has an `inspect` cell and a `generate` cell. A cell has a `status` and an
   `evidence` array. Evidence records the test identifier, coverage status, distinct TRX
-  outcomes, and a qualification when one applies.
+  outcomes, and a qualification when one applies. An evidence item can name a separate
+  `artifact`, such as the provider unit test report in `schema-qa-rejections`.
 
 The statuses are `supported`, `limited`, `unsupported`, `unverified`, and `failed`.
 A passing test supports its declared expectation, including expected rejections.
@@ -34,8 +35,15 @@ If mapped tests pass with different coverage statuses, the cell reports limited 
 
 Keep feature IDs stable in `coverage-cases.json`. Map shared scenarios to the operation
 they exercise and add focused rules for tests that verify individual features or variants.
-To check a set of downloaded artifacts locally, keep each report under its
-`schema-qa-<target>` directory and run:
+Use `rendererRejections` for explicit DDL planning rejections and `inspectionRejections`
+for metadata reader features explicitly reported as unsupported. Each target and feature
+gets a separate test. For inspection, a direct reader check takes precedence over shared
+fixtures that can stop before reading the catalog. A shared fixture's rejected setup DDL
+does not establish whether the reader can inspect the feature.
+
+To check downloaded artifacts locally, keep each live report in its `schema-qa-<target>`
+directory and the provider unit test TRX in `schema-qa-rejections`. Then run the validator
+and coverage generator.
 
 ```sh
 python -m pip install defusedxml==0.7.1

@@ -24,7 +24,17 @@ jobs:
         shell: pwsh
         run: ./build/Initialize-SchemaQa.ps1
       - run: dotnet build DubUrl.Providers.slnx -c Release --nologo
-      - run: dotnet test QA/DubUrl.Providers.Testing -c Release --no-build --no-restore
+      - name: Run provider unit tests and record schema rejection evidence
+        run: >-
+          dotnet test QA/DubUrl.Providers.Testing -c Release --no-build --no-restore
+          --logger "trx;LogFilePrefix=provider-tests" --results-directory artifacts/provider-tests
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: schema-qa-rejections
+          path: artifacts/provider-tests/*net10.0*.trx
+          if-no-files-found: warn
+          overwrite: true
       - run: dotnet test DubUrl.BulkCopy.Testing -c Release --no-build --no-restore
       - run: dotnet test QA/DubUrl.Provider.Testing -c Release --no-build --no-restore
 
@@ -67,7 +77,7 @@ jobs:
 
   schema-coverage:
     if: ${{ !cancelled() }}
-    needs: [schema-qa, databricks]
+    needs: [build, schema-qa, databricks]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
