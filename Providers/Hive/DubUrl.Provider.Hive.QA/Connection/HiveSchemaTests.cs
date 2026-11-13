@@ -42,9 +42,14 @@ public sealed class HiveSchemaTests
             foreach (var command in plan)
                 QaSql.Execute(connection, command.CommandText);
 
-            using var properties = connection.CreateCommand();
-            properties.CommandText = $"SHOW TBLPROPERTIES {target} ('myapp.source')";
-            Assert.That(properties.ExecuteScalar(), Is.EqualTo("hive-qa"));
+            using (var properties = connection.CreateCommand())
+            {
+                properties.CommandText = $"SHOW TBLPROPERTIES {target} ('myapp.source')";
+                using var property = properties.ExecuteReader();
+                Assert.That(property.Read(), Is.True);
+                Assert.That(property.GetString(0), Is.EqualTo("myapp.source"));
+                Assert.That(property.GetString(1), Is.EqualTo("hive-qa"));
+            }
 
             using var query = connection.CreateCommand();
             query.CommandText = $"SELECT id FROM {target} WHERE 1 = 0";
