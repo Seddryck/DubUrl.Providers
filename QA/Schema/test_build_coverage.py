@@ -100,6 +100,19 @@ class CoverageTests(unittest.TestCase):
         self.assertEqual(targets["SqlServer-2025"]["coverage"]["native-json"]["generate"]["status"], "supported")
         self.assertEqual(targets["SqlServer-2025"]["coverage"]["native-json"]["inspect"]["status"], "supported")
 
+    def test_sql_server_array_rejection_verifies_only_ddl_generation(self):
+        test = [("StructuredTypeTests", "NativeArraysAreRejectedBeforeDdl(16)", "Passed", None),
+                ("StructuredTypeTests", "NativeArraysAreRejectedBeforeDdl(17)", "Passed", None)]
+        self.trx("SqlServer", test)
+        self.trx("SqlServer-2025", test)
+        targets = self.targets()
+        for target in ("SqlServer", "SqlServer-2025"):
+            with self.subTest(target=target):
+                coverage = targets[target]["coverage"]["native-array"]
+                self.assertEqual(coverage["inspect"]["status"], "unverified")
+                self.assertEqual(coverage["generate"]["status"], "unsupported")
+                self.assertIn("rejects native array columns", coverage["generate"]["evidence"][0]["note"])
+
     def test_hive_schema_cases_populate_distinct_operations(self):
         self.trx("Hive", [
             ("HiveSchemaTests", "InspectionReportsUnavailableDiscovery", "Passed", None),

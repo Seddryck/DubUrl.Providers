@@ -15,6 +15,17 @@ namespace DubUrl.Schema.SqlServer.QA;
 [Category("Schema")]
 public sealed class StructuredTypeTests
 {
+    [TestCase(16)]
+    [TestCase(17)]
+    public void NativeArraysAreRejectedBeforeDdl(int serverMajorVersion)
+    {
+        var dialect = Dialect(new Version(serverMajorVersion, 0));
+        var identity = new DatabaseObjectName("structured_native_array", "dbo");
+        var type = new StructuredColumnType(new ArrayType(new ScalarType(DbType.Int32), true), StructuredStorage.Native);
+
+        AssertUnsupported(dialect, identity, type);
+    }
+
     [Test]
     public async Task JsonTextRoundTripsAsUnicodeText()
     {
@@ -97,6 +108,11 @@ public sealed class StructuredTypeTests
     private static TSqlDialect Dialect(SqlConnection connection, out Version version)
     {
         version = Version.Parse(connection.ServerVersion);
+        return Dialect(version);
+    }
+
+    private static TSqlDialect Dialect(Version version)
+    {
         var builder = new DialectRegistryBuilder();
         builder.AddDialect<TSqlDialect>(["mssqlserver"]);
         return builder.Build().Get<TSqlDialect>().WithServerVersion(version);
