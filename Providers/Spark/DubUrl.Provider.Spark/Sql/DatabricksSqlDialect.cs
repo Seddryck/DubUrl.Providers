@@ -4,6 +4,7 @@ using DubUrl.Querying.Dialects.Casters;
 using DubUrl.Querying.Dialects.Functions;
 using DubUrl.Querying.Dialects.Renderers;
 using DubUrl.Querying.TypeMapping;
+using DubUrl.Schema.Renderers;
 
 namespace DubUrl.Provider.Spark.Sql;
 
@@ -19,6 +20,8 @@ public sealed class DatabricksSqlDialect : SparkSqlDialect
     internal DatabricksSqlDialect(ILanguage language, string[] aliases, IRenderer renderer, ICaster[] casters,
         IDbTypeMapper dbTypeMapper, ISqlFunctionMapper sqlFunctionMapper)
         : base(language, aliases, renderer, casters, dbTypeMapper, sqlFunctionMapper) { }
+
+    public override ISchemaSqlRenderer SchemaSqlRenderer => DatabricksSchemaSqlRenderer.Instance;
 
     public override DialectCapabilities Capabilities => base.Capabilities with
     {

@@ -34,6 +34,7 @@ public sealed class DatabricksMetadataReader : SparkCatalogMetadataReader
 
     protected override IReadOnlySet<SchemaFeature> UnsupportedFeatures => Unsupported;
     protected override bool SupportsAnnotations => true;
+    protected override bool SupportsColumnAnnotations => true;
     protected override string TablesSql => """
         SELECT table_catalog AS catalog_name, table_schema AS schema_name, table_name, comment
         FROM {info}.tables WHERE table_schema <> 'information_schema'
@@ -87,6 +88,8 @@ public sealed class DatabricksMetadataReader : SparkCatalogMetadataReader
         if (read is not null) read.Scope = scope;
         if (sql == TablesSql)
         {
+            if (options.Features.Contains(SchemaFeature.ColumnAnnotations))
+                await ReadColumnTagsAsync(connection, scope, cancellationToken).ConfigureAwait(false);
             if (options.Features.Contains(SchemaFeature.Annotations))
             {
                 foreach (var table in scope.Tables)
@@ -173,6 +176,49 @@ public sealed class DatabricksMetadataReader : SparkCatalogMetadataReader
             }
         }
         return result;
+    }
+
+    private async Task ReadColumnTagsAsync(DbConnection connection, TableScope scope, CancellationToken cancellationToken)
+    {
+        foreach (var catalog in scope.Names.GroupBy(name => name.Catalog, StringComparer.Ordinal))
+        {
+            if (DatabricksColumnTags.IsLegacyCatalog(catalog.Key))
+            {
+                foreach (var table in catalog)
+                    read!.Diagnostics.Add(new("SDS003", SchemaFeature.ColumnAnnotations, MetadataCoverage.Unsupported,
+                        "Databricks column tags require Unity Catalog.", table));
+                continue;
+            }
+
+            try
+            {
+                var rows = await QueryAsync(connection, $"""
+                    SELECT catalog_name, schema_name, table_name, column_name, tag_name, tag_value
+                    FROM {Quote(catalog.Key!)}.information_schema.column_tags
+                    """, cancellationToken).ConfigureAwait(false);
+                foreach (var column in rows.Where(row => scope.Names.Contains(Identity(row)) && row.Text("column_name") is not null)
+                    .GroupBy(row => new StructuredColumnIdentity(Identity(row), row.Text("column_name")!)))
+                {
+                    var tags = DatabricksColumnTags.Read(column, message =>
+                        read!.Diagnostics.Add(new("SDS004", SchemaFeature.ColumnAnnotations,
+                            MetadataCoverage.Unrepresentable, message, Identity(column.First()))));
+                    read!.ColumnTags.Add(column.Key, tags);
+                }
+            }
+            catch (DbException)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                foreach (var table in catalog)
+                    read!.Inaccessible(SchemaFeature.ColumnAnnotations, table, "Databricks column tags could not be read.");
+            }
+        }
+    }
+
+    protected override MetadataColumn MapColumn(CatalogRow row)
+    {
+        var column = base.MapColumn(row);
+        return read?.ColumnTags.GetValueOrDefault(new(Identity(row), column.Name)) is { } tags
+            ? column with { Annotations = tags } : column;
     }
 
     private async Task<List<CatalogRow>?> ReadTablePropertiesAsync(DbConnection connection, MetadataName name, CancellationToken cancellationToken)
@@ -334,6 +380,7 @@ public sealed class DatabricksMetadataReader : SparkCatalogMetadataReader
         public TableScope? Scope { get; set; }
         public List<DiscoveryDiagnostic> Diagnostics { get; } = [];
         public Dictionary<MetadataName, List<CatalogRow>?> Properties { get; } = [];
+        public Dictionary<StructuredColumnIdentity, IReadOnlyDictionary<string, string>> ColumnTags { get; } = [];
 
         public void Inaccessible(SchemaFeature feature, MetadataName? name, string message)
             => Diagnostics.Add(new("SDS002", feature, MetadataCoverage.Inaccessible, message, name));
