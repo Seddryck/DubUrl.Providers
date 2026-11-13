@@ -23,7 +23,7 @@ public sealed class DatabricksMetadataReaderTests
             "DESCRIBE TABLE EXTENDED `spark_catalog`.`default`.`t`" =>
                 Rows("col_name data_type comment", ["id", "int", "Identifier"], [null, null, null]),
             "SHOW TBLPROPERTIES `spark_catalog`.`default`.`t`" => Rows("key value",
-                ["duburl.column.annotations.v1", """{"id":{"owner":"team"},"removed":{"owner":"old"}}"""], ["myapp.source", "erp"]),
+                ["dbu.column.annotations.v1", """{"id":{"owner":"team"},"removed":{"owner":"old"}}"""], ["myapp.source", "erp"]),
             _ => throw new AssertionException($"Unexpected catalog query {sql}"),
         });
         ISchemaMetadataReader reader = new SparkMetadataReader();

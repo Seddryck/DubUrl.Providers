@@ -177,6 +177,11 @@ public sealed class SparkMetadataReader : SparkCatalogMetadataReader
     {
         var stored = properties.Where(pair => ColumnAnnotationProperty.IsReserved(pair.Key)).ToArray();
         if (stored.Length == 0) return table;
+        if (stored.Length == 1 && stored[0].Value == "*********(redacted)")
+        {
+            diagnose(SchemaFeature.ColumnAnnotations, "Spark redacted the stored column annotations.");
+            return table;
+        }
         try
         {
             if (stored.Length != 1)

@@ -4,7 +4,8 @@ namespace DubUrl.Providers;
 
 internal static class ColumnAnnotationProperty
 {
-    internal const string Name = "duburl.column.annotations.v1";
+    // Spark redacts property values whose names contain "url" by default.
+    internal const string Name = "dbu.column.annotations.v1";
 
     internal static bool IsReserved(string key)
         => string.Equals(key, Name, StringComparison.OrdinalIgnoreCase);
