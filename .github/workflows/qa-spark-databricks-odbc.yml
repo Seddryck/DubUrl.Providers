@@ -30,6 +30,7 @@ jobs:
   databricks:
     name: Databricks Free Edition ODBC
     if: >-
+      !inputs.schema-matrix &&
       (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/qa/odbc-connectivity') &&
       (inputs.fixture == 'databricks' || inputs.fixture == 'both' ||
        (github.event_name == 'push' && !inputs.fixture))
@@ -39,57 +40,22 @@ jobs:
     environment: databricks-qa
     concurrency: databricks-odbc-qa
     steps:
-      - name: Install Debian runtime dependencies
-        shell: bash
-        run: |
-          apt_options=(-o Acquire::http::Timeout=15 -o Acquire::Retries=2)
-          apt-get "${apt_options[@]}" -o APT::Update::Error-Mode=any update
-          apt-get "${apt_options[@]}" install -y --no-install-recommends \
-            ca-certificates curl git unzip unixodbc odbcinst libicu72 libssl3 libgssapi-krb5-2 zlib1g
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
-      - uses: actions/setup-dotnet@v6
-        with:
-          dotnet-version: '10.0.401'
-      - name: Install pinned Databricks ODBC driver
-        shell: bash
-        run: |
-          mkdir -p .test-results/databricks
-          archive="$RUNNER_TEMP/databricks-odbc.zip"
-          curl --fail --silent --show-error --location --retry 3 --retry-max-time 120 --connect-timeout 10 --max-time 60 \
-            https://databricks-bi-artifacts.s3.amazonaws.com/simba-databricks-odbc-drivers/2.14.0/DatabricksODBC-2.14.0-Debian-64bit.zip \
-            --output "$archive"
-          echo "835f793a68e704e93a3726dc5f873140cc9d8e11a33c6c62b0400435b8d08aa8  $archive" | sha256sum --check
-          unzip -q "$archive" -d "$RUNNER_TEMP/databricks-odbc"
-          apt-get -o Acquire::http::Timeout=15 -o Acquire::Retries=2 install -y \
-            "$RUNNER_TEMP/databricks-odbc/databricksodbc_2.14.0.1000-2_amd64.deb"
-          printf '%s\n' '[Databricks ODBC Driver]' 'Driver=/opt/databricks/databricksodbc/lib/64/libdatabricksodbc64.so' > "$RUNNER_TEMP/databricks-odbc.ini"
-          odbcinst -i -d -f "$RUNNER_TEMP/databricks-odbc.ini"
-          odbcinst -q -d -n 'Databricks ODBC Driver' >/dev/null
-          dpkg-query -W databricksodbc | tee .test-results/databricks/driver.txt
-      - name: Build Databricks QA
-        run: dotnet build Providers/Spark/DubUrl.Provider.Databricks.QA -c Release -f net10.0
-      - name: Run Databricks Free Edition shared contracts and live DDL tests
+      - uses: ./.github/actions/databricks-odbc-qa
+      - name: Run Databricks warehouse tests
         shell: bash
         env:
           DATABRICKS_HOST: ${{ vars.DATABRICKS_HOST }}
           DATABRICKS_WAREHOUSE_ID: ${{ vars.DATABRICKS_WAREHOUSE_ID }}
           DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN }}
           DATABRICKS_RESTRICTED_TOKEN: ${{ secrets.DATABRICKS_RESTRICTED_TOKEN }}
-        run: |
-          status=0
-          dotnet test Providers/Spark/DubUrl.Provider.Databricks.QA -c Release -f net10.0 --no-build \
-            --logger 'trx;LogFileName=databricks.trx' --results-directory .test-results/databricks || status=$?
-          report=.test-results/databricks/databricks.trx
-          if [[ -f "$report" ]]; then
-            perl -pi -e 'for my $name (qw(DATABRICKS_TOKEN DATABRICKS_RESTRICTED_TOKEN)) { my $token = $ENV{$name}; s/\Q$token\E/[REDACTED]/g if length($token // q{}); }' "$report"
-          fi
-          exit "$status"
+        run: bash Providers/Spark/DubUrl.Provider.Databricks.QA/infrastructure/run-qa.sh
       - uses: actions/upload-artifact@v7
         if: always()
         with:
-          name: ${{ inputs.schema-matrix && 'schema-qa-Databricks' || 'databricks-odbc-qa' }}
+          name: databricks-odbc-qa
           path: |
             .test-results/databricks/databricks.trx
             .test-results/databricks/driver.txt
