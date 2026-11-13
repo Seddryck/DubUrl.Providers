@@ -2,6 +2,9 @@
 
 Provider implementation packages, database-free unit tests, and real database QA for DubUrl.
 
+[Connector packs](connectors/README.md) and their installation catalog are published on
+[DubUrl.Providers Releases](https://github.com/Seddryck/DubUrl.Providers/releases).
+
 The projects under Providers use released DubUrl Core and DubUrl.Schema packages. Use the following commands to build and test.
 
     dotnet build DubUrl.Providers.slnx

@@ -5,11 +5,11 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: New version for the NuGet provider packages and the connection URL catalog.
+        description: New version for the NuGet provider packages, connector packs, and catalogs.
         type: string
         required: true
       publish:
-        description: Publish the validated package set and its matching connection URL catalog.
+        description: Publish the validated provider packages, connector packs, and catalogs.
         type: boolean
         default: false
 
@@ -71,9 +71,39 @@ jobs:
           path: artifacts/catalog-release
           if-no-files-found: error
 
+  pack-connectors:
+    name: Build and validate connector packs
+    runs-on: windows-latest
+    env:
+      PROVIDER_PACKAGE_VERSION: ${{ inputs.version || '0.61.0-preview.1' }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: |
+            8.0.416
+            10.0.401
+      - name: Test connector archive inventory validation
+        shell: pwsh
+        run: ./build/Test-ConnectorArchiveSetValidation.ps1
+      - name: Build and validate the connector archives and catalog
+        shell: pwsh
+        run: |
+          $coreVersion = ./build/Get-LatestDubUrlVersion.ps1
+          Write-Host "Building connector packs for DubUrl $coreVersion."
+          ./connectors/Build-ConnectorArtifacts.ps1 -Version $env:PROVIDER_PACKAGE_VERSION -CoreVersion $coreVersion
+          ./connectors/Test-ConnectorArtifacts.ps1 -Version $env:PROVIDER_PACKAGE_VERSION -CoreVersion $coreVersion -ArtifactDirectory artifacts/connectors
+      - uses: actions/upload-artifact@v7
+        with:
+          name: connector-packs
+          path: artifacts/connectors/
+          if-no-files-found: error
+
   publish:
     if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.publish
-    needs: pack
+    needs: [pack, pack-connectors]
     runs-on: ubuntu-latest
     environment: release
     permissions:
@@ -112,6 +142,28 @@ jobs:
       - name: Verify the published package source revisions
         shell: pwsh
         run: ./build/Test-PublishedProviderPackages.ps1 -Version $env:PROVIDER_PACKAGE_VERSION -SourceCommit $env:GITHUB_SHA -NuGetDirectory artifacts/nuget
+
+  publish-connectors:
+    name: Publish connector packs and installation catalog
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.publish
+    needs: publish
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      PROVIDER_PACKAGE_VERSION: ${{ inputs.version }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@v7
+        with:
+          name: connector-packs
+          path: artifacts/connectors
+      - name: Publish the validated connector assets
+        shell: pwsh
+        run: ./build/Publish-ConnectorRelease.ps1 -Version $env:PROVIDER_PACKAGE_VERSION -SourceCommit $env:GITHUB_SHA -ArtifactDirectory artifacts/connectors
 
   publish-catalog:
     name: Publish the matching connection URL catalog
