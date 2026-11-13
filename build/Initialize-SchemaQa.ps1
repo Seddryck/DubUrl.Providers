@@ -2,7 +2,7 @@
 param(
     [ValidatePattern('^[0-9a-f]{40}$')]
     [string] $SourceCommit,
-    [string] $DubUrlVersion = '0.66.0'
+    [string] $DubUrlVersion = '0.67.0'
 )
 
 $ErrorActionPreference = 'Stop'

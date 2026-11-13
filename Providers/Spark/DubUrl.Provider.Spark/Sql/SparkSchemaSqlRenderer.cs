@@ -8,11 +8,20 @@ namespace DubUrl.Provider.Spark.Sql;
 
 internal sealed class SparkSchemaSqlRenderer : StandardSchemaSqlRenderer, ITableDefinitionSqlRenderer,
     IColumnDefinitionSqlRenderer, ITableDescriptionSqlRenderer, IColumnDefaultSqlRenderer, ISchemaCommandSqlRenderer,
-    IStructuredColumnSqlRenderer, ITableAnnotationSqlRenderer
+    IStructuredColumnSqlRenderer, ITableAnnotationSqlRenderer, IColumnAnnotationSqlRenderer
 {
     public static new SparkSchemaSqlRenderer Instance { get; } = new();
 
     public override bool SupportsCommentRendering => true;
+
+    public IReadOnlyList<SchemaSqlCommand> PlanColumnAnnotations(IDialect dialect, DatabaseObjectName table,
+        IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>> annotations)
+    {
+        if (dialect is not DatabricksSqlDialect)
+            throw new NotSupportedException("This Spark dialect cannot render column annotations.");
+        var target = RenderObjectName(dialect, table.Catalog, table.Database, table.Schema, table.Name);
+        return DatabricksColumnTags.Plan(table, target, annotations, column => RenderIdentifier(dialect, column));
+    }
 
     public string RenderStructuredType(IDialect dialect, StructuredColumnTypeContext context)
         => SparkStructuredTypes.Render((SparkSqlDialect)dialect, context);
