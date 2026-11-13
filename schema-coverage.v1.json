@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "providerCommit": "a1e30830589f2cb1ec1bd7ddc19cbb17702de2c5",
-  "runUrl": "https://github.com/Seddryck/DubUrl.Providers/actions/runs/43400028749/attempts/1",
+  "providerCommit": "7fac0196347a324382411ad2ff376ed229912fc7",
+  "runUrl": "https://github.com/Seddryck/DubUrl.Providers/actions/runs/43429716810/attempts/1",
   "dubUrlVersion": "0.62.0",
   "dubUrlSchemaVersion": "0.105.0",
   "features": [
@@ -6232,25 +6232,25 @@
           "coverage": {
             "tables": {
               "inspect": {
-                "status": "failed",
+                "status": "supported",
                 "evidence": [
                   {
                     "test": "Shared_DiscoveryTablesColumns",
-                    "status": "failed",
+                    "status": "supported",
                     "outcomes": [
-                      "Failed"
+                      "Passed"
                     ]
                   }
                 ]
               },
               "generate": {
-                "status": "failed",
+                "status": "supported",
                 "evidence": [
                   {
                     "test": "Shared_ColumnTypes",
-                    "status": "failed",
+                    "status": "supported",
                     "outcomes": [
-                      "Failed"
+                      "Passed"
                     ]
                   }
                 ]
@@ -6258,25 +6258,25 @@
             },
             "column-facets": {
               "inspect": {
-                "status": "failed",
+                "status": "supported",
                 "evidence": [
                   {
                     "test": "Shared_DiscoveryFacets",
-                    "status": "failed",
+                    "status": "supported",
                     "outcomes": [
-                      "Failed"
+                      "Passed"
                     ]
                   }
                 ]
               },
               "generate": {
-                "status": "failed",
+                "status": "supported",
                 "evidence": [
                   {
                     "test": "Shared_ColumnFacets",
-                    "status": "failed",
+                    "status": "supported",
                     "outcomes": [
-                      "Failed"
+                      "Passed"
                     ]
                   }
                 ]
@@ -6288,13 +6288,13 @@
                 "evidence": []
               },
               "generate": {
-                "status": "failed",
+                "status": "supported",
                 "evidence": [
                   {
                     "test": "Shared_Nullability",
-                    "status": "failed",
+                    "status": "supported",
                     "outcomes": [
-                      "Failed"
+                      "Passed"
                     ]
                   }
                 ]
@@ -6306,13 +6306,13 @@
                 "evidence": []
               },
               "generate": {
-                "status": "failed",
+                "status": "supported",
                 "evidence": [
                   {
                     "test": "Shared_ReplaceTable",
-                    "status": "failed",
+                    "status": "supported",
                     "outcomes": [
-                      "Failed"
+                      "Passed"
                     ]
                   }
                 ]
@@ -6320,103 +6320,109 @@
             },
             "primary-keys": {
               "inspect": {
-                "status": "failed",
+                "status": "limited",
                 "evidence": [
                   {
                     "test": "Shared_DiscoveryPrimaryKey",
-                    "status": "failed",
+                    "status": "limited",
                     "outcomes": [
-                      "Failed"
-                    ]
+                      "Passed"
+                    ],
+                    "note": "Unity Catalog keys retain ordered metadata but allow duplicates and orphan rows."
                   }
                 ]
               },
               "generate": {
-                "status": "failed",
+                "status": "limited",
                 "evidence": [
                   {
                     "test": "Shared_CompositePrimaryKey",
-                    "status": "failed",
+                    "status": "limited",
                     "outcomes": [
-                      "Failed"
-                    ]
+                      "Passed"
+                    ],
+                    "note": "Unity Catalog keys retain ordered metadata but allow duplicates and orphan rows."
                   }
                 ]
               }
             },
             "foreign-keys": {
               "inspect": {
-                "status": "failed",
+                "status": "limited",
                 "evidence": [
                   {
                     "test": "Shared_DiscoveryForeignKey",
-                    "status": "failed",
+                    "status": "limited",
                     "outcomes": [
-                      "Failed"
-                    ]
+                      "Passed"
+                    ],
+                    "note": "Unity Catalog keys retain ordered metadata but allow duplicates and orphan rows."
                   }
                 ]
               },
               "generate": {
-                "status": "failed",
+                "status": "limited",
                 "evidence": [
                   {
                     "test": "Shared_CompositeForeignKey",
-                    "status": "failed",
+                    "status": "limited",
                     "outcomes": [
-                      "Failed"
-                    ]
+                      "Passed"
+                    ],
+                    "note": "Unity Catalog keys retain ordered metadata but allow duplicates and orphan rows."
                   }
                 ]
               }
             },
             "unique": {
               "inspect": {
-                "status": "failed",
+                "status": "limited",
                 "evidence": [
                   {
                     "test": "Shared_DiscoveryUnique",
-                    "status": "failed",
+                    "status": "limited",
                     "outcomes": [
-                      "Failed"
-                    ]
+                      "Passed"
+                    ],
+                    "note": "Unity Catalog keys retain ordered metadata but allow duplicates and orphan rows."
                   }
                 ]
               },
               "generate": {
-                "status": "failed",
+                "status": "limited",
                 "evidence": [
                   {
                     "test": "Shared_CompositeUnique",
-                    "status": "failed",
+                    "status": "limited",
                     "outcomes": [
-                      "Failed"
-                    ]
+                      "Passed"
+                    ],
+                    "note": "Unity Catalog keys retain ordered metadata but allow duplicates and orphan rows."
                   }
                 ]
               }
             },
             "comparison-check": {
               "inspect": {
-                "status": "failed",
+                "status": "supported",
                 "evidence": [
                   {
                     "test": "Shared_DiscoveryChecks",
-                    "status": "failed",
+                    "status": "supported",
                     "outcomes": [
-                      "Failed"
+                      "Passed"
                     ]
                   }
                 ]
               },
               "generate": {
-                "status": "failed",
+                "status": "supported",
                 "evidence": [
                   {
                     "test": "Shared_ComparisonCheck",
-                    "status": "failed",
+                    "status": "supported",
                     "outcomes": [
-                      "Failed"
+                      "Passed"
                     ]
                   }
                 ]
@@ -6428,13 +6434,13 @@
                 "evidence": []
               },
               "generate": {
-                "status": "failed",
+                "status": "supported",
                 "evidence": [
                   {
                     "test": "Shared_MembershipCheck",
-                    "status": "failed",
+                    "status": "supported",
                     "outcomes": [
-                      "Failed"
+                      "Passed"
                     ]
                   }
                 ]
@@ -6446,13 +6452,13 @@
                 "evidence": []
               },
               "generate": {
-                "status": "failed",
+                "status": "supported",
                 "evidence": [
                   {
                     "test": "Shared_RegexCheck",
-                    "status": "failed",
+                    "status": "supported",
                     "outcomes": [
-                      "Failed"
+                      "Passed"
                     ]
                   }
                 ]
@@ -6460,26 +6466,28 @@
             },
             "indexes": {
               "inspect": {
-                "status": "failed",
+                "status": "unsupported",
                 "evidence": [
                   {
                     "test": "Shared_DiscoveryIndexes",
-                    "status": "failed",
+                    "status": "unsupported",
                     "outcomes": [
-                      "Failed"
-                    ]
+                      "Passed"
+                    ],
+                    "note": "The table provider has no ordinary secondary indexes."
                   }
                 ]
               },
               "generate": {
-                "status": "failed",
+                "status": "unsupported",
                 "evidence": [
                   {
                     "test": "Shared_CompositeIndex",
-                    "status": "failed",
+                    "status": "unsupported",
                     "outcomes": [
-                      "Failed"
-                    ]
+                      "Passed"
+                    ],
+                    "note": "The table provider has no ordinary secondary indexes."
                   }
                 ]
               }
@@ -6490,65 +6498,68 @@
                 "evidence": []
               },
               "generate": {
-                "status": "failed",
+                "status": "unsupported",
                 "evidence": [
                   {
                     "test": "Shared_UniqueIndex",
-                    "status": "failed",
+                    "status": "unsupported",
                     "outcomes": [
-                      "Failed"
-                    ]
+                      "Passed"
+                    ],
+                    "note": "The table provider has no ordinary secondary indexes."
                   }
                 ]
               }
             },
             "index-order": {
               "inspect": {
-                "status": "failed",
+                "status": "unsupported",
                 "evidence": [
                   {
                     "test": "Shared_DiscoveryIndexes",
-                    "status": "failed",
+                    "status": "unsupported",
                     "outcomes": [
-                      "Failed"
-                    ]
+                      "Passed"
+                    ],
+                    "note": "The table provider has no ordinary secondary indexes."
                   }
                 ]
               },
               "generate": {
-                "status": "failed",
+                "status": "unsupported",
                 "evidence": [
                   {
                     "test": "Shared_IndexDirection",
-                    "status": "failed",
+                    "status": "unsupported",
                     "outcomes": [
-                      "Failed"
-                    ]
+                      "Passed"
+                    ],
+                    "note": "The table provider has no ordinary secondary indexes."
                   }
                 ]
               }
             },
             "views": {
               "inspect": {
-                "status": "failed",
+                "status": "supported",
                 "evidence": [
                   {
                     "test": "Shared_DiscoveryViews",
-                    "status": "failed",
+                    "status": "supported",
                     "outcomes": [
-                      "Failed"
+                      "Passed"
                     ]
                   }
                 ]
               },
               "generate": {
-                "status": "failed",
+                "status": "supported",
                 "evidence": [
                   {
                     "test": "Shared_ProjectionView",
-                    "status": "failed",
+                    "status": "supported",
                     "outcomes": [
-                      "Failed"
+                      "Passed"
                     ]
                   }
                 ]
@@ -6556,32 +6567,32 @@
             },
             "comments": {
               "inspect": {
-                "status": "failed",
+                "status": "supported",
                 "evidence": [
                   {
                     "test": "Shared_DiscoveryComments",
-                    "status": "failed",
+                    "status": "supported",
                     "outcomes": [
-                      "Failed"
+                      "Passed"
                     ]
                   }
                 ]
               },
               "generate": {
-                "status": "failed",
+                "status": "supported",
                 "evidence": [
                   {
                     "test": "Shared_TableComments",
-                    "status": "failed",
+                    "status": "supported",
                     "outcomes": [
-                      "Failed"
+                      "Passed"
                     ]
                   },
                   {
                     "test": "Shared_ColumnComments",
-                    "status": "failed",
+                    "status": "supported",
                     "outcomes": [
-                      "Failed"
+                      "Passed"
                     ]
                   }
                 ]
@@ -6589,25 +6600,25 @@
             },
             "literal-default": {
               "inspect": {
-                "status": "failed",
+                "status": "supported",
                 "evidence": [
                   {
                     "test": "Shared_DiscoveryDefaults",
-                    "status": "failed",
+                    "status": "supported",
                     "outcomes": [
-                      "Failed"
+                      "Passed"
                     ]
                   }
                 ]
               },
               "generate": {
-                "status": "failed",
+                "status": "supported",
                 "evidence": [
                   {
                     "test": "Shared_LiteralDefaults",
-                    "status": "failed",
+                    "status": "supported",
                     "outcomes": [
-                      "Failed"
+                      "Passed"
                     ]
                   }
                 ]
@@ -6615,25 +6626,25 @@
             },
             "null-default": {
               "inspect": {
-                "status": "failed",
+                "status": "supported",
                 "evidence": [
                   {
                     "test": "DatabricksMetadataTests.ScopedDiscoveryFollowsReferencesAndReadsCanonicalDefinitions",
-                    "status": "failed",
+                    "status": "supported",
                     "outcomes": [
-                      "Failed"
+                      "Passed"
                     ]
                   }
                 ]
               },
               "generate": {
-                "status": "failed",
+                "status": "supported",
                 "evidence": [
                   {
                     "test": "EvaluateColumnDefaultsOnInsert",
-                    "status": "failed",
+                    "status": "supported",
                     "outcomes": [
-                      "Failed"
+                      "Passed"
                     ]
                   }
                 ]
@@ -6645,13 +6656,13 @@
                 "evidence": []
               },
               "generate": {
-                "status": "failed",
+                "status": "supported",
                 "evidence": [
                   {
                     "test": "EvaluateColumnDefaultsOnInsert",
-                    "status": "failed",
+                    "status": "supported",
                     "outcomes": [
-                      "Failed"
+                      "Passed"
                     ]
                   }
                 ]
@@ -6663,13 +6674,13 @@
                 "evidence": []
               },
               "generate": {
-                "status": "failed",
+                "status": "limited",
                 "evidence": [
                   {
                     "test": "DatabricksOdbcTests.ContextAndTimeDefaultsUseTheInsertSession",
-                    "status": "failed",
+                    "status": "limited",
                     "outcomes": [
-                      "Failed"
+                      "Passed"
                     ],
                     "note": "TIME requires an opt-in. User defaults require sufficiently wide bounded text."
                   }
@@ -6678,25 +6689,25 @@
             },
             "current-timestamp": {
               "inspect": {
-                "status": "failed",
+                "status": "supported",
                 "evidence": [
                   {
                     "test": "DatabricksMetadataTests.ScopedDiscoveryFollowsReferencesAndReadsCanonicalDefinitions",
-                    "status": "failed",
+                    "status": "supported",
                     "outcomes": [
-                      "Failed"
+                      "Passed"
                     ]
                   }
                 ]
               },
               "generate": {
-                "status": "failed",
+                "status": "supported",
                 "evidence": [
                   {
                     "test": "EvaluateColumnDefaultsOnInsert",
-                    "status": "failed",
+                    "status": "supported",
                     "outcomes": [
-                      "Failed"
+                      "Passed"
                     ]
                   }
                 ]
@@ -6708,13 +6719,13 @@
                 "evidence": []
               },
               "generate": {
-                "status": "failed",
+                "status": "supported",
                 "evidence": [
                   {
                     "test": "EvaluateColumnDefaultsOnInsert",
-                    "status": "failed",
+                    "status": "supported",
                     "outcomes": [
-                      "Failed"
+                      "Passed"
                     ]
                   }
                 ]
@@ -6726,13 +6737,13 @@
                 "evidence": []
               },
               "generate": {
-                "status": "failed",
+                "status": "limited",
                 "evidence": [
                   {
                     "test": "DatabricksOdbcTests.ContextAndTimeDefaultsUseTheInsertSession",
-                    "status": "failed",
+                    "status": "limited",
                     "outcomes": [
-                      "Failed"
+                      "Passed"
                     ],
                     "note": "TIME requires an opt-in. User defaults require sufficiently wide bounded text."
                   }
@@ -6745,13 +6756,13 @@
                 "evidence": []
               },
               "generate": {
-                "status": "failed",
+                "status": "limited",
                 "evidence": [
                   {
                     "test": "DatabricksOdbcTests.ContextAndTimeDefaultsUseTheInsertSession",
-                    "status": "failed",
+                    "status": "limited",
                     "outcomes": [
-                      "Failed"
+                      "Passed"
                     ],
                     "note": "TIME requires an opt-in. User defaults require sufficiently wide bounded text."
                   }
@@ -6764,13 +6775,13 @@
                 "evidence": []
               },
               "generate": {
-                "status": "failed",
+                "status": "unsupported",
                 "evidence": [
                   {
                     "test": "DatabricksOdbcTests.ContextAndTimeDefaultsUseTheInsertSession",
-                    "status": "failed",
+                    "status": "unsupported",
                     "outcomes": [
-                      "Failed"
+                      "Passed"
                     ],
                     "note": "Delta captures namespace values before INSERT."
                   }
@@ -6783,13 +6794,13 @@
                 "evidence": []
               },
               "generate": {
-                "status": "failed",
+                "status": "unsupported",
                 "evidence": [
                   {
                     "test": "DatabricksOdbcTests.ContextAndTimeDefaultsUseTheInsertSession",
-                    "status": "failed",
+                    "status": "unsupported",
                     "outcomes": [
-                      "Failed"
+                      "Passed"
                     ],
                     "note": "Delta captures namespace values before INSERT."
                   }
@@ -6838,40 +6849,42 @@
             },
             "identity": {
               "inspect": {
-                "status": "failed",
+                "status": "limited",
                 "evidence": [
                   {
                     "test": "Shared_DiscoveryIdentity",
-                    "status": "failed",
+                    "status": "unsupported",
                     "outcomes": [
-                      "Failed"
-                    ]
+                      "Passed"
+                    ],
+                    "note": "The shared identity fixture declares INT, while Delta identity requires BIGINT."
                   },
                   {
                     "test": "DatabricksMetadataTests.ScopedDiscoveryFollowsReferencesAndReadsCanonicalDefinitions",
-                    "status": "failed",
+                    "status": "limited",
                     "outcomes": [
-                      "Failed"
+                      "Passed"
                     ],
                     "note": "BIGINT BY DEFAULT identities are reconstructed. ALWAYS identity is diagnosed."
                   }
                 ]
               },
               "generate": {
-                "status": "failed",
+                "status": "limited",
                 "evidence": [
                   {
                     "test": "Shared_IdentitySeedIncrement",
-                    "status": "failed",
+                    "status": "unsupported",
                     "outcomes": [
-                      "Failed"
-                    ]
+                      "Passed"
+                    ],
+                    "note": "The shared identity fixture declares INT, while Delta identity requires BIGINT."
                   },
                   {
                     "test": "DatabricksOdbcTests.DeltaIdentitySupportsExplicitValuesAndResetsOnReplacement",
-                    "status": "failed",
+                    "status": "limited",
                     "outcomes": [
-                      "Failed"
+                      "Passed"
                     ],
                     "note": "Delta requires a BIGINT destination."
                   }
@@ -6880,33 +6893,34 @@
             },
             "computed": {
               "inspect": {
-                "status": "failed",
+                "status": "supported",
                 "evidence": [
                   {
                     "test": "Shared_DiscoveryGeneration",
-                    "status": "failed",
+                    "status": "supported",
                     "outcomes": [
-                      "Failed"
+                      "Passed"
                     ]
                   }
                 ]
               },
               "generate": {
-                "status": "failed",
+                "status": "limited",
                 "evidence": [
                   {
                     "test": "Shared_GeneratedStored",
-                    "status": "failed",
+                    "status": "supported",
                     "outcomes": [
-                      "Failed"
+                      "Passed"
                     ]
                   },
                   {
                     "test": "Shared_GeneratedVirtual",
-                    "status": "failed",
+                    "status": "unsupported",
                     "outcomes": [
-                      "Failed"
-                    ]
+                      "Passed"
+                    ],
+                    "note": "Delta only supports stored generated columns."
                   }
                 ]
               }
@@ -6917,13 +6931,13 @@
                 "evidence": []
               },
               "generate": {
-                "status": "failed",
+                "status": "supported",
                 "evidence": [
                   {
                     "test": "Shared_GeneratedStored",
-                    "status": "failed",
+                    "status": "supported",
                     "outcomes": [
-                      "Failed"
+                      "Passed"
                     ]
                   }
                 ]
@@ -6935,39 +6949,40 @@
                 "evidence": []
               },
               "generate": {
-                "status": "failed",
+                "status": "unsupported",
                 "evidence": [
                   {
                     "test": "Shared_GeneratedVirtual",
-                    "status": "failed",
+                    "status": "unsupported",
                     "outcomes": [
-                      "Failed"
-                    ]
+                      "Passed"
+                    ],
+                    "note": "Delta only supports stored generated columns."
                   }
                 ]
               }
             },
             "native-array": {
               "inspect": {
-                "status": "failed",
+                "status": "supported",
                 "evidence": [
                   {
                     "test": "StructuredRecursiveRoundTrip",
-                    "status": "failed",
+                    "status": "supported",
                     "outcomes": [
-                      "Failed"
+                      "Passed"
                     ]
                   }
                 ]
               },
               "generate": {
-                "status": "failed",
+                "status": "supported",
                 "evidence": [
                   {
                     "test": "StructuredRecursiveRoundTrip",
-                    "status": "failed",
+                    "status": "supported",
                     "outcomes": [
-                      "Failed"
+                      "Passed"
                     ]
                   }
                 ]
@@ -6975,25 +6990,25 @@
             },
             "native-map": {
               "inspect": {
-                "status": "failed",
+                "status": "supported",
                 "evidence": [
                   {
                     "test": "StructuredRecursiveRoundTrip",
-                    "status": "failed",
+                    "status": "supported",
                     "outcomes": [
-                      "Failed"
+                      "Passed"
                     ]
                   }
                 ]
               },
               "generate": {
-                "status": "failed",
+                "status": "supported",
                 "evidence": [
                   {
                     "test": "StructuredRecursiveRoundTrip",
-                    "status": "failed",
+                    "status": "supported",
                     "outcomes": [
-                      "Failed"
+                      "Passed"
                     ]
                   }
                 ]
@@ -7001,25 +7016,25 @@
             },
             "native-struct": {
               "inspect": {
-                "status": "failed",
+                "status": "supported",
                 "evidence": [
                   {
                     "test": "StructuredRecursiveRoundTrip",
-                    "status": "failed",
+                    "status": "supported",
                     "outcomes": [
-                      "Failed"
+                      "Passed"
                     ]
                   }
                 ]
               },
               "generate": {
-                "status": "failed",
+                "status": "supported",
                 "evidence": [
                   {
                     "test": "StructuredRecursiveRoundTrip",
-                    "status": "failed",
+                    "status": "supported",
                     "outcomes": [
-                      "Failed"
+                      "Passed"
                     ]
                   }
                 ]
@@ -7027,26 +7042,26 @@
             },
             "native-json": {
               "inspect": {
-                "status": "failed",
+                "status": "limited",
                 "evidence": [
                   {
                     "test": "DatabricksOdbcTests.StructuredDeltaGuarantees",
-                    "status": "failed",
+                    "status": "limited",
                     "outcomes": [
-                      "Failed"
+                      "Passed"
                     ],
                     "note": "Native VARIANT and fixed-size vectors require supported Delta capabilities."
                   }
                 ]
               },
               "generate": {
-                "status": "failed",
+                "status": "limited",
                 "evidence": [
                   {
                     "test": "DatabricksOdbcTests.StructuredDeltaGuarantees",
-                    "status": "failed",
+                    "status": "limited",
                     "outcomes": [
-                      "Failed"
+                      "Passed"
                     ],
                     "note": "Native VARIANT and fixed-size vectors require supported Delta capabilities."
                   }
@@ -7055,25 +7070,25 @@
             },
             "json-text": {
               "inspect": {
-                "status": "failed",
+                "status": "supported",
                 "evidence": [
                   {
                     "test": "StructuredRecursiveRoundTrip",
-                    "status": "failed",
+                    "status": "supported",
                     "outcomes": [
-                      "Failed"
+                      "Passed"
                     ]
                   }
                 ]
               },
               "generate": {
-                "status": "failed",
+                "status": "supported",
                 "evidence": [
                   {
                     "test": "StructuredRecursiveRoundTrip",
-                    "status": "failed",
+                    "status": "supported",
                     "outcomes": [
-                      "Failed"
+                      "Passed"
                     ]
                   }
                 ]
@@ -7081,26 +7096,26 @@
             },
             "vector": {
               "inspect": {
-                "status": "failed",
+                "status": "limited",
                 "evidence": [
                   {
                     "test": "DatabricksOdbcTests.StructuredDeltaGuarantees",
-                    "status": "failed",
+                    "status": "limited",
                     "outcomes": [
-                      "Failed"
+                      "Passed"
                     ],
                     "note": "Native VARIANT and fixed-size vectors require supported Delta capabilities."
                   }
                 ]
               },
               "generate": {
-                "status": "failed",
+                "status": "limited",
                 "evidence": [
                   {
                     "test": "DatabricksOdbcTests.StructuredDeltaGuarantees",
-                    "status": "failed",
+                    "status": "limited",
                     "outcomes": [
-                      "Failed"
+                      "Passed"
                     ],
                     "note": "Native VARIANT and fixed-size vectors require supported Delta capabilities."
                   }
