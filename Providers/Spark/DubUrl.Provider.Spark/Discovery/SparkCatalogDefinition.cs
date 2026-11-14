@@ -43,9 +43,9 @@ internal static class SparkCatalogDefinition
         return definition[tokens[index + 1].Start..(end < 0 ? definition.Length : tokens[end].Start)].Trim();
     }
 
-    internal static MetadataGeneration? Generation(string definition, out bool unsupported)
+    internal static MetadataGeneration? Generation(string definition, out string? unsupported)
     {
-        unsupported = false;
+        unsupported = null;
         var tokens = SparkSqlSyntax.Tokenize(definition);
         var generated = tokens.FindIndex(AfterType(tokens), token => token.Depth == 0 && token.Is("GENERATED"));
         if (generated < 0) return null;
@@ -64,7 +64,7 @@ internal static class SparkCatalogDefinition
             if (end > generated + 4 && TryExpression(definition[tokens[generated + 3].End..tokens[end].Start], out var expression))
                 return new(Expression: expression, Stored: true);
         }
-        unsupported = true;
+        unsupported = definition[tokens[generated].Start..].TrimEnd();
         return null;
     }
 
