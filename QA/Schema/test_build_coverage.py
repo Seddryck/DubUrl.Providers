@@ -90,6 +90,36 @@ class CoverageTests(unittest.TestCase):
             self.assertEqual(cell["status"], "failed")
             self.assertEqual(cell["evidence"][0]["outcomes"], ["Failed", "Passed"])
 
+    def test_explicit_null_separates_rendered_ddl_from_catalog_preservation(self):
+        self.trx("rejections", [
+            ("SchemaCoverageRenderTests", "RendersExplicitNullDefault_PostgreSql", "Passed", None),
+            ("SchemaCoverageRenderTests", "RendersExplicitNullDefault_Spark", "Passed", None),
+        ])
+        self.trx("PostgreSql", [
+            ("PostgreSqlSchemaTests", "Shared_DiscoveryNullDefault", "Passed",
+             "Expectation: NullDefaultNotPreserved. The catalog drops the default."),
+        ])
+        self.trx("Databricks", [
+            ("DatabricksOdbcTests", "EvaluateColumnDefaultsOnInsert", "Passed", None),
+            ("DatabricksSchemaContractTests", "Shared_DiscoveryNullDefault", "Passed",
+             "Expectation: Supported. The catalog preserves the default."),
+        ])
+
+        targets = self.targets()
+        pgsql = targets["PostgreSql"]["coverage"]["null-default"]
+        self.assertEqual(pgsql["generate"]["status"], "supported")
+        self.assertEqual(pgsql["generate"]["evidence"][0]["artifact"], "schema-qa-rejections")
+        self.assertEqual(pgsql["inspect"]["status"], "unsupported")
+        self.assertEqual(pgsql["inspect"]["evidence"][0]["note"], "The catalog drops the default.")
+
+        spark = targets["Spark"]["coverage"]["null-default"]
+        self.assertEqual(spark["generate"]["status"], "supported")
+        self.assertEqual(spark["inspect"]["status"], "unverified")
+
+        databricks = targets["Databricks"]["coverage"]["null-default"]
+        self.assertEqual(databricks["generate"]["status"], "unverified")
+        self.assertEqual(databricks["inspect"]["status"], "supported")
+
     def test_sql_server_variants_keep_different_meanings_for_the_same_passing_test(self):
         test = [("StructuredTypeTests", "NativeJsonIsQualifiedByVersion", "Passed", None)]
         self.trx("SqlServer", test)
