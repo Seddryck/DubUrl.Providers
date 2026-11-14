@@ -50,6 +50,7 @@ public sealed partial class SqlServerBaselineTests
             ["DiscoveryUnique"] = FeatureExpectation.Supported,
             ["DiscoveryForeignKey"] = FeatureExpectation.Supported,
             ["DiscoveryDefaults"] = FeatureExpectation.Supported,
+            ["DiscoveryNullDefault"] = new(ExpectedOutcome.NullDefaultNotPreserved, "SQL Server exposes the NULL literal in the default constraint definition. DubUrl's catalog reader loses it."),
             ["DiscoveryIdentity"] = FeatureExpectation.Supported,
             ["DiscoveryChecks"] = FeatureExpectation.Supported,
             ["DiscoveryGeneration"] = FeatureExpectation.Supported,

@@ -55,6 +55,7 @@ public sealed partial class PostgreSqlSchemaTests
             ["DiscoveryUnique"] = FeatureExpectation.Supported,
             ["DiscoveryForeignKey"] = FeatureExpectation.Supported,
             ["DiscoveryDefaults"] = FeatureExpectation.Supported,
+            ["DiscoveryNullDefault"] = new(ExpectedOutcome.NullDefaultNotPreserved, "PostgreSQL stores neither declaration as a column default in its catalog."),
             ["DiscoveryIdentity"] = FeatureExpectation.Supported,
             ["DiscoveryChecks"] = FeatureExpectation.Supported,
             ["DiscoveryGeneration"] = FeatureExpectation.Supported,

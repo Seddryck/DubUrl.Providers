@@ -50,6 +50,7 @@ public sealed partial class DuckDbBaselineTests
             ["DiscoveryUnique"] = FeatureExpectation.Supported,
             ["DiscoveryForeignKey"] = FeatureExpectation.Supported,
             ["DiscoveryDefaults"] = FeatureExpectation.Supported,
+            ["DiscoveryNullDefault"] = new(ExpectedOutcome.NullDefaultNotPreserved, "DuckDB exposes the NULL literal in column_default. DubUrl's catalog reader loses it."),
             ["DiscoveryIdentity"] = FeatureExpectation.Supported,
             ["DiscoveryChecks"] = FeatureExpectation.Supported,
             ["DiscoveryGeneration"] = FeatureExpectation.Supported,

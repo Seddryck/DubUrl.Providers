@@ -66,6 +66,9 @@ public abstract class SparkSchemaProviderContract : ProviderContract
     protected override DatabaseObjectName QualifiedName(DbConnection connection, string name) => new(name, schema, catalog: catalog);
     protected override DiscoveryOptions DiscoveryScope(string name) => new() { Catalogs = [catalog], Schemas = [name] };
     protected override ISchemaMetadataReader CreateMetadataReader() => IsDelta ? new DatabricksMetadataReader() : new SparkMetadataReader();
+    protected override string NullDefaultTableSuffix => IsDelta
+        ? " USING DELTA TBLPROPERTIES ('delta.feature.allowColumnDefaults' = 'supported')"
+        : " USING PARQUET";
     protected override PublicDatabase CreatePublicDatabase() => new(scoped, () => { });
     protected override string DatabaseErrorCode(DbException exception) => exception.SqlState ?? string.Empty;
     protected override void ExecuteScript(DbConnection connection, string script) => SparkSchemaQa.Execute(connection, script);

@@ -15,6 +15,7 @@ EXPECTATIONS = {
     "RendererRejects": "unsupported",
     "DatabaseRejects": "unsupported",
     "NoDiscovery": "unsupported",
+    "NullDefaultNotPreserved": "unsupported",
     "NoEngineComments": "unsupported",
     "NotEnforced": "limited",
     "Informational": "limited",
@@ -115,6 +116,8 @@ def index_focused(config, providers, scenarios):
             raise ValueError(f"Invalid coverage rule for {rule['test']}")
         if not set(rule["targets"]) <= targets.keys() or not set(rule["features"]) <= features.keys():
             raise ValueError(f"Unknown coverage target or feature for {rule['test']}")
+        if rule.get("artifact", REJECTIONS_ARTIFACT) != REJECTIONS_ARTIFACT:
+            raise ValueError(f"Unknown coverage artifact for {rule['test']}")
         operations = OPERATIONS if rule["operation"] == "both" else (rule["operation"],)
         for target in rule["targets"]:
             for feature in rule["features"]:
@@ -177,7 +180,11 @@ def build_coverage(config, inventory, scenarios, artifacts, revision, run_url, c
                     else:
                         rules = [{"test": "Shared_" + name} for name in feature.get(operation, ())] if target["shared"] else []
                         rules.extend(focused.get(key, ()))
-                        evidence = [item for rule in rules if (item := observation(rule, results, operation)) is not None]
+                        evidence = [
+                            item for rule in rules
+                            if (item := observation(rule, rejection_results if "artifact" in rule else results, operation))
+                            is not None
+                        ]
                     coverage[feature_id][operation] = {"status": summarize(evidence), "evidence": evidence}
             column["targets"].append({
                 "id": target["id"],

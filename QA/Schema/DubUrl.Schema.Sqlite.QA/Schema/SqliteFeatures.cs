@@ -50,6 +50,7 @@ public sealed partial class SqliteSchemaTests
             ["DiscoveryUnique"] = FeatureExpectation.Supported,
             ["DiscoveryForeignKey"] = FeatureExpectation.Supported,
             ["DiscoveryDefaults"] = FeatureExpectation.Supported,
+            ["DiscoveryNullDefault"] = new(ExpectedOutcome.NullDefaultNotPreserved, "SQLite exposes the NULL literal in dflt_value. DubUrl's catalog reader loses it."),
             ["DiscoveryIdentity"] = new(ExpectedOutcome.RendererRejects,"The discovery scenario requests non-default identity seed and increment.","seed 1"),
             ["DiscoveryChecks"] = FeatureExpectation.Supported,
             ["DiscoveryGeneration"] = FeatureExpectation.Supported,

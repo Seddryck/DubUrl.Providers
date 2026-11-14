@@ -102,7 +102,7 @@ public sealed class SchemaCoverageRejectionTests
         };
     }
 
-    private static IDialect TargetDialect(string target) => target switch
+    internal static IDialect TargetDialect(string target) => target switch
     {
         "Sqlite" => Dialect<SqliteDialect>().WithServerVersion(new(3, 50)),
         "DuckDb" => Dialect<DuckDbDialect>(),
