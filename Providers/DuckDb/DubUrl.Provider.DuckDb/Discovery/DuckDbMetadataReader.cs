@@ -2,6 +2,7 @@ using System.Data;
 using System.Data.Common;
 using System.Runtime.CompilerServices;
 using DubUrl.Discovery;
+using DubUrl.Providers.Discovery;
 using DubUrl.Provider.DuckDb.Schema.Generation;
 using DubUrl.Schema;
 using DubUrl.Schema.Constraints;
@@ -11,6 +12,9 @@ namespace DubUrl.Provider.DuckDb.Discovery;
 public sealed class DuckDbMetadataReader : CatalogSchemaMetadataReader, IUniqueConstraintMetadataReader, IStructuredColumnMetadataReader
 {
     private readonly ConditionalWeakTable<MetadataColumn, StructuredColumnMetadata> structuredTypes = new();
+
+    public new Task<SchemaMetadata> ReadAsync(DbConnection connection, DiscoveryOptions options, CancellationToken cancellationToken = default)
+        => ProviderSchemaDiagnostics.ReadAsync(() => base.ReadAsync(connection, options, cancellationToken));
 
     public async Task<StructuredSchemaMetadata> ReadWithStructuredTypesAsync(DbConnection connection,
         DiscoveryOptions options, CancellationToken cancellationToken)
@@ -79,7 +83,10 @@ public sealed class DuckDbMetadataReader : CatalogSchemaMetadataReader, IUniqueC
         if (sql != ColumnsSql) return rows;
         var normalized = rows.Select(row =>
         {
-            var expression = DuckDbCatalogSql.GeneratedExpression(row.Text("table_sql") ?? "", row.Text("column_name")!);
+            var expression = DuckDbCatalogSql.GeneratedExpression(row.Text("table_sql") ?? "", row.Text("column_name")!,
+                out var rejectedClause);
+            if (rejectedClause is not null)
+                return row.With(("rejected_generation", rejectedClause), ("default_expression", null));
             return expression is null ? row : row.With(("generation_expression", expression), ("default_expression", null), ("stored", false));
         }).ToList();
         await ReadVectorChecksAsync(connection, normalized, cancellationToken).ConfigureAwait(false);
@@ -118,7 +125,7 @@ public sealed class DuckDbMetadataReader : CatalogSchemaMetadataReader, IUniqueC
             }
             else if (readGeneration)
             {
-                normalized[i] = column.With(("generation_expression", "<unrepresentable sequence-backed identity>"),
+                normalized[i] = column.With(("rejected_generation", defaultSql),
                     ("default_expression", null));
             }
         }
@@ -171,7 +178,7 @@ public sealed class DuckDbMetadataReader : CatalogSchemaMetadataReader, IUniqueC
             var columns = DuckDbCatalogSql.IndexColumns(row.Text("index_sql") ?? "");
             if (columns is null)
             {
-                indexes.Add(row.With(("unsupported", true)));
+                indexes.Add(row.With(("unsupported", true), ("index_expression", row.Text("index_sql"))));
                 continue;
             }
             for (var i = 0; i < columns.Length; i++)
@@ -232,6 +239,11 @@ public sealed class DuckDbMetadataReader : CatalogSchemaMetadataReader, IUniqueC
     protected override MetadataColumn MapCatalogColumn(CatalogRow row, DiscoveryOptions options,
         Action<SchemaFeature, string> diagnose)
     {
+        if (options.Features.Contains(SchemaFeature.Generation) && row.Text("rejected_generation") is { } rejected)
+            ProviderSchemaDiagnostics.Report(diagnose, Identity(row), SchemaFeature.Generation,
+                "A generated column or sequence-backed identity cannot be represented.",
+                member: row.Text("column_name"), nativeDefinition: rejected);
+
         if (row.Text("type_name") is { } name && DuckDbCatalogSql.StructuredType(name) is { } structured)
         {
             if (row.Text("vector_check") is not null && DuckDbCatalogSql.FixedVector(name) is { } vector)
