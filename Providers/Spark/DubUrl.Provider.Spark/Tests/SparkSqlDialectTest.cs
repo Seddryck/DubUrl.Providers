@@ -363,9 +363,9 @@ public sealed class SparkSqlDialectTest
         Assert.That(SparkCatalogDefinition.DefaultSql(columns["n"]), Is.EqualTo("NULL"));
         Assert.That(SparkCatalogDefinition.DefaultSql(columns["id"]), Is.Null);
         Assert.That(SparkCatalogDefinition.Generation(columns["id"], out var supported), Is.EqualTo(new MetadataGeneration(20, -2)));
-        Assert.That(supported, Is.False);
+        Assert.That(supported, Is.Null);
         Assert.That(SparkCatalogDefinition.Generation(columns["always"], out var unsupported), Is.Null);
-        Assert.That(unsupported, Is.True);
+        Assert.That(unsupported, Is.EqualTo("GENERATED ALWAYS AS IDENTITY"));
     }
 
     private static SparkSqlDialect Spark() => DefaultRegistry.GetDialects("odbc+spark").Get<SparkSqlDialect>();

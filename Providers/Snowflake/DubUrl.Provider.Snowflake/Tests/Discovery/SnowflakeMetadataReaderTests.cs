@@ -77,6 +77,22 @@ public class SnowflakeMetadataReaderTests
     }
 
     [Test]
+    public async Task RejectedScalarUsesTheCompleteDescribeDeclaration()
+    {
+        var commands = new List<CommandLog>();
+        var connection = Catalog(commands, () => Tables(Identity),
+            () => Columns(Column(Identity, "stamp", 1, "TIMESTAMP_TZ", "YES"), Column(Identity, "id", 2, "NUMBER", "NO", 10, 0)),
+            () => Describe(["stamp", "TIMESTAMP_TZ(3)"], ["id", "NUMBER(10,0)"]));
+        var result = await new SnowflakeMetadataReader().ReadAsync(connection.Object, Options);
+        var rejection = result.Diagnostics.Single(diagnostic => diagnostic.Code == "SDI009");
+        Assert.That(rejection.Object, Is.EqualTo(Identity));
+        Assert.That(rejection.Member, Is.EqualTo("stamp"));
+        Assert.That(rejection.NativeDefinition, Is.EqualTo("TIMESTAMP_TZ(3)"));
+        Assert.That(result.Tables.Single().Columns[1].Type, Is.EqualTo(DbType.Decimal));
+        Assert.That(commands, Has.Count.EqualTo(3));
+    }
+
+    [Test]
     public async Task UsesCompleteCatalogDeclarationsWithoutAnExtraQuery()
     {
         var commands = new List<CommandLog>();

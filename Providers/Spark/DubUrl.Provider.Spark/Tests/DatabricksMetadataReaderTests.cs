@@ -59,10 +59,18 @@ public sealed class DatabricksMetadataReaderTests
             Assert.That(metadata.Diagnostics.Single(diagnostic => diagnostic.Feature == feature
                 && diagnostic.Coverage == MetadataCoverage.Inaccessible).Object, Is.EqualTo(child));
         }
-        Assert.That(metadata.Diagnostics.Any(diagnostic => diagnostic.Feature == SchemaFeature.Checks
-            && diagnostic.Coverage == MetadataCoverage.Unrepresentable && diagnostic.Object == parent), Is.True);
-        Assert.That(metadata.Diagnostics.Any(diagnostic => diagnostic.Feature == SchemaFeature.Defaults
-            && diagnostic.Coverage == MetadataCoverage.Unrepresentable && diagnostic.Object == parent), Is.True);
+        var rejectedCheck = metadata.Diagnostics.Single(diagnostic => diagnostic.Feature == SchemaFeature.Checks
+            && diagnostic.Coverage == MetadataCoverage.Unrepresentable && diagnostic.Object == parent);
+        Assert.That(rejectedCheck.Constraint, Is.EqualTo("raw_check"));
+        Assert.That(rejectedCheck.NativeDefinition, Is.EqualTo("id >= 0"));
+        var foreignKey = metadata.Diagnostics.Single(diagnostic => diagnostic.Feature == SchemaFeature.ForeignKeys
+            && diagnostic.Coverage == MetadataCoverage.Unrepresentable && diagnostic.Object == child);
+        Assert.That(foreignKey.Constraint, Is.EqualTo("fk"));
+        Assert.That(foreignKey.NativeDefinition, Is.EqualTo("FOREIGN KEY (`id`) REFERENCES `c`.`other`.`parent` (`id`) NOT ENFORCED"));
+        var rejectedDefault = metadata.Diagnostics.Single(diagnostic => diagnostic.Feature == SchemaFeature.Defaults
+            && diagnostic.Coverage == MetadataCoverage.Unrepresentable && diagnostic.Object == parent);
+        Assert.That(rejectedDefault.Member, Is.EqualTo("namespace"));
+        Assert.That(rejectedDefault.NativeDefinition, Is.EqualTo("current_catalog()"));
 
         DbDataReader Properties(string sql)
         {
@@ -211,6 +219,44 @@ public sealed class DatabricksMetadataReaderTests
         ]);
         Assert.That(snapshot.StructuredColumns.Values.Single(), Is.EqualTo(new StructuredColumnMetadata(
             new(structure, StructuredStorage.Native), MetadataCoverage.Available)));
+    }
+
+    [Test]
+    public async Task SparkReportsTheDefaultTakenFromShowCreate()
+    {
+        using var connection = Connection(sql => sql switch
+        {
+            "SHOW NAMESPACES IN `spark_catalog`" => Rows("namespace", ["default"]),
+            "SHOW VIEWS IN `spark_catalog`.`default`" => Rows("viewName"),
+            "SHOW TABLES IN `spark_catalog`.`default`" => Rows("tableName", ["t"]),
+            "DESCRIBE TABLE EXTENDED `spark_catalog`.`default`.`t`" => Rows("col_name data_type", ["value", "int"]),
+            _ => throw new AssertionException(sql),
+        }, _ => "CREATE TABLE t (value INT DEFAULT abs(-1)) USING PARQUET");
+        ISchemaMetadataReader reader = new SparkMetadataReader();
+        var options = StructuredScope("spark_catalog", "default") with { Features = [SchemaFeature.Defaults] };
+        var metadata = await reader.ReadAsync(connection, options);
+        var rejected = metadata.Diagnostics.Single(diagnostic => diagnostic.Code == "SDI009");
+        Assert.That(rejected.Member, Is.EqualTo("value"));
+        Assert.That(rejected.NativeDefinition, Is.EqualTo("abs(-1)"));
+    }
+
+    [Test]
+    public async Task DatabricksReportsRejectedIdentityClause()
+    {
+        const string generation = "GENERATED ALWAYS AS IDENTITY (START WITH 2 INCREMENT BY 3)";
+        using var connection = Connection(sql => sql switch
+        {
+            _ when sql.Contains("FROM `c`.information_schema.tables") => Rows("catalog_name schema_name table_name", ["c", "s", "t"]),
+            _ when sql.Contains("FROM `c`.information_schema.columns") => Rows("catalog_name schema_name table_name column_name ordinal type_name nullable",
+                ["c", "s", "t", "id", 1, "BIGINT", "NO"]),
+            _ => throw new AssertionException(sql),
+        }, _ => $"CREATE TABLE t (id BIGINT {generation}) USING DELTA");
+        ISchemaMetadataReader reader = new DatabricksMetadataReader();
+        var options = StructuredScope() with { Features = [SchemaFeature.Generation] };
+        var metadata = await reader.ReadAsync(connection, options);
+        var rejected = metadata.Diagnostics.Single(diagnostic => diagnostic.Code == "SDI009");
+        Assert.That(rejected.Member, Is.EqualTo("id"));
+        Assert.That(rejected.NativeDefinition, Is.EqualTo(generation));
     }
 
     private static DiscoveryOptions StructuredScope(string catalog = "c", string schema = "s")

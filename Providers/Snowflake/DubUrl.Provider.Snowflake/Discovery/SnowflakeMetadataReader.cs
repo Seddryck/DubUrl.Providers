@@ -151,11 +151,11 @@ public sealed class SnowflakeMetadataReader : CatalogSchemaMetadataReader, ISche
         return $" AND {column} IN ({string.Join(", ", Enumerable.Repeat("?", names.Length))})";
     }
 
-    private static async Task ReadTypeDeclarationsAsync(DbConnection connection, List<CatalogRow> rows,
+    private async Task ReadTypeDeclarationsAsync(DbConnection connection, List<CatalogRow> rows,
         CancellationToken cancellationToken)
     {
         var tables = Enumerable.Range(0, rows.Count)
-            .Where(i => IsStructured(rows[i]) && NeedsDeclaration(rows[i]))
+            .Where(i => IsStructured(rows[i]) ? NeedsDeclaration(rows[i]) : MapColumn(rows[i]).Type is null)
             .GroupBy(i => Identity(rows[i])).ToArray();
         foreach (var table in tables)
         {
@@ -175,7 +175,7 @@ public sealed class SnowflakeMetadataReader : CatalogSchemaMetadataReader, ISche
                     var matches = declarations[rows[i].Text("column_name")];
                     if (matches.Count() == 1 && matches.First().Text("type") is { } declaration
                         && Family(rows[i]) == SnowflakeTypeDeclaration.Family(declaration))
-                        rows[i] = rows[i].With(("structured_declaration", declaration));
+                        rows[i] = rows[i].With(("native_type_declaration", declaration));
                 }
             }
             catch (DbException)
@@ -205,7 +205,7 @@ public sealed class SnowflakeMetadataReader : CatalogSchemaMetadataReader, ISche
         if (!IsStructured(row))
             return column;
 
-        var declaration = row.Text("structured_declaration") ?? row.Text("type_name")!;
+        var declaration = row.Text("native_type_declaration") ?? row.Text("type_name")!;
         var shape = SnowflakeTypeDeclaration.Parse(declaration);
         var evidence = shape switch
         {

@@ -2,6 +2,7 @@ using System.Data;
 using System.Data.Common;
 using System.Runtime.CompilerServices;
 using DubUrl.Discovery;
+using DubUrl.Providers.Discovery;
 using DubUrl.Provider.Sqlite.Schema.Generation;
 using DubUrl.Schema;
 using DubUrl.Schema.Constraints;
@@ -12,6 +13,9 @@ namespace DubUrl.Provider.Sqlite.Discovery;
 public sealed class SqliteMetadataReader : CatalogSchemaMetadataReader, IUniqueConstraintMetadataReader, IStructuredColumnMetadataReader
 {
     private readonly ConditionalWeakTable<MetadataColumn, StructuredColumnMetadata> structured = new();
+
+    public new Task<SchemaMetadata> ReadAsync(DbConnection connection, DiscoveryOptions options, CancellationToken cancellationToken = default)
+        => ProviderSchemaDiagnostics.ReadAsync(() => base.ReadAsync(connection, options, cancellationToken));
 
     public async Task<StructuredSchemaMetadata> ReadWithStructuredTypesAsync(DbConnection connection,
         DiscoveryOptions options, CancellationToken cancellationToken)
@@ -40,9 +44,17 @@ public sealed class SqliteMetadataReader : CatalogSchemaMetadataReader, IUniqueC
         if (definition.Generated.Count > 0 && options.Features.Contains(SchemaFeature.Generation))
             columns = columns.Select(column => column.Text("generation_expression") is not null
                 && column.Text("column_name") is { } name && definition.Generated.TryGetValue(name, out var expression)
-                    ? column.With(("generation_expression", expression)) : column).ToList();
+                    ? column.With(("generation_expression", expression), ("generation_sql", definition.GeneratedSql[name]))
+                    : column).ToList();
 
-        var table = base.MapTable(row, columns, keyRows, indexRows, checkRows, options, diagnose);
+        var rejectedChecks = checkRows.Where(check => Identity(check) == identity
+            && !DiscoveryExpressions.TryCheck(check.Text("expression") ?? "", check.Text("check_name"), out _)).ToHashSet();
+        foreach (var check in rejectedChecks.OrderBy(check => check.Text("check_name"), StringComparer.Ordinal))
+            ProviderSchemaDiagnostics.Report(diagnose, identity, SchemaFeature.Checks, "A check expression cannot be represented.",
+                member: check.Text("check_column"), constraint: check.Text("check_name"), nativeDefinition: check.Text("check_sql"));
+
+        var table = base.MapTable(row, columns, keyRows, indexRows,
+            checkRows.Where(check => !rejectedChecks.Contains(check)).ToList(), options, diagnose);
         var ambiguous = columns.Where(column => column.Text("type_name")?.Trim().ToUpperInvariant() is "JSON" or "JSONB")
             .Select(column => column.Text("column_name")).ToHashSet(StringComparer.Ordinal);
         foreach (var column in table.Columns)
@@ -58,6 +70,14 @@ public sealed class SqliteMetadataReader : CatalogSchemaMetadataReader, IUniqueC
     protected override MetadataColumn MapCatalogColumn(CatalogRow row, DiscoveryOptions options,
         Action<SchemaFeature, string> diagnose)
     {
+        if (options.Features.Contains(SchemaFeature.Generation) && row.Text("generation_sql") is { } generationSql
+            && !DiscoveryExpressions.TryExpression(row.Text("generation_expression")!, out _))
+        {
+            ProviderSchemaDiagnostics.Report(diagnose, Identity(row), SchemaFeature.Generation,
+                "A generated expression cannot be represented.", member: row.Text("column_name"), nativeDefinition: generationSql);
+            row = row.With(("generation_expression", null));
+        }
+
         if (!options.Features.Contains(SchemaFeature.Defaults))
             return base.MapCatalogColumn(row, options, diagnose);
 
@@ -112,7 +132,8 @@ public sealed class SqliteMetadataReader : CatalogSchemaMetadataReader, IUniqueC
             var found = await QueryAsync(connection, query, cancellationToken, ("@database", name)).ConfigureAwait(false);
             if (sql == ChecksSql)
                 found = found.SelectMany(row => SqliteTableDefinition.Parse(row.Text("definition")).Checks.Select(check =>
-                    row.With(("check_name", check.Name), ("expression", check.Expression)))).ToList();
+                    row.With(("check_name", check.Name), ("check_column", check.Column),
+                        ("expression", check.Expression), ("check_sql", check.Sql)))).ToList();
             rows.AddRange(found.Select(row => row.With(("schema_name", null), ("database_name", name),
                 ("target_schema", null), ("target_database", row.Text("target_table") is null ? null : name))));
         }
@@ -149,8 +170,12 @@ public sealed class SqliteMetadataReader : CatalogSchemaMetadataReader, IUniqueC
     protected override string IndexesSql => """
         SELECT 'main' AS schema_name,t.name AS table_name,i.name AS index_name,i."unique" AS unique_index,
           x.seqno AS ordinal,x.name AS column_name,x.desc AS descending,
-          CASE WHEN i.partial=1 OR x.cid<0 THEN 1 ELSE 0 END AS unsupported
-        FROM {database}.sqlite_schema t,pragma_index_list(t.name,@database) i,pragma_index_xinfo(i.name,@database) x
+          CASE WHEN i.partial=1 OR x.cid<0 THEN 1 ELSE 0 END AS unsupported,
+          CASE WHEN i.partial=1 OR x.cid<0 THEN idx.sql END AS index_expression
+        FROM {database}.sqlite_schema t
+        JOIN pragma_index_list(t.name,@database) i
+        JOIN pragma_index_xinfo(i.name,@database) x
+        LEFT JOIN {database}.sqlite_schema idx ON idx.type='index' AND idx.name=i.name AND idx.tbl_name=t.name
         WHERE t.type='table' AND t.name NOT LIKE 'sqlite_%' AND i.origin='c' AND x."key"=1
         """;
     protected override string ViewsSql => """

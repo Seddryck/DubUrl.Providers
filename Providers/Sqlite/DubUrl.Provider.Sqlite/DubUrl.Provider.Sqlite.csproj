@@ -1,5 +1,8 @@
 <Project Sdk="Microsoft.NET.Sdk">
-  <PropertyGroup><Description>SQLite dialect, mapping, and rewriting for DubUrl.</Description></PropertyGroup>
+  <PropertyGroup>
+    <ProviderSchemaDiagnostics>true</ProviderSchemaDiagnostics>
+    <Description>SQLite dialect, mapping, and rewriting for DubUrl.</Description>
+  </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="DubUrl.Schema" Version="$(SchemaPackageVersion)" />
   </ItemGroup>

@@ -2,6 +2,7 @@ using System.Data;
 using System.Data.Common;
 using System.Text.RegularExpressions;
 using DubUrl.Discovery;
+using DubUrl.Providers.Discovery;
 using DubUrl.Schema;
 using DubUrl.Schema.Constraints;
 using DubUrl.Provider.MySql.Sql;
@@ -11,6 +12,9 @@ namespace DubUrl.Provider.MySql.Discovery;
 /// <summary>Read-only MySQL 8 catalog discovery. Compatible protocols are deliberately not opted in.</summary>
 public class MySqlMetadataReader : CatalogSchemaMetadataReader, IUniqueConstraintMetadataReader, IStructuredColumnMetadataReader
 {
+    public new Task<SchemaMetadata> ReadAsync(DbConnection connection, DiscoveryOptions options, CancellationToken cancellationToken = default)
+        => ProviderSchemaDiagnostics.ReadAsync(() => base.ReadAsync(connection, options, cancellationToken));
+
     public async Task<StructuredSchemaMetadata> ReadWithStructuredTypesAsync(DbConnection connection,
         DiscoveryOptions options, CancellationToken cancellationToken)
     {
@@ -47,16 +51,19 @@ public class MySqlMetadataReader : CatalogSchemaMetadataReader, IUniqueConstrain
         FROM information_schema.columns
         WHERE TABLE_SCHEMA NOT IN ('mysql','sys','performance_schema','information_schema')
         """;
-    protected override string KeysSql => """
+    protected virtual string IndexKeyExpression => "s.EXPRESSION";
+
+    protected override string KeysSql => $$"""
         SELECT t.TABLE_SCHEMA AS database_name,t.TABLE_NAME AS table_name,t.CONSTRAINT_NAME AS key_name,
           t.CONSTRAINT_TYPE AS kind,k.ORDINAL_POSITION AS ordinal,k.COLUMN_NAME AS column_name,
           k.REFERENCED_TABLE_SCHEMA AS target_database,k.REFERENCED_TABLE_NAME AS target_table,
           k.REFERENCED_COLUMN_NAME AS target_column,
-          (k.COLUMN_NAME IS NULL OR EXISTS (SELECT 1 FROM information_schema.statistics s WHERE s.TABLE_SCHEMA=t.TABLE_SCHEMA
-            AND s.TABLE_NAME=t.TABLE_NAME AND s.INDEX_NAME=t.CONSTRAINT_NAME
-            AND (s.SUB_PART IS NOT NULL OR s.COLUMN_NAME IS NULL))) AS unsupported
+          (k.COLUMN_NAME IS NULL OR s.INDEX_NAME IS NOT NULL) AS unsupported,
+          s.SEQ_IN_INDEX AS native_ordinal,s.COLUMN_NAME AS native_column,s.SUB_PART AS prefix_length,{{IndexKeyExpression}} AS key_expression
         FROM information_schema.table_constraints t LEFT JOIN information_schema.key_column_usage k
           ON t.CONSTRAINT_SCHEMA=k.CONSTRAINT_SCHEMA AND t.TABLE_NAME=k.TABLE_NAME AND t.CONSTRAINT_NAME=k.CONSTRAINT_NAME
+        LEFT JOIN information_schema.statistics s ON s.TABLE_SCHEMA=t.TABLE_SCHEMA AND s.TABLE_NAME=t.TABLE_NAME
+          AND s.INDEX_NAME=t.CONSTRAINT_NAME AND (s.SUB_PART IS NOT NULL OR s.COLUMN_NAME IS NULL)
         WHERE t.CONSTRAINT_TYPE IN ('PRIMARY KEY','UNIQUE','FOREIGN KEY')
           AND t.TABLE_SCHEMA NOT IN ('mysql','sys','performance_schema','information_schema')
         """;
@@ -64,6 +71,11 @@ public class MySqlMetadataReader : CatalogSchemaMetadataReader, IUniqueConstrain
         SELECT s.TABLE_SCHEMA AS database_name,s.TABLE_NAME AS table_name,s.INDEX_NAME AS index_name,
           s.NON_UNIQUE=0 AS unique_index,s.SEQ_IN_INDEX AS ordinal,s.COLUMN_NAME AS column_name,
           CASE s.COLLATION WHEN 'D' THEN 1 WHEN 'A' THEN 0 END AS descending,
+          CASE WHEN s.INDEX_TYPE<>'BTREE' THEN s.INDEX_TYPE END AS index_kind,
+          NULLIF(CONCAT_WS(' ',
+            s.EXPRESSION,
+            CASE WHEN s.SUB_PART IS NOT NULL THEN CONCAT('prefix ',s.COLUMN_NAME,'(',s.SUB_PART,')') END,
+            CASE WHEN s.IS_VISIBLE='NO' THEN 'INVISIBLE' END), '') AS index_expression,
           (s.COLUMN_NAME IS NULL OR s.SUB_PART IS NOT NULL OR s.INDEX_TYPE<>'BTREE' OR s.IS_VISIBLE='NO') AS unsupported
         FROM information_schema.statistics s
         WHERE s.TABLE_SCHEMA NOT IN ('mysql','sys','performance_schema','information_schema')
@@ -73,7 +85,7 @@ public class MySqlMetadataReader : CatalogSchemaMetadataReader, IUniqueConstrain
         """;
     protected override string ChecksSql => """
         SELECT t.TABLE_SCHEMA AS database_name,t.TABLE_NAME AS table_name,t.CONSTRAINT_NAME AS check_name,
-          CASE WHEN t.ENFORCED='YES' THEN c.CHECK_CLAUSE ELSE '<unenforced check>' END AS expression
+          c.CHECK_CLAUSE AS expression,t.ENFORCED='NO' AS unenforced
         FROM information_schema.table_constraints t JOIN information_schema.check_constraints c
           ON c.CONSTRAINT_SCHEMA=t.CONSTRAINT_SCHEMA AND c.CONSTRAINT_NAME=t.CONSTRAINT_NAME
         WHERE t.CONSTRAINT_TYPE='CHECK' AND t.TABLE_SCHEMA NOT IN ('mysql','sys','performance_schema','information_schema')
@@ -164,7 +176,11 @@ public class MySqlMetadataReader : CatalogSchemaMetadataReader, IUniqueConstrain
         if (row.Int("temporal_precision") > 0)
             diagnose(SchemaFeature.Columns, "Fractional temporal precision cannot be represented by the current column facets.");
         if (options.Features.Contains(SchemaFeature.Generation) && (row.Text("extra") ?? "").Contains("on update", StringComparison.OrdinalIgnoreCase))
-            diagnose(SchemaFeature.Generation, "An ON UPDATE expression cannot be represented.");
+            ProviderSchemaDiagnostics.Report(diagnose, Identity(row), SchemaFeature.Generation,
+                "An ON UPDATE expression cannot be represented.", member: row.Text("column_name"),
+                nativeDefinition: Regex.Match(row.Text("extra")!, @"on update\s+CURRENT_TIMESTAMP(?:\s*\(\d*\))?",
+                    RegexOptions.IgnoreCase | RegexOptions.CultureInvariant, TimeSpan.FromSeconds(1)).Value is { Length: > 0 } clause
+                    ? clause : row.Text("extra"));
         if (options.Features.Contains(SchemaFeature.Generation) && (row.Text("extra") ?? "").Contains("auto_increment", StringComparison.Ordinal))
         {
             // The catalog exposes the next table value, not the original seed or session increment.
@@ -176,15 +192,28 @@ public class MySqlMetadataReader : CatalogSchemaMetadataReader, IUniqueConstrain
 
     protected override MetadataTable MapTable(CatalogRow row, List<CatalogRow> columns, List<CatalogRow> keys, List<CatalogRow> indexes, List<CatalogRow> checks, DiscoveryOptions options, Action<SchemaFeature, string> diagnose)
     {
-        var invalid = keys.Where(key => Identity(key) == Identity(row) && key.Bool("unsupported") == true)
-            .Select(key => (Kind: key.Text("kind"), Name: key.Text("key_name"))).Distinct().ToArray();
-        foreach (var key in invalid)
+        var table = Identity(row);
+        var invalid = keys.Where(key => Identity(key) == table && key.Bool("unsupported") == true)
+            .GroupBy(key => (Kind: key.Text("kind"), Name: key.Text("key_name"))).ToDictionary(key => key.Key);
+        foreach (var key in invalid.Values)
         {
-            var feature = key.Kind == "PRIMARY KEY" ? SchemaFeature.PrimaryKeys : SchemaFeature.UniqueConstraints;
-            if (options.Features.Contains(feature)) diagnose(feature, "A prefix or expression key cannot be represented.");
+            var feature = key.Key.Kind == "PRIMARY KEY" ? SchemaFeature.PrimaryKeys : SchemaFeature.UniqueConstraints;
+            if (!options.Features.Contains(feature)) continue;
+            var parts = key.OrderBy(part => part.Int("native_ordinal")).Select(part => part.Text("key_expression")
+                ?? (part.Int("prefix_length") is { } length ? $"{part.Text("native_column")}({length})" : null))
+                .OfType<string>().Distinct(StringComparer.Ordinal).ToArray();
+            ProviderSchemaDiagnostics.Report(diagnose, table, feature, "A prefix or expression key cannot be represented.",
+                constraint: key.Key.Name, nativeDefinition: parts.Length == 0 ? null : string.Join(", ", parts));
         }
-        return base.MapTable(row, columns, keys.Where(key => Identity(key) != Identity(row)
-            || !invalid.Contains((key.Text("kind"), key.Text("key_name")))).ToList(), indexes, checks, options, diagnose);
+
+        var unenforced = checks.Where(check => Identity(check) == table && check.Bool("unenforced") == true).ToHashSet();
+        foreach (var check in unenforced)
+            ProviderSchemaDiagnostics.Report(diagnose, table, SchemaFeature.Checks, "A NOT ENFORCED check cannot be represented.",
+                constraint: check.Text("check_name"), nativeDefinition: check.Text("expression"));
+
+        return base.MapTable(row, columns, keys.Where(key => Identity(key) != table
+            || !invalid.ContainsKey((key.Text("kind"), key.Text("key_name")))).ToList(), indexes,
+            checks.Where(check => !unenforced.Contains(check)).ToList(), options, diagnose);
     }
 
     protected override MetadataView MapView(MetadataName identity, MetadataColumn[] inventory, string? sql)

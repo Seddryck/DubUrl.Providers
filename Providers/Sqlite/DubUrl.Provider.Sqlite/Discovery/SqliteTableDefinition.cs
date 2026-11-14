@@ -9,7 +9,8 @@ internal sealed class SqliteTableDefinition
     // PRAGMA preserves declaration spelling. SQLite does not fold non-ASCII case pairs.
     internal Dictionary<string, string> Generated { get; } = new(StringComparer.Ordinal);
     internal Dictionary<string, StructuredStorage> JsonColumns { get; } = new(StringComparer.Ordinal);
-    internal List<(string? Name, string Expression)> Checks { get; } = [];
+    internal Dictionary<string, string> GeneratedSql { get; } = new(StringComparer.Ordinal);
+    internal List<(string? Name, string? Column, string Expression, string Sql)> Checks { get; } = [];
 
     internal static SqliteTableDefinition Parse(string? sql)
     {
@@ -25,7 +26,7 @@ internal sealed class SqliteTableDefinition
             var token = tokens[i];
             if (depth == 0 && token.Text is ")" or ",")
             {
-                ReadPart(tokens.GetRange(start, i - start), result);
+                ReadPart(sql, tokens.GetRange(start, i - start), result);
                 start = i + 1;
                 if (token.Text == ")") break;
             }
@@ -35,10 +36,11 @@ internal sealed class SqliteTableDefinition
         return result;
     }
 
-    private static void ReadPart(List<Token> tokens, SqliteTableDefinition result)
+    private static void ReadPart(string sql, List<Token> tokens, SqliteTableDefinition result)
     {
         if (tokens.Count == 0) return;
         var depth = 0;
+        var column = tokens[0].Keyword("CHECK") || tokens[0].Keyword("CONSTRAINT") ? null : tokens[0].Identifier;
         for (var i = tokens[0].Keyword("CHECK") ? 0 : 1; i < tokens.Count; i++)
         {
             var token = tokens[i];
@@ -47,14 +49,19 @@ internal sealed class SqliteTableDefinition
                 var end = ExpressionEnd(tokens, i + 1);
                 if (end == tokens.Count) return;
                 var expression = ExpressionText(tokens, i + 2, end);
+                var native = sql[(tokens[i + 1].Start + 1)..tokens[end].Start].Trim();
                 if (token.Keyword("CHECK"))
                 {
                     if (ReadJsonStorage(tokens, i, end) is { } storage)
                         result.JsonColumns[tokens[0].Identifier] = storage;
                     else
-                        result.Checks.Add((ConstraintName(tokens, i), expression));
+                        result.Checks.Add((ConstraintName(tokens, i), column, expression, native));
                 }
-                else result.Generated[tokens[0].Identifier] = expression;
+                else if (column is not null)
+                {
+                    result.Generated[column] = expression;
+                    result.GeneratedSql[column] = native;
+                }
                 i = end;
                 continue;
             }

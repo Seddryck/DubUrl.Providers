@@ -95,7 +95,7 @@ public sealed class SingleStoreMetadataReader : IStructuredColumnMetadataReader,
             """;
         protected override string ColumnsSql => """
             SELECT table_schema AS database_name, table_name, column_name, ordinal_position AS ordinal,
-              data_type AS type_name, column_type, is_nullable AS nullable, CASE WHEN character_maximum_length<=2147483647 THEN character_maximum_length END AS length,
+              data_type AS type_name, column_type, column_type AS native_type_declaration, is_nullable AS nullable, CASE WHEN character_maximum_length<=2147483647 THEN character_maximum_length END AS length,
               numeric_precision AS `precision`, numeric_scale AS `scale`, column_default AS default_expression,
               CASE WHEN extra LIKE '%auto_increment%' THEN 1 END AS identity_seed,
               CASE WHEN extra LIKE '%auto_increment%' THEN 1 END AS identity_increment,
@@ -116,6 +116,10 @@ public sealed class SingleStoreMetadataReader : IStructuredColumnMetadataReader,
             SELECT table_schema AS database_name, table_name, index_name, seq_in_index AS ordinal,
               column_name, non_unique=0 AS unique_index,
               CASE WHEN index_type='BTREE' AND collation IN ('A','D') THEN collation='D' END AS descending,
+              index_type AS index_kind,
+              CASE WHEN collation IS NULL OR collation NOT IN ('A','D')
+                   THEN CONCAT(COALESCE(column_name, CONCAT('key part ', seq_in_index)), ' sort collation ', COALESCE(collation, 'NULL'))
+              END AS index_expression,
               index_type<>'BTREE' OR collation IS NULL OR collation NOT IN ('A','D') AS unsupported
             FROM information_schema.statistics
             WHERE index_name<>'PRIMARY' AND non_unique=1 AND index_type NOT IN ('SHARD','COLUMNSTORE')

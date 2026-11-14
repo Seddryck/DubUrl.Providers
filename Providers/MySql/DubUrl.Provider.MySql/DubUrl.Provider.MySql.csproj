@@ -1,5 +1,6 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
+    <ProviderSchemaDiagnostics>true</ProviderSchemaDiagnostics>
     <Description>MySQL-family dialects, mapping, and rewriting for DubUrl.</Description>
   </PropertyGroup>
   <ItemGroup>

@@ -4,6 +4,7 @@ using System.Globalization;
 using System.Runtime.CompilerServices;
 using System.Text.RegularExpressions;
 using DubUrl.Discovery;
+using DubUrl.Providers.Discovery;
 using DubUrl.Provider.Oracle.Schema.Generation;
 using DubUrl.Provider.Oracle.Sql;
 using DubUrl.Schema;
@@ -14,8 +15,31 @@ namespace DubUrl.Provider.Oracle.Discovery;
 /// <summary>Read-only discovery of Oracle objects visible to the connected user in the current PDB.</summary>
 public sealed class OracleMetadataReader : CatalogSchemaMetadataReader, IUniqueConstraintMetadataReader, IStructuredColumnMetadataReader
 {
+    private readonly bool detectServerVersion = true;
     private readonly ConditionalWeakTable<MetadataColumn, StructuredColumnMetadata> structuredTypes = new();
     private readonly ConditionalWeakTable<CatalogRow, OracleNamedTypeMetadata> namedTypes = new();
+
+    public new Task<SchemaMetadata> ReadAsync(DbConnection connection, DiscoveryOptions options, CancellationToken cancellationToken = default)
+    {
+        // The mapper constructs the reader before opening the connection.
+        if (detectServerVersion && options.Features.Contains(SchemaFeature.Defaults)
+            && ReadServerVersion(connection) is { Major: >= 23 } version)
+            return new OracleMetadataReader(version, structuredTypes).ReadCatalogAsync(connection, options, cancellationToken);
+
+        return ReadCatalogAsync(connection, options, cancellationToken);
+    }
+
+    private Task<SchemaMetadata> ReadCatalogAsync(DbConnection connection, DiscoveryOptions options, CancellationToken cancellationToken)
+        => ProviderSchemaDiagnostics.ReadAsync(() => base.ReadAsync(connection, options, cancellationToken));
+
+    private static Version? ReadServerVersion(DbConnection connection)
+    {
+        if (connection.State != ConnectionState.Open) return null;
+        var text = connection.ServerVersion;
+        if (text is null) return null;
+        var end = text.IndexOf('.');
+        return int.TryParse(end < 0 ? text : text[..end], out var major) && major >= 0 ? new Version(major, 0) : null;
+    }
 
     public async Task<StructuredSchemaMetadata> ReadWithStructuredTypesAsync(DbConnection connection,
         DiscoveryOptions options, CancellationToken cancellationToken)
@@ -36,9 +60,13 @@ public sealed class OracleMetadataReader : CatalogSchemaMetadataReader, IUniqueC
         => UnsupportedFeatures = new HashSet<SchemaFeature> { SchemaFeature.Defaults, SchemaFeature.Generation, SchemaFeature.Checks };
 
     /// <summary>Enables default discovery when the Oracle catalog exposes DATA_DEFAULT_VC.</summary>
-    public OracleMetadataReader(Version serverVersion) : this()
+    public OracleMetadataReader(Version serverVersion) : this(serverVersion, new()) { }
+
+    private OracleMetadataReader(Version serverVersion, ConditionalWeakTable<MetadataColumn, StructuredColumnMetadata> structuredTypes) : this()
     {
         ArgumentNullException.ThrowIfNull(serverVersion);
+        detectServerVersion = false;
+        this.structuredTypes = structuredTypes;
         if (serverVersion.Major >= 23)
             UnsupportedFeatures = new HashSet<SchemaFeature> { SchemaFeature.Generation, SchemaFeature.Checks };
     }
@@ -69,6 +97,7 @@ public sealed class OracleMetadataReader : CatalogSchemaMetadataReader, IUniqueC
           CASE k.constraint_type WHEN 'P' THEN 'PRIMARY KEY' WHEN 'U' THEN 'UNIQUE' ELSE 'FOREIGN KEY' END AS kind,
           c.position AS ordinal, c.column_name, k.r_owner AS target_schema, p.table_name AS target_table,
           pc.column_name AS target_column, k.r_constraint_name AS target_key,
+          k.status AS constraint_status,k.validated,k.deferrable,k.delete_rule,
           CASE WHEN k.status <> 'ENABLED' OR k.validated <> 'VALIDATED'
             OR k.deferrable <> 'NOT DEFERRABLE' OR k.delete_rule <> 'NO ACTION' THEN 1 ELSE 0 END AS unsupported
         FROM all_constraints k
@@ -83,6 +112,8 @@ public sealed class OracleMetadataReader : CatalogSchemaMetadataReader, IUniqueC
         SELECT i.table_owner AS schema_name, i.table_name, i.owner AS index_owner, i.index_name,
           CASE i.uniqueness WHEN 'UNIQUE' THEN 1 ELSE 0 END AS unique_index,
           c.column_position AS ordinal, c.column_name,
+          i.index_type AS index_kind,i.visibility,i.status AS index_status,
+          CASE WHEN col.column_name IS NULL THEN 1 ELSE 0 END AS hidden_column,
           CASE c.descend WHEN 'DESC' THEN 1 WHEN 'ASC' THEN 0 END AS descending,
           CASE WHEN i.index_type NOT IN ('NORMAL', 'FUNCTION-BASED NORMAL') OR i.visibility <> 'VISIBLE'
             OR i.status <> 'VALID' OR i.table_owner <> i.owner OR col.column_name IS NULL THEN 1 ELSE 0 END AS unsupported
@@ -116,8 +147,7 @@ public sealed class OracleMetadataReader : CatalogSchemaMetadataReader, IUniqueC
         {
             sql = sql.Replace("m.comments AS \"comment\"", """
                 m.comments AS "comment",
-                CASE WHEN c.default_length > 4000 OR c.default_on_null = 'YES' OR c.identity_column = 'YES'
-                     THEN '<unrepresentable Oracle default>' ELSE c.data_default_vc END AS default_expression
+                c.data_default_vc AS default_expression, c.default_length, c.default_on_null, c.identity_column
                 """, StringComparison.Ordinal);
         }
 
@@ -125,8 +155,83 @@ public sealed class OracleMetadataReader : CatalogSchemaMetadataReader, IUniqueC
         if (columns && rows.Any(IsStructuredColumn))
             await ReadStructuredModifiersAsync(connection, options, rows, cancellationToken).ConfigureAwait(false);
         if (columns)
+        {
             await ReadNamedTypesAsync(connection, rows, cancellationToken).ConfigureAwait(false);
+            if (rows.Any(row => row.Text("identity_column") == "YES"))
+                await ReadIdentityOptionsAsync(connection, rows, cancellationToken).ConfigureAwait(false);
+        }
+        if (sql == IndexesSql)
+            await ReadIndexDetailsAsync(connection, rows, cancellationToken).ConfigureAwait(false);
         return rows;
+    }
+
+    private static async Task ReadIdentityOptionsAsync(DbConnection connection, List<CatalogRow> rows, CancellationToken cancellationToken)
+    {
+        const string sql = """
+            SELECT owner AS schema_name,table_name,column_name,generation_type,identity_options
+            FROM all_tab_identity_cols
+            """;
+        try
+        {
+            var identities = (await QueryAsync(connection, sql, cancellationToken).ConfigureAwait(false))
+                .ToDictionary(row => (Identity(row), row.Text("column_name")));
+            for (var i = 0; i < rows.Count; i++)
+            {
+                var row = rows[i];
+                if (row.Text("identity_column") == "YES"
+                    && identities.TryGetValue((Identity(row), row.Text("column_name")), out var identity))
+                    rows[i] = row.With(("identity_mode", identity.Text("generation_type")), ("identity_options", identity.Text("identity_options")));
+            }
+        }
+        catch (DbException) { cancellationToken.ThrowIfCancellationRequested(); }
+    }
+
+    private static async Task ReadIndexDetailsAsync(DbConnection connection, List<CatalogRow> rows, CancellationToken cancellationToken)
+    {
+        const string sql = """
+            SELECT column_position,column_expression FROM all_ind_expressions
+            WHERE index_owner=:index_owner AND index_name=:index_name
+            """;
+        var candidates = Enumerable.Range(0, rows.Count)
+            .Where(i => rows[i].Bool("hidden_column") == true
+                || (rows[i].Bool("unsupported") == true && rows[i].Text("index_kind")?.StartsWith("FUNCTION-BASED", StringComparison.Ordinal) == true))
+            .GroupBy(i => (Owner: rows[i].Text("index_owner"), Name: rows[i].Text("index_name")));
+        foreach (var candidate in candidates)
+        {
+            if (candidate.Key.Owner is not { } owner || candidate.Key.Name is not { } name) continue;
+            try
+            {
+                using var command = connection.CreateCommand();
+                command.CommandText = sql;
+                var fetchSize = command.GetType().GetProperty("InitialLONGFetchSize");
+                fetchSize?.SetValue(command, -1);
+                foreach (var (parameterName, value) in new[] { ("index_owner", owner), ("index_name", name) })
+                {
+                    var parameter = command.CreateParameter();
+                    parameter.ParameterName = parameterName;
+                    parameter.Value = value;
+                    command.Parameters.Add(parameter);
+                }
+                using var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+                var expressions = new Dictionary<int, string>();
+                while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+                    if (!reader.IsDBNull(1) && reader.GetString(1) is { Length: > 0 } expression)
+                        expressions[reader.GetInt32(0)] = expression;
+                foreach (var i in candidate)
+                    if (expressions.TryGetValue(rows[i].Int("ordinal") ?? -1, out var expression))
+                        rows[i] = rows[i].With(("index_expression", expression));
+            }
+            catch (DbException) { cancellationToken.ThrowIfCancellationRequested(); }
+        }
+
+        for (var i = 0; i < rows.Count; i++)
+        {
+            var row = rows[i];
+            if (row.Bool("unsupported") != true) continue;
+            var details = new[] { row.Text("index_kind"), row.Text("visibility"), row.Text("index_status") }
+                .OfType<string>();
+            rows[i] = row.With(("index_kind", string.Join(" ", details)));
+        }
     }
 
     private async Task ReadNamedTypesAsync(DbConnection connection, List<CatalogRow> rows, CancellationToken cancellationToken)
@@ -314,7 +419,20 @@ public sealed class OracleMetadataReader : CatalogSchemaMetadataReader, IUniqueC
         Action<SchemaFeature, string> diagnose)
     {
         void Diagnose(SchemaFeature feature, string message)
-            => diagnose(feature, $"Oracle column '{row.Text("column_name")}' ({row.Text("type_name")}): {message}");
+        {
+            if (feature == SchemaFeature.Columns)
+                ProviderSchemaDiagnostics.Report(diagnose, Identity(row), feature, message, member: row.Text("column_name"),
+                    nativeDefinition: NativeDeclaration(row));
+            else
+                diagnose(feature, message);
+        }
+
+        if (options.Features.Contains(SchemaFeature.Defaults) && UnsupportedDefault(row) is { } detail)
+        {
+            ProviderSchemaDiagnostics.Report(diagnose, Identity(row), SchemaFeature.Defaults,
+                "The Oracle default cannot be represented.", member: row.Text("column_name"), nativeDefinition: detail);
+            return base.MapCatalogColumn(row.With(("default_expression", null)), options, Diagnose);
+        }
 
         if ((namedTypes.TryGetValue(row, out var named) ? named.Structured : DecodeStructuredType(row)) is { } structured)
         {
@@ -353,6 +471,40 @@ public sealed class OracleMetadataReader : CatalogSchemaMetadataReader, IUniqueC
         };
     }
 
+    private static string? NativeDeclaration(CatalogRow row)
+    {
+        var type = row.Text("type_name");
+        if (row.Text("type_owner") is { } owner && type is not null)
+            return $"\"{owner.Replace("\"", "\"\"")}\".\"{type.Replace("\"", "\"\"")}\"";
+        if (type == "NUMBER" && row.Int("scale") is { } scale)
+            return $"NUMBER({row.Text("precision") ?? "*"},{scale})";
+        if (type is "CHAR" or "VARCHAR2" && row.Int("char_length") is { } length)
+            return $"{type}({length} {(row.Text("char_used") == "C" ? "CHAR" : "BYTE")})";
+        if (type is "RAW" or "UROWID" && row.Int("data_length") is { } bytes)
+            return $"{type}({bytes})";
+        if (type is "NCHAR" or "NVARCHAR2" && row.Int("char_length") is { } characters)
+            return $"{type}({characters})";
+        return type;
+    }
+
+    private static string? UnsupportedDefault(CatalogRow row)
+    {
+        if (row.Text("identity_column") == "YES")
+        {
+            var mode = row.Text("identity_mode");
+            if (mode == "BY DEFAULT" && row.Text("default_on_null") == "YES")
+                mode += " ON NULL";
+            return $"{(mode is null ? "" : $"GENERATED {mode} AS ")}IDENTITY{(row.Text("identity_options") is { } options ? $" ({options})" : "")}";
+        }
+
+        var onNull = row.Text("default_on_null") == "YES";
+        var truncated = row.Int("default_length") > 4000;
+        if (!onNull && !truncated) return null;
+        var prefix = onNull ? "DEFAULT ON NULL " : "";
+        var expression = row.Text("default_expression");
+        return $"{prefix}{expression ?? "(catalog expression unavailable)"}{(truncated && expression is not null ? " (catalog text truncated)" : "")}";
+    }
+
     private static readonly Regex SequenceDefault = new(
         "\\A\"(?<schema>[^\"]+)\"\\.\"(?<name>[^\"]+)\"\\.NEXTVAL\\z",
         RegexOptions.IgnoreCase | RegexOptions.CultureInvariant, TimeSpan.FromSeconds(1));
@@ -384,12 +536,19 @@ public sealed class OracleMetadataReader : CatalogSchemaMetadataReader, IUniqueC
             };
             if (!options.Features.Contains(feature)) continue;
             var target = key.FirstOrDefault(part => key.Key.Kind == "FOREIGN KEY" && part.Text("target_column") is null);
-            if (key.Any(part => part.Text("column_name") is null))
-                diagnose(feature, $"Oracle key '{key.Key.Name}' has columns unavailable to this connection.");
-            else if (target is not null)
-                diagnose(feature, $"Oracle foreign key '{key.Key.Name}' refers to '{target.Text("target_schema")}.{target.Text("target_key")}', whose columns are unavailable to this connection.");
-            else
-                diagnose(feature, $"Oracle key '{key.Key.Name}' has an enforcement state or delete action that cannot be represented.");
+            var message = key.Any(part => part.Text("column_name") is null)
+                ? "The Oracle key has columns unavailable to this connection."
+                : target is not null ? "The referenced key's columns are unavailable to this connection."
+                : "The Oracle key has an enforcement state or delete action that cannot be represented.";
+            var state = key.First();
+            var details = new[]
+            {
+                target is null ? null : $"REFERENCES {target.Text("target_schema")}.{target.Text("target_table") ?? target.Text("target_key")}",
+                state.Text("constraint_status"), state.Text("validated"), state.Text("deferrable"),
+                state.Text("delete_rule") is { } rule ? $"ON DELETE {rule}" : null,
+            }.OfType<string>().ToArray();
+            ProviderSchemaDiagnostics.Report(diagnose, identity, feature, message, constraint: key.Key.Name,
+                nativeDefinition: details.Length == 0 ? null : string.Join(", ", details));
         }
 
         return base.MapTable(row, columns, invalid.Length == 0 ? keys : keys.Except(invalid.SelectMany(key => key)).ToList(),
