@@ -1,6 +1,11 @@
 <Project Sdk="Microsoft.NET.Sdk">
-  <PropertyGroup><IsPackable>false</IsPackable><IsTestProject>true</IsTestProject></PropertyGroup>
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+    <DefineConstants>$(DefineConstants);TEST_PROVIDER_SCHEMA_DIAGNOSTICS</DefineConstants>
+  </PropertyGroup>
   <ItemGroup>
+    <Compile Include="../../Providers/Shared/ProviderSchemaDiagnostics.cs" Link="ProviderSchemaDiagnostics.cs" />
     <ProjectReference Include="../../Providers/*/DubUrl.Provider.*/*.csproj" Exclude="../../Providers/*/*.QA/*.csproj" />
     <Compile Include="../../Providers/*/DubUrl.Provider.*/Tests/**/*.cs" />
     <EmbeddedResource Include="../Schema/coverage-cases.json" LogicalName="DubUrl.SchemaCoverageCases" />
