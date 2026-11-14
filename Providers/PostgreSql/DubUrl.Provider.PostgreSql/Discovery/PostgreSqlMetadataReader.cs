@@ -78,7 +78,9 @@ public sealed class PostgreSqlMetadataReader : CatalogSchemaMetadataReader, IUni
         """;
     protected override string ColumnsSql => $$"""
         SELECT c.table_schema AS schema_name,c.table_name,c.column_name,c.ordinal_position AS ordinal,
-          c.data_type AS type_name,c.udt_name AS native_type_name,c.is_nullable AS nullable,c.character_maximum_length AS length,
+          c.data_type AS type_name,c.udt_name AS native_type_name,
+          pg_catalog.format_type(a.atttypid,a.atttypmod) AS native_type_declaration,
+          c.is_nullable AS nullable,c.character_maximum_length AS length,
           c.numeric_precision AS precision,c.numeric_scale AS scale,c.column_default AS default_expression,
           CASE WHEN c.is_identity='YES' THEN c.identity_start END AS identity_seed,
           CASE WHEN c.is_identity='YES' THEN c.identity_increment END AS identity_increment,
@@ -153,6 +155,11 @@ public sealed class PostgreSqlMetadataReader : CatalogSchemaMetadataReader, IUni
         SELECT n.nspname AS schema_name,t.relname AS table_name,ix.relname AS index_name,
           i.indisunique AS unique_index,k.ordinality AS ordinal,a.attname AS column_name,
           (i.indoption[(k.ordinality-1)::int] & 1)=1 AS descending,
+          CASE WHEN am.amname<>'btree' THEN am.amname END AS index_kind,
+          pg_catalog.pg_get_expr(i.indpred,i.indrelid) AS filter_definition,
+          CASE WHEN k.ordinality>i.indnkeyatts THEN a.attname END AS included_column,
+          CASE WHEN i.indexprs IS NOT NULL OR COALESCE((to_jsonb(i)->>'indnullsnotdistinct')::boolean, false)
+               THEN pg_catalog.pg_get_indexdef(i.indexrelid) END AS index_expression,
           (i.indpred IS NOT NULL OR i.indexprs IS NOT NULL OR i.indnatts<>i.indnkeyatts OR am.amname<>'btree'
            OR COALESCE((to_jsonb(i)->>'indnullsnotdistinct')::boolean, false)) AS unsupported
         FROM pg_catalog.pg_index i JOIN pg_catalog.pg_class t ON t.oid=i.indrelid
