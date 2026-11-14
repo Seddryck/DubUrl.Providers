@@ -25,7 +25,7 @@
 		<!-- Local project versions must satisfy the extracted Schema dependency baseline. -->
         <Version Condition="'$(Version)' == ''">0.60.0</Version>
         <DubUrlVersion Condition="'$(DubUrlVersion)' == ''">0.66.0</DubUrlVersion>
-        <SchemaPackageVersion Condition="'$(SchemaPackageVersion)' == ''">0.106.0</SchemaPackageVersion>
+        <SchemaPackageVersion Condition="'$(SchemaPackageVersion)' == ''">0.107.0</SchemaPackageVersion>
 		<Authors>Cédric L. Charlier</Authors>
 		<Owners>Seddryck</Owners>
 		<Company>nbiguity</Company>

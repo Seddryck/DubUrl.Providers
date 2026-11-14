@@ -16,6 +16,8 @@ namespace DubUrl.Provider.Hive.Sql;
 [ParentLanguage<SqlLanguage>]
 public sealed class HiveDialect : BaseDialect
 {
+    public override ISchemaSqlRenderer SchemaSqlRenderer => HiveSchemaSqlRenderer.Instance;
+
     internal HiveDialect(ILanguage language, string[] aliases, IRenderer renderer, ICaster[] casters,
         IDbTypeMapper dbTypeMapper, ISqlFunctionMapper sqlFunctionMapper)
         : base(language, aliases, renderer, casters, dbTypeMapper, sqlFunctionMapper) { }

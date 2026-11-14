@@ -15,6 +15,24 @@ namespace DubUrl.Provider.Spark.Tests;
 
 public sealed class SparkSqlDialectTest
 {
+    [TestCase(false)]
+    [TestCase(true)]
+    public void TableAnnotationsAreQuotedAndPlannedAfterCreation(bool databricks)
+    {
+        var dialect = databricks ? Databricks() : Spark();
+        var table = new Table(new DatabaseObjectName("items", "sales"), [new Column("id", DbType.Int32)], null, null, null,
+            new Dictionary<string, string> { [@"myapp.team's\name"] = @"owner's\value" });
+        var schema = new Schema.Schema([table]);
+        var renderer = new SchemaScriptRenderer(dialect);
+        var commands = renderer.Plan(schema);
+        const string expected = """ALTER TABLE `sales`.`items` SET TBLPROPERTIES ('myapp.team\'s\\name' = 'owner\'s\\value');""";
+
+        Assert.That(commands, Has.Count.EqualTo(2));
+        Assert.That(commands[0].Operation, Is.EqualTo(SchemaSqlOperation.CreateTable));
+        Assert.That(commands[1].CommandText, Is.EqualTo(expected));
+        Assert.That(renderer.Render(schema), Does.EndWith(expected));
+    }
+
     [TestCase("odbc+spark", "", typeof(SparkSqlDialect))]
     [TestCase("odbc+spark+http", "", typeof(SparkSqlDialect))]
     [TestCase("odbc+spark+https", "", typeof(SparkSqlDialect))]
