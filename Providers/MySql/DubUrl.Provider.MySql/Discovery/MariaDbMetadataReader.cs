@@ -17,6 +17,8 @@ public sealed class MariaDbMetadataReader : MySqlMetadataReader
     protected override IReadOnlySet<SchemaFeature> UnsupportedFeatures { get; } = new HashSet<SchemaFeature>
         { SchemaFeature.Indexes };
 
+    protected override string IndexKeyExpression => "NULL";
+
     protected override string ChecksSql => """
         SELECT c.TABLE_NAME AS table_name,c.CONSTRAINT_SCHEMA AS database_name,c.CONSTRAINT_NAME AS check_name,
           c.CHECK_CLAUSE AS expression

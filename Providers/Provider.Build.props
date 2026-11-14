@@ -4,6 +4,8 @@
   </PropertyGroup>
   <ItemGroup>
     <Compile Remove="Tests\**\*.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Shared\ProviderSchemaDiagnostics.cs"
+             Link="Discovery\ProviderSchemaDiagnostics.cs" Condition="'$(ProviderSchemaDiagnostics)' == 'true'" />
     <PackageReference Include="DubUrl" Version="$(DubUrlVersion)" />
     <InternalsVisibleTo Include="DubUrl.Providers.Testing" />
   </ItemGroup>
