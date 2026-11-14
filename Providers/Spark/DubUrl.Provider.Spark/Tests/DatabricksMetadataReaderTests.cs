@@ -59,8 +59,14 @@ public sealed class DatabricksMetadataReaderTests
             Assert.That(metadata.Diagnostics.Single(diagnostic => diagnostic.Feature == feature
                 && diagnostic.Coverage == MetadataCoverage.Inaccessible).Object, Is.EqualTo(child));
         }
-        Assert.That(metadata.Diagnostics.Any(diagnostic => diagnostic.Feature == SchemaFeature.Checks
-            && diagnostic.Coverage == MetadataCoverage.Unrepresentable && diagnostic.Object == parent), Is.True);
+        var rejectedCheck = metadata.Diagnostics.Single(diagnostic => diagnostic.Feature == SchemaFeature.Checks
+            && diagnostic.Coverage == MetadataCoverage.Unrepresentable && diagnostic.Object == parent);
+        Assert.That(rejectedCheck.Constraint, Is.EqualTo("raw_check"));
+        Assert.That(rejectedCheck.NativeDefinition, Is.EqualTo("id >= 0"));
+        var foreignKey = metadata.Diagnostics.Single(diagnostic => diagnostic.Feature == SchemaFeature.ForeignKeys
+            && diagnostic.Coverage == MetadataCoverage.Unrepresentable && diagnostic.Object == child);
+        Assert.That(foreignKey.Constraint, Is.EqualTo("fk"));
+        Assert.That(foreignKey.NativeDefinition, Is.EqualTo("FOREIGN KEY (`id`) REFERENCES `c`.`other`.`parent` (`id`) NOT ENFORCED"));
         var rejectedDefault = metadata.Diagnostics.Single(diagnostic => diagnostic.Feature == SchemaFeature.Defaults
             && diagnostic.Coverage == MetadataCoverage.Unrepresentable && diagnostic.Object == parent);
         Assert.That(rejectedDefault.Member, Is.EqualTo("namespace"));
