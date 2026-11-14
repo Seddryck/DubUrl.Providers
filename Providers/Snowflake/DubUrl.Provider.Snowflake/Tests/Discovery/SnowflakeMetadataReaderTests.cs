@@ -3,7 +3,9 @@ using System.Data.Common;
 using DubUrl.Discovery;
 using DubUrl.Provider.Snowflake.Discovery;
 using DubUrl.Provider.Snowflake.Mapping;
+using DubUrl.Provider.Snowflake.Tests.Schema;
 using DubUrl.Schema;
+using DubUrl.Schema.Documents;
 using Moq;
 using Moq.Protected;
 using NUnit.Framework;
@@ -107,6 +109,64 @@ public class SnowflakeMetadataReaderTests
         Assert.That(result.Diagnostics.Single(item => item.Code == "SDI012").Coverage, Is.EqualTo(MetadataCoverage.Inaccessible));
         Assert.That(string.Join(", ", result.Diagnostics.Select(item => item.Message)), Does.Not.Contain("private driver detail"));
     }
+
+    [Test]
+    public async Task DirectTableTagsSurviveSchemaDocumentAndGenerateQualifiedAssignments()
+    {
+        var commands = new List<CommandLog>();
+        var connection = Catalog(commands, () => Tables(Identity, Identity with { Name = "unselected" }),
+            () => Columns(Column(Identity, "id", 1, "NUMBER", "NO", 10, 0)),
+            () => TagRows(["GOV", "TAGS", "OWNER", "L'équipe\\data"],
+                ["GOV", "Other.Schema", "OWNER", "finance"], ["GOV", "TAGS", "Quoted\"Tag", ""]));
+        var options = Options with { Features = [.. Options.Features, SchemaFeature.Annotations] };
+        var result = await new SchemaInspector().InspectAsync(connection.Object, new SnowflakeMetadataReader(), options);
+
+        Assert.That(result.IsComplete, Is.True);
+        Assert.That(commands, Has.Count.EqualTo(3));
+        Assert.That(commands[2].Sql, Does.Contain("FROM TABLE(\"Test\"\"Db\".INFORMATION_SCHEMA.TAG_REFERENCES(?, 'TABLE'))")
+            .And.Contain("DOMAIN = 'TABLE' AND LEVEL = 'TABLE' AND COLUMN_NAME IS NULL")
+            .And.Contain("APPLY_METHOD = 'MANUAL' AND TAG_DATABASE <> 'SNOWFLAKE'"));
+        Assert.That(commands[2].Bindings, Is.EqualTo(new[] { "\"Test\"\"Db\".\"Mixed.Schema\".\"a\"\"b\"" }));
+        var annotations = new Dictionary<string, string>
+        {
+            ["GOV.TAGS.OWNER"] = "L'équipe\\data",
+            ["GOV.\"Other.Schema\".OWNER"] = "finance",
+            ["GOV.TAGS.\"Quoted\"\"Tag\""] = "",
+        };
+        Assert.That(result.Schema!.Tables.Values.Single().Annotations, Is.EquivalentTo(annotations));
+
+        using var stream = new MemoryStream();
+        new SchemaDocumentWriter().Write(stream, new SchemaDocumentExporter().Map(result.Schema), SchemaDocumentFormat.Json);
+        stream.Position = 0;
+        var schema = new SchemaDocumentMapper().Map(new SchemaDocumentReader().Read(stream, SchemaDocumentFormat.Json));
+        var plan = new SchemaScriptRenderer(SnowflakeStructuredTypeTests.Dialect()).Plan(schema);
+        Assert.That(plan[0].CommandText, Does.StartWith("CREATE TABLE \"Test\"\"Db\".\"Mixed.Schema\".\"a\"\"b\""));
+        Assert.That(plan[1].CommandText, Is.EqualTo(
+            """ALTER TABLE "Test""Db"."Mixed.Schema"."a""b" SET TAG "GOV"."Other.Schema"."OWNER" = 'finance', "GOV"."TAGS"."Quoted""Tag" = '', "GOV"."TAGS"."OWNER" = 'L''équipe\\data';"""));
+    }
+
+    [TestCase(false)]
+    [TestCase(true)]
+    public async Task ReportsTagReadFailuresAndMultiValueAssignments(bool inaccessible)
+    {
+        var options = Options with { Features = [.. Options.Features, SchemaFeature.Annotations], AllowPartial = true };
+        var connection = Catalog([], () => Tables(Identity),
+            () => Columns(Column(Identity, "id", 1, "NUMBER", "NO", 10, 0)),
+            () => inaccessible ? throw new CatalogException() : TagRows(
+                ["GOV", "TAGS", "REGION", "eu"], ["GOV", "TAGS", "REGION", "na"],
+                ["GOV", "TAGS", "OWNER", "finance"]));
+        ISchemaMetadataReader reader = new SnowflakeMetadataReader();
+        var metadata = await reader.ReadAsync(connection.Object, options);
+        var result = new SchemaInspector().Map(metadata, options);
+        var diagnostic = result.Diagnostics.Single(item => item.Feature == SchemaFeature.Annotations && item.Object == Identity);
+        Assert.That(diagnostic.Coverage, Is.EqualTo(inaccessible ? MetadataCoverage.Inaccessible : MetadataCoverage.Unrepresentable));
+        Assert.That(diagnostic.Message, Does.Not.Contain("private driver detail"));
+        Assert.That(result.Schema!.Tables.Values.Single().Annotations.Keys,
+            Is.EqualTo(inaccessible ? Array.Empty<string>() : new[] { "GOV.TAGS.OWNER" }));
+    }
+
+    private static DataTable TagRows(params object?[][] rows)
+        => Result(["TAG_DATABASE", "TAG_SCHEMA", "TAG_NAME", "TAG_VALUE"], rows);
 
     private static StructuredColumnType Native(StructuredType shape) => new(shape, StructuredStorage.Native);
 
