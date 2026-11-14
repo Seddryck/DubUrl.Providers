@@ -2,15 +2,15 @@
 
 ## Published schema coverage
 
-The Build and schema QA workflow collects the TRX reports from the shared database matrix and
-its Spark, Databricks, and Hive ODBC matrix. It packages the report as the `schema-coverage`
-workflow artifact. On `main`, it also publishes the current snapshot on the dedicated
+The Build and schema QA workflow collects the TRX reports from the shared database matrix,
+its Spark, Databricks, and Hive ODBC jobs, and the provider unit tests. It packages the
+report as the `schema-coverage` workflow artifact. On `main`, it publishes the snapshot on the dedicated
 `schema-coverage` branch. Consumers can retrieve
 [schema-coverage.v1.json](https://raw.githubusercontent.com/Seddryck/DubUrl.Providers/schema-coverage/schema-coverage.v1.json)
 before building documentation.
 
 The report includes all databases in `connection-urls/catalog-source.json`. A database can
-have multiple QA targets, such as SQL Server 2022 and 2025. Spark needs the licensed Simba
+have multiple QA targets, such as PostgreSQL 17 and 18 or SQL Server 2022 and 2025. Spark needs the licensed Simba
 runner and the repository's `SPARK_ODBC_DRIVER_VERSION` variable. Databricks uses the
 `databricks-qa` environment. Hive provisions HiveServer2 in its existing ODBC job.
 
@@ -25,7 +25,8 @@ runner and the repository's `SPARK_ODBC_DRIVER_VERSION` variable. Databricks use
   A provider without a configured schema QA target has one target with a null variant.
 - Each feature has an `inspect` cell and a `generate` cell. A cell has a `status` and an
   `evidence` array. Evidence records the test identifier, coverage status, distinct TRX
-  outcomes, and a qualification when one applies.
+  outcomes, and a qualification when one applies. An evidence item can name a separate
+  `artifact`, such as the provider unit test report in `schema-qa-rejections`.
 
 The statuses are `supported`, `limited`, `unsupported`, `unverified`, and `failed`.
 A passing test supports its declared expectation, including expected rejections.
@@ -34,8 +35,15 @@ If mapped tests pass with different coverage statuses, the cell reports limited 
 
 Keep feature IDs stable in `coverage-cases.json`. Map shared scenarios to the operation
 they exercise and add focused rules for tests that verify individual features or variants.
-To check a set of downloaded artifacts locally, keep each report under its
-`schema-qa-<target>` directory and run:
+Use `rendererRejections` for explicit DDL planning rejections and `inspectionRejections`
+for metadata reader features explicitly reported as unsupported. Each target and feature
+gets a separate test. For inspection, a direct reader check takes precedence over shared
+fixtures that can stop before reading the catalog. A shared fixture's rejected setup DDL
+does not establish whether the reader can inspect the feature.
+
+To check downloaded artifacts locally, keep each live report in its `schema-qa-<target>`
+directory and the provider unit test TRX in `schema-qa-rejections`. Then run the validator
+and coverage generator.
 
 ```sh
 python -m pip install defusedxml==0.7.1
@@ -55,7 +63,9 @@ python QA/Schema/build_coverage.py --artifacts artifacts/schema-reports \
 
 The runner builds only the selected fixture and framework, provisions a disposable database on a free local port, waits for readiness, requires nonzero passing tests with no skips, saves redacted logs and TRX reports, and removes its own container/volumes in `finally`. It never connects to an existing database. Remove old `artifacts/results/<Database>/<Framework>` output before repeating a run. PostgreSQL, SQL Server, Oracle, SingleStore and MySQL require Docker. SQLite and DuckDB run their embedded engines. Oracle and SingleStore also retain the original pinned images and startup readiness support. PostgreSQL retains its original pinned image. SQL Server defaults to its 2022 CU image. Set `DUBURL_SQLSERVER_QA_IMAGE` to run the same suite against a different image.
 
-CI runs the database suites on .NET 10, including separate SQL Server 2022 and 2025 runs. The unit matrix still covers .NET 8, 9 and 10, with embedded DuckDB integration cases in the .NET 10 entry. PostgreSQL, SQL Server, Oracle, SingleStore and MySQL use Linux. SQLite and DuckDB use Windows. SchemaContract and DiscoveryContract are shared internally through `DubUrl.Schema.QA`, which is not published as a NuGet package. Provider connection, raw driver metadata and application-level integration tests remain in DubUrl.
+CI runs the database suites on .NET 10, including separate runs for PostgreSQL 17 and 18 and for SQL Server 2022 and 2025. The unit matrix still covers .NET 8, 9 and 10, with embedded DuckDB integration cases in the .NET 10 entry. PostgreSQL, SQL Server, Oracle, SingleStore and MySQL use Linux. SQLite and DuckDB use Windows. SchemaContract and DiscoveryContract are shared internally through `DubUrl.Schema.QA`, which is not published as a NuGet package. Provider connection, raw driver metadata and application-level integration tests remain in DubUrl.
+
+To plan virtual generated columns, qualify `PgsqlDialect` with `WithServerVersion` for PostgreSQL 18 or later. The shared QA fixture uses the connected server version to verify deployment on 18 and renderer rejection on 17.
 
 To use a deliberately configured disposable database without provisioning, run `dotnet test` directly and set the matching `DUBURL_*_QA_CONNECTION_STRING` variable. Discovery tests also require `DUBURL_POSTGRESQL_DISCOVERY_QA_CONNECTION_STRING` or `DUBURL_SQLSERVER_DISCOVERY_QA_CONNECTION_STRING`. The normal runner sets all required variables and fails on skips.
 
