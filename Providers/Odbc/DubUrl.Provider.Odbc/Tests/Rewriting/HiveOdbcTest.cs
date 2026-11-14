@@ -1,3 +1,4 @@
+using System.Data;
 using System.Data.Common;
 using System.Data.Odbc;
 using DubUrl.Conversion;
@@ -9,12 +10,32 @@ using DubUrl.Provider.Odbc.Drivers.Discovery;
 using DubUrl.Provider.Odbc.Mapping;
 using DubUrl.Querying.Parametrizing;
 using DubUrl.Rewriting;
+using DubUrl.Schema;
 using NUnit.Framework;
 
 namespace DubUrl.Provider.Odbc.Tests.Rewriting;
 
 public sealed class HiveOdbcTest
 {
+    [Test]
+    public void HiveScriptsEmitAnnotationsAndRejectManagedProperties()
+    {
+        var url = new ConnectionUrl("odbc+hive://localhost?Driver=Explicit", Registry());
+        var table = Annotated("myapp.owner");
+        var script = url.ScriptSchema(new Schema.Schema([table]));
+        const string expected = """ALTER TABLE `sales`.`items` SET TBLPROPERTIES ('myapp.owner' = 'team\'s\\data');""";
+
+        Assert.That(script, Does.StartWith("CREATE TABLE").And.EndWith(expected));
+        foreach (var key in new[] { "transactional", "orc.compress", "last_modified_time" })
+        {
+            var schema = new Schema.Schema([Annotated(key)]);
+            Assert.That(() => url.ScriptSchema(schema), Throws.TypeOf<NotSupportedException>().With.Message.Contains(key));
+        }
+
+        static Table Annotated(string key) => new(new DatabaseObjectName("items", "sales"), [new("id", DbType.Int32)],
+            null, null, null, new Dictionary<string, string> { [key] = @"team's\data" });
+    }
+
     [TestCase("select", "`select`")]
     [TestCase("has`tick", "`has``tick`")]
     [TestCase("analytics.order details.select", "`analytics`.`order details`.`select`")]

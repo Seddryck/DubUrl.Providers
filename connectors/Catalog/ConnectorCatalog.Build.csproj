@@ -5,10 +5,10 @@
     <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="DubUrl" Version="$(DubUrlVersion)" />
+    <PackageReference Include="DubUrl" Version="[$(DubUrlVersion)]" />
     <ProjectReference Include="../../Providers/*/DubUrl.Provider.*/*.csproj"
                       Exclude="../../Providers/*/*.QA/*.csproj;../../Providers/*/*.BulkCopy/*.csproj;../../Providers/*/*.Native/*.csproj" />
-    <PackageReference Include="DubUrl.OleDb" Version="$(DubUrlVersion)" />
-    <PackageReference Include="DubUrl.Adomd" Version="$(DubUrlVersion)" />
+    <PackageReference Include="DubUrl.OleDb" Version="[$(DubUrlVersion)]" />
+    <PackageReference Include="DubUrl.Adomd" Version="[$(DubUrlVersion)]" />
   </ItemGroup>
 </Project>

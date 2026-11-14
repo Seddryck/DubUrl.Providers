@@ -8,13 +8,39 @@ using DubUrl.Schema.Renderers;
 namespace DubUrl.Provider.SqlServer.Schema.Generation;
 
 internal sealed class TSqlSchemaSqlRenderer : StandardSchemaSqlRenderer, IUniqueConstraintSqlRenderer, IColumnDefaultSqlRenderer,
-    IStructuredColumnSqlRenderer, ITableAnnotationSqlRenderer
+    IStructuredColumnSqlRenderer, IHierarchySqlRenderer, IColumnDefinitionSqlRenderer, ITableAnnotationSqlRenderer
 {
     internal static TSqlSchemaSqlRenderer Default { get; } = new();
     internal const int NativeStructuredVersion = 17;
     internal const int MaxVectorDimensions = 1998;
     internal const int MaxExtendedPropertyValueLength = 3750;
     private const string DescriptionProperty = "MS_Description";
+
+    public HierarchyStoragePlan PlanHierarchy(IDialect dialect, HierarchyContext context)
+    {
+        if (dialect is TSqlDialect { ServerVersion.Major: < 10 })
+            throw new NotSupportedException("hierarchyid requires SQL Server 2008 or later.");
+        return SqlServerHierarchy.Plan(context);
+    }
+
+    public string? RenderHierarchyExpression(IDialect dialect, Expression expression)
+        => SqlServerHierarchy.RenderExpression(dialect, expression);
+
+    public ColumnDefinitionPlan? RenderColumnDefinition(IDialect dialect, ColumnDefinitionContext column)
+    {
+        if (!string.Equals(column.Type, SqlServerHierarchy.TypeName, StringComparison.OrdinalIgnoreCase)
+            || column.Generation is not { Identity: false, Expression: { } expression } generation)
+            return null;
+
+        var specification = RenderGenerated(dialect, column.Type, expression, generation.Stored);
+        if (column.NotNullable)
+        {
+            if (!generation.Stored)
+                throw new NotSupportedException("A non-null SQL Server computed hierarchyid column must be persisted.");
+            specification += " NOT NULL";
+        }
+        return new(specification, ColumnDefinitionClauses.Generation | ColumnDefinitionClauses.Nullability);
+    }
 
     public string? RenderStructuredType(IDialect dialect, StructuredColumnTypeContext context)
     {
@@ -169,6 +195,9 @@ internal sealed class TSqlSchemaSqlRenderer : StandardSchemaSqlRenderer, IUnique
                 throw new NotSupportedException($"SQL Server extended property '{key}' cannot be used as a table annotation.");
             if (value.Length > MaxExtendedPropertyValueLength)
                 throw new NotSupportedException($"SQL Server annotation '{key}' exceeds 7,500 bytes (3,750 UTF-16 code units).");
+            if (SqlServerHierarchy.IsHierarchyAnnotation(key)
+                && (key != SqlServerHierarchy.Annotation || SqlServerHierarchy.DecodeDeclaration(value) is null))
+                throw new NotSupportedException("The reserved SQL Server hierarchy annotation requires a valid hierarchy declaration.");
 
             commands.Add(new(RenderExtendedProperty(target, key, value, column: null), SchemaSqlOperation.Comment, table.ToString()));
         }

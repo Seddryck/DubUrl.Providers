@@ -3,6 +3,7 @@
   <ItemGroup>
     <ProjectReference Include="../../Providers/*/DubUrl.Provider.*/*.csproj" Exclude="../../Providers/*/*.QA/*.csproj" />
     <Compile Include="../../Providers/*/DubUrl.Provider.*/Tests/**/*.cs" />
+    <EmbeddedResource Include="../Schema/coverage-cases.json" LogicalName="DubUrl.SchemaCoverageCases" />
     <PackageReference Include="DubUrl.BulkCopy" Version="$(DubUrlVersion)" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.11.0" />
     <PackageReference Include="NUnit" Version="5.0.0" />

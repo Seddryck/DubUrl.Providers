@@ -50,6 +50,10 @@ Use the shortcut path in the URL. The mapper rejects a raw HTTP endpoint path an
 
 Use `WithInformationalKeys()` to accept Unity Catalog's informational primary and foreign keys. Use `WithInformationalKeys(supportsUnique: true)` on compute that supports informational `UNIQUE` and foreign keys that reference it. Deployment checks the visible keys of existing parent tables before applying replacement commands. [Databricks key constraints](https://docs.databricks.com/aws/en/sql/language-manual/sql-ref-syntax-ddl-create-table-constraint) · [Unity Catalog metadata visibility](https://docs.databricks.com/aws/en/sql/language-manual/sql-ref-information-schema)
 
+## Table annotations
+
+Spark and Databricks discover table annotations from `SHOW TBLPROPERTIES` and replay them using a separate `ALTER TABLE ... SET TBLPROPERTIES` statement. Databricks excludes `delta.` keys from annotations. Spark filters internal catalog properties and excludes `delta.` keys for Delta tables. Delta CHECK constraints continue to use their own discovery path.
+
 ## Structured schema columns
 
 Spark 3.5.8 `spark_catalog` Parquet and Databricks Unity Catalog Delta support recursive native arrays, maps, and structs in schema models and v1 JSON and YAML documents. Arrays require nullable elements. Maps require non-null scalar keys and nullable values. Declare each struct field's nullability explicitly. Field order and spelling are preserved, including quoted names. Name collisions are checked using the catalog's identifier rules. Spark's Hive metastore rejects commas, colons, and semicolons in nested field names.

@@ -4,17 +4,22 @@ using System.Runtime.CompilerServices;
 using System.Text.RegularExpressions;
 using DubUrl.Discovery;
 using DubUrl.Provider.SqlServer.Schema.Generation;
+using DubUrl.Provider.SqlServer.Sql;
 using DubUrl.Schema;
 using DubUrl.Schema.Constraints;
 
 namespace DubUrl.Provider.SqlServer.Discovery;
 
 public sealed class SqlServerMetadataReader : CatalogSchemaMetadataReader, ISchemaMetadataReader,
-    IUniqueConstraintMetadataReader, IStructuredColumnMetadataReader
+    IUniqueConstraintMetadataReader, IStructuredColumnMetadataReader, IHierarchyMetadataReader
 {
     private readonly ConditionalWeakTable<MetadataKey, UniqueConstraintMetadata> nullPolicies = new();
     private readonly ConditionalWeakTable<MetadataColumn, StructuredColumnMetadata> structuredTypes = new();
+    private readonly ConditionalWeakTable<MetadataTable, Hierarchy> hierarchies = new();
     protected override bool SupportsAnnotations => true;
+
+    public Hierarchy? GetHierarchy(MetadataTable table)
+        => hierarchies.TryGetValue(table, out var declaration) ? declaration : null;
 
     public new async Task<SchemaMetadata> ReadAsync(DbConnection connection, DiscoveryOptions options,
         CancellationToken cancellationToken = default)
@@ -51,6 +56,8 @@ public sealed class SqlServerMetadataReader : CatalogSchemaMetadataReader, ISche
             foreach (var property in properties[table.Identity])
             {
                 var name = property.Text("property_name")!;
+                if (SqlServerHierarchy.IsHierarchyAnnotation(name))
+                    continue;
                 var value = property.Text("property_value");
                 if (TSqlSchemaSqlRenderer.IsAnnotationName(name)
                     && value is { Length: <= TSqlSchemaSqlRenderer.MaxExtendedPropertyValueLength })
@@ -59,7 +66,10 @@ public sealed class SqlServerMetadataReader : CatalogSchemaMetadataReader, ISche
                     diagnostics.Add(new("SDI009", SchemaFeature.Annotations, MetadataCoverage.Unrepresentable,
                         $"SQL Server extended property '{name}' cannot be represented as a writable text annotation.", table.Identity));
             }
-            tables.Add(annotations.Count == 0 ? table : table with { Annotations = annotations });
+            var annotated = annotations.Count == 0 ? table : table with { Annotations = annotations };
+            if (annotations.Count > 0 && GetHierarchy(table) is { } hierarchy)
+                hierarchies.Add(annotated, hierarchy);
+            tables.Add(annotated);
         }
         return metadata with { Tables = tables, Diagnostics = diagnostics };
     }
@@ -98,6 +108,17 @@ public sealed class SqlServerMetadataReader : CatalogSchemaMetadataReader, ISche
         RegexOptions.IgnoreCase | RegexOptions.CultureInvariant, TimeSpan.FromSeconds(1));
 
     protected override MetadataTable MapTable(CatalogRow row, List<CatalogRow> columnRows, List<CatalogRow> keyRows,
+        List<CatalogRow> indexRows, List<CatalogRow> checkRows, DiscoveryOptions options, Action<SchemaFeature, string> diagnose)
+    {
+        var table = MapWithUniqueConstraints(row, columnRows, keyRows, indexRows, checkRows, options, diagnose);
+        if (SqlServerHierarchy.DecodeDeclaration(row.Text("hierarchy_declaration")) is { } declaration
+            && table.Columns.Any(column => column.Name == declaration.NodeKey)
+            && table.Columns.Any(column => column.Name == SqlServerHierarchy.PathColumn && column.NativeType == SqlServerHierarchy.TypeName))
+            hierarchies.Add(table, declaration);
+        return table;
+    }
+
+    private MetadataTable MapWithUniqueConstraints(CatalogRow row, List<CatalogRow> columnRows, List<CatalogRow> keyRows,
         List<CatalogRow> indexRows, List<CatalogRow> checkRows, DiscoveryOptions options, Action<SchemaFeature, string> diagnose)
     {
         if (!options.Features.Contains(SchemaFeature.UniqueConstraints))
@@ -143,6 +164,16 @@ public sealed class SqlServerMetadataReader : CatalogSchemaMetadataReader, ISche
             return mapped;
         }
 
+        if (IsBuiltInHierarchyId(row) && options.Features.Contains(SchemaFeature.Generation)
+            && row.Text("generation_expression") is { } definition
+            && SqlServerHierarchy.DecodeParentExpression(definition) is { } ancestor)
+        {
+            return base.MapCatalogColumn(row.With(("generation_expression", null)), options, diagnose) with
+            {
+                Generation = new(Expression: ancestor, Stored: row.Bool("stored") ?? true)
+            };
+        }
+
         if (!options.Features.Contains(SchemaFeature.Defaults))
             return base.MapCatalogColumn(row, options, diagnose);
 
@@ -184,8 +215,24 @@ public sealed class SqlServerMetadataReader : CatalogSchemaMetadataReader, ISche
         var column = base.MapColumn(row);
         if (row.Bool("structured") == true)
             return column with { Type = DbType.Object, Length = null, Precision = null, Scale = null };
+        if (IsBuiltInHierarchyId(row))
+        {
+            return column with
+            {
+                Type = DbType.Object,
+                NativeType = SqlServerHierarchy.TypeName,
+                NativeDialect = typeof(TSqlDialect),
+                Length = null,
+                Precision = null,
+                Scale = null
+            };
+        }
         return row.Text("type_name") is "timestamp" or "rowversion" ? column with { Type = System.Data.DbType.Binary, Length = 8 } : column;
     }
+
+    private static bool IsBuiltInHierarchyId(CatalogRow row)
+        => row.Bool("user_defined") == false
+            && string.Equals(row.Text("type_name"), SqlServerHierarchy.TypeName, StringComparison.OrdinalIgnoreCase);
 
     internal static StructuredColumnMetadata? DecodeStructuredType(CatalogRow row)
     {
@@ -213,10 +260,12 @@ public sealed class SqlServerMetadataReader : CatalogSchemaMetadataReader, ISche
         return base.ReadCatalogRowsAsync(connection, sql, options, cancellationToken);
     }
 
-    protected override string TablesSql => """
-        SELECT s.name AS schema_name,t.name AS table_name,CONVERT(nvarchar(max),ep.value) AS comment
+    protected override string TablesSql => $"""
+        SELECT s.name AS schema_name,t.name AS table_name,CONVERT(nvarchar(max),ep.value) AS comment,
+          CONVERT(nvarchar(max),h.value) AS hierarchy_declaration
         FROM sys.tables t JOIN sys.schemas s ON s.schema_id=t.schema_id
         LEFT JOIN sys.extended_properties ep ON ep.major_id=t.object_id AND ep.minor_id=0 AND ep.name='MS_Description' AND ep.class=1
+        LEFT JOIN sys.extended_properties h ON h.major_id=t.object_id AND h.minor_id=0 AND h.name=N'{SqlServerHierarchy.Annotation}' AND h.class=1
         WHERE t.is_ms_shipped=0
         """;
     protected override string ColumnsSql { get; } = ColumnQuery("");
@@ -225,8 +274,18 @@ public sealed class SqlServerMetadataReader : CatalogSchemaMetadataReader, ISche
     private static string ColumnQuery(string vectorColumns) => $$"""
         SELECT s.name AS schema_name,t.name AS table_name,c.name AS column_name,c.column_id AS ordinal,
           ty.name AS type_name,ty.is_user_defined AS user_defined,c.is_nullable AS nullable,{{vectorColumns}}
+          CASE
+            WHEN ty.is_user_defined=1 THEN QUOTENAME(SCHEMA_NAME(ty.schema_id)) + '.' + QUOTENAME(ty.name)
+            WHEN ty.name IN ('binary','varbinary','char','varchar','nchar','nvarchar')
+              THEN CONCAT(ty.name,'(',CASE WHEN c.max_length=-1 THEN 'max'
+                WHEN ty.name IN ('nchar','nvarchar') THEN CONVERT(varchar(5),c.max_length/2)
+                ELSE CONVERT(varchar(5),c.max_length) END,')')
+            WHEN ty.name IN ('decimal','numeric') THEN CONCAT(ty.name,'(',c.precision,',',c.scale,')')
+            WHEN ty.name IN ('datetime2','datetimeoffset','time') THEN CONCAT(ty.name,'(',c.scale,')')
+            ELSE ty.name
+          END AS native_type_declaration,
           CASE WHEN ty.name IN ('nvarchar','nchar') AND c.max_length>0 THEN c.max_length/2 ELSE c.max_length END AS length,
-          c.precision,c.scale,dc.definition AS default_expression,
+          c.precision,c.scale,dc.name AS default_name,dc.definition AS default_expression,
           CONVERT(bigint,ic.seed_value) AS identity_seed,CONVERT(bigint,ic.increment_value) AS identity_increment,
           cc.definition AS generation_expression,cc.is_persisted AS stored,CONVERT(nvarchar(max),ep.value) AS comment,
           seq.sequence_name,seq.sequence_schema,seq.sequence_count,DB_NAME() AS sequence_database
@@ -276,6 +335,8 @@ public sealed class SqlServerMetadataReader : CatalogSchemaMetadataReader, ISche
     protected override string IndexesSql => """
         SELECT s.name AS schema_name,t.name AS table_name,i.name AS index_name,i.is_unique AS unique_index,
           ic.key_ordinal AS ordinal,c.name AS column_name,ic.is_descending_key AS descending,
+          i.type_desc AS index_kind,i.filter_definition,
+          CASE WHEN ic.is_included_column=1 THEN QUOTENAME(c.name) END AS included_column,
           CASE WHEN i.has_filter=1 OR i.type NOT IN (1,2) OR EXISTS
             (SELECT 1 FROM sys.index_columns x WHERE x.object_id=i.object_id AND x.index_id=i.index_id AND x.is_included_column=1)
             THEN 1 ELSE 0 END AS unsupported
@@ -291,7 +352,7 @@ public sealed class SqlServerMetadataReader : CatalogSchemaMetadataReader, ISche
         """;
     protected override string ViewsSql => """
         SELECT s.name AS schema_name,v.name AS table_name,m.definition,c.name AS column_name,
-          c.column_id AS ordinal,ty.name AS type_name,c.is_nullable AS nullable
+          c.column_id AS ordinal,ty.name AS type_name,ty.is_user_defined AS user_defined,c.is_nullable AS nullable
         FROM sys.views v JOIN sys.schemas s ON s.schema_id=v.schema_id
         LEFT JOIN sys.sql_modules m ON m.object_id=v.object_id
         LEFT JOIN sys.columns c ON c.object_id=v.object_id LEFT JOIN sys.types ty ON ty.user_type_id=c.user_type_id

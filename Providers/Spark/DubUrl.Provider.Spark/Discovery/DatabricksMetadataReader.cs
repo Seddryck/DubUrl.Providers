@@ -33,6 +33,7 @@ public sealed class DatabricksMetadataReader : SparkCatalogMetadataReader
     }
 
     protected override IReadOnlySet<SchemaFeature> UnsupportedFeatures => Unsupported;
+    protected override bool SupportsAnnotations => true;
     protected override string TablesSql => """
         SELECT table_catalog AS catalog_name, table_schema AS schema_name, table_name, comment
         FROM {info}.tables WHERE table_schema <> 'information_schema'
@@ -84,7 +85,20 @@ public sealed class DatabricksMetadataReader : SparkCatalogMetadataReader
 
         var scope = read?.Scope ?? await ReadScopeAsync(connection, options, cancellationToken).ConfigureAwait(false);
         if (read is not null) read.Scope = scope;
-        if (sql == TablesSql) return scope.Tables;
+        if (sql == TablesSql)
+        {
+            if (options.Features.Contains(SchemaFeature.Annotations))
+            {
+                foreach (var table in scope.Tables)
+                {
+                    var name = Identity(table);
+                    var properties = await ReadTablePropertiesAsync(connection, name, cancellationToken).ConfigureAwait(false);
+                    if (properties is null)
+                        read!.Inaccessible(SchemaFeature.Annotations, name, "Table properties could not be read.");
+                }
+            }
+            return scope.Tables;
+        }
         if (sql == KeysSql && scope.Keys is not null) return scope.Keys;
         if (scope.Tables.Count == 0) return [];
 
@@ -94,15 +108,10 @@ public sealed class DatabricksMetadataReader : SparkCatalogMetadataReader
             foreach (var table in scope.Tables)
             {
                 var name = Identity(table);
-                List<CatalogRow> properties;
-                try
+                var properties = await ReadTablePropertiesAsync(connection, name, cancellationToken).ConfigureAwait(false);
+                if (properties is null)
                 {
-                    properties = await QueryAsync(connection, $"SHOW TBLPROPERTIES {QualifiedName(name)}", cancellationToken)
-                        .ConfigureAwait(false);
-                }
-                catch (DbException) when (read is not null)
-                {
-                    read.Inaccessible(SchemaFeature.Checks, name, "Delta check properties could not be read.");
+                    read!.Inaccessible(SchemaFeature.Checks, name, "Delta check properties could not be read.");
                     continue;
                 }
                 const string prefix = "delta.constraints.";
@@ -164,6 +173,17 @@ public sealed class DatabricksMetadataReader : SparkCatalogMetadataReader
             }
         }
         return result;
+    }
+
+    private async Task<List<CatalogRow>?> ReadTablePropertiesAsync(DbConnection connection, MetadataName name, CancellationToken cancellationToken)
+    {
+        if (read!.Properties.TryGetValue(name, out var properties))
+            return properties;
+
+        try { properties = await QueryAsync(connection, $"SHOW TBLPROPERTIES {QualifiedName(name)}", cancellationToken).ConfigureAwait(false); }
+        catch (DbException) { properties = null; }
+        read.Properties.Add(name, properties);
+        return properties;
     }
 
     private async Task<TableScope> ReadScopeAsync(DbConnection connection, DiscoveryOptions options, CancellationToken cancellationToken)
@@ -263,7 +283,9 @@ public sealed class DatabricksMetadataReader : SparkCatalogMetadataReader
         if (table.PrimaryKey is not null) DiagnoseKey(SchemaFeature.PrimaryKeys);
         if (table.ForeignKeys.Count > 0) DiagnoseKey(SchemaFeature.ForeignKeys);
         if (table.UniqueConstraints.Count > 0) DiagnoseKey(SchemaFeature.UniqueConstraints);
-        return table;
+        return options.Features.Contains(SchemaFeature.Annotations) && read?.Properties.GetValueOrDefault(name) is { } properties
+            ? table with { Annotations = SparkTableProperties.Read(properties, SparkTableProperties.IsDelta) }
+            : table;
 
         void DiagnoseKey(SchemaFeature feature) =>
             diagnose(feature, "Databricks keys are informational. Schema document v1 cannot preserve their lack of enforcement.");
@@ -311,6 +333,7 @@ public sealed class DatabricksMetadataReader : SparkCatalogMetadataReader
     {
         public TableScope? Scope { get; set; }
         public List<DiscoveryDiagnostic> Diagnostics { get; } = [];
+        public Dictionary<MetadataName, List<CatalogRow>?> Properties { get; } = [];
 
         public void Inaccessible(SchemaFeature feature, MetadataName? name, string message)
             => Diagnostics.Add(new("SDS002", feature, MetadataCoverage.Inaccessible, message, name));
