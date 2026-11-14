@@ -1,8 +1,8 @@
 {
   "schemaVersion": 1,
-  "providerCommit": "91098425624790cb7236c971b297c7ac39d4398c",
-  "runUrl": "https://github.com/Seddryck/DubUrl.Providers/actions/runs/43576514259/attempts/1",
-  "dubUrlVersion": "0.66.0",
+  "providerCommit": "bee88a80c5b983e25ede7e2f62ab7b4df87f8b7b",
+  "runUrl": "https://github.com/Seddryck/DubUrl.Providers/actions/runs/43582844888/attempts/1",
+  "dubUrlVersion": "0.67.1",
   "dubUrlSchemaVersion": "0.107.0",
   "features": [
     {
@@ -14052,15 +14052,14 @@
             },
             "literal-default": {
               "inspect": {
-                "status": "limited",
+                "status": "supported",
                 "evidence": [
                   {
                     "test": "Shared_DiscoveryDefaults",
-                    "status": "limited",
+                    "status": "supported",
                     "outcomes": [
                       "Passed"
-                    ],
-                    "note": "Discovery of Oracle LONG defaults is outside the qualified slice."
+                    ]
                   }
                 ]
               },
