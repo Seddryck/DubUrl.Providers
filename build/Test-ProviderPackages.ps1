@@ -82,7 +82,7 @@ foreach ($package in $packages) {
         if ($ForPublish) {
             Assert-Condition (@($dependencyNodes | Where-Object {
                 $_.id -eq 'DubUrl.Schema' -and $_.version -match 'schema-qa\.build'
-            }).Count -eq 0) "Package '$($package.Id)' requires a published Schema package with structured column types."
+            }).Count -eq 0) "Package '$($package.Id)' requires a published DubUrl.Schema dependency."
         }
         Assert-Condition ('DubUrl.Core' -notin $dependencies) "Package '$($package.Id)' depends on the retired DubUrl.Core package."
         if ($package.Id -eq 'DubUrl') {

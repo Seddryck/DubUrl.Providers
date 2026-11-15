@@ -50,7 +50,7 @@ public sealed partial class OracleBaselineTests
             ["DiscoveryPrimaryKey"] = FeatureExpectation.Supported,
             ["DiscoveryUnique"] = FeatureExpectation.Supported,
             ["DiscoveryForeignKey"] = FeatureExpectation.Supported,
-            ["DiscoveryDefaults"] = new(ExpectedOutcome.NotEnforced,"Discovery of Oracle LONG defaults is outside the qualified slice."),
+            ["DiscoveryDefaults"] = FeatureExpectation.Supported,
             ["DiscoveryIdentity"] = new(ExpectedOutcome.RendererRejects,"Oracle identity generation is outside the qualified slice.","Identity"),
             ["DiscoveryChecks"] = new(ExpectedOutcome.NotEnforced,"Discovery of Oracle check conditions is outside the qualified slice."),
             ["DiscoveryGeneration"] = new(ExpectedOutcome.RendererRejects,"Oracle generated columns are outside the qualified slice.","Generated"),

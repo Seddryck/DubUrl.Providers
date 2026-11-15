@@ -1,5 +1,7 @@
+using System.Data.Common;
 using System.Text.Json;
 using DubUrl.Discovery;
+using DubUrl.Providers.Discovery;
 using DubUrl.Provider.PostgreSql.Schema.Generation;
 using DubUrl.Schema;
 
@@ -8,6 +10,9 @@ namespace DubUrl.Provider.PostgreSql.Discovery;
 /// <summary>Reads CrateDB's object field paths, array types, and vector dimensions.</summary>
 public sealed class CrateDbMetadataReader : StructuredCatalogMetadataReader
 {
+    public override Task<SchemaMetadata> ReadAsync(DbConnection connection, DiscoveryOptions options, CancellationToken cancellationToken = default)
+        => ProviderSchemaDiagnostics.ReadAsync(() => base.ReadAsync(connection, options, cancellationToken));
+
     protected override string TablesSql => """
         SELECT table_schema AS schema_name,table_name
         FROM information_schema.tables
@@ -26,10 +31,17 @@ public sealed class CrateDbMetadataReader : StructuredCatalogMetadataReader
         List<CatalogRow> indexRows, List<CatalogRow> checkRows, DiscoveryOptions options, Action<SchemaFeature, string> diagnose)
     {
         var identity = Identity(row);
-        var parsed = columnRows.Where(column => Identity(column) == identity).Select(Entry.Read).ToArray();
-        if (parsed.Any(entry => entry is null))
-            diagnose(SchemaFeature.Columns, "CrateDB column path metadata could not be read.");
-        var entries = parsed.OfType<Entry>().ToLookup(entry => entry.Root, StringComparer.Ordinal);
+        var parsed = new List<Entry>();
+        foreach (var column in columnRows.Where(column => Identity(column) == identity))
+        {
+            if (Entry.Read(column) is { } entry)
+                parsed.Add(entry);
+            else
+                ProviderSchemaDiagnostics.Report(diagnose, identity, SchemaFeature.Columns,
+                    "CrateDB column path metadata could not be read.", member: column.Text("column_name"),
+                    nativeDefinition: column.Text("type_name"));
+        }
+        var entries = parsed.ToLookup(entry => entry.Root, StringComparer.Ordinal);
         var roots = entries.SelectMany(group => group.Where(entry => entry.Path.Length == 0))
             .ToDictionary(entry => entry.Root, StringComparer.Ordinal);
         var table = base.MapTable(row, roots.Values.Select(entry => entry.Row).ToList(), keyRows, indexRows, checkRows, options, diagnose);
