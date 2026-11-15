@@ -14,7 +14,7 @@
     <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="DubUrl" Version="$(DubUrlVersion)" />
+    <PackageReference Include="DubUrl" Version="[$(DubUrlVersion)]" />
     <ProjectReference Include="..\DuckDb\DubUrl.Provider.DuckDb.Adbc\DubUrl.Provider.DuckDb.Adbc.csproj" Condition="'$(ConnectorTechnology)' == 'DuckDbAdbc'" />
     <ProjectReference Include="..\DuckDb\DubUrl.Provider.DuckDb.Native.BulkCopy\DubUrl.Provider.DuckDb.Native.BulkCopy.csproj" Condition="'$(ConnectorTechnology)' == 'DuckDb'" />
     <ProjectReference Include="..\DuckDb\DubUrl.Provider.DuckDb.Native\DubUrl.Provider.DuckDb.Native.csproj" Condition="'$(ConnectorTechnology)' == 'DuckDb'" />
@@ -37,7 +37,7 @@
     <ProjectReference Include="..\Text\DubUrl.Provider.Text\DubUrl.Provider.Text.csproj" Condition="'$(ConnectorFamily)' == 'Text'" />
     <ProjectReference Include="..\Trino\DubUrl.Provider.Trino\DubUrl.Provider.Trino.csproj" Condition="'$(ConnectorFamily)' == 'Trino'" />
     <ProjectReference Include="..\Odbc\DubUrl.Provider.Odbc\DubUrl.Provider.Odbc.csproj" Condition="'$(ConnectorTechnology)' == 'Odbc'" />
-    <PackageReference Include="DubUrl.OleDb" Version="$(DubUrlVersion)" Condition="'$(ConnectorTechnology)' == 'OleDb'" />
+    <PackageReference Include="DubUrl.OleDb" Version="[$(DubUrlVersion)]" Condition="'$(ConnectorTechnology)' == 'OleDb'" />
   </ItemGroup>
 
   <ItemGroup>

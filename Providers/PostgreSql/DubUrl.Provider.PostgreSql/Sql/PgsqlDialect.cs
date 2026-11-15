@@ -56,16 +56,18 @@ public class PgsqlDialect : BaseDialect
     private PostgreSqlCompositeType? FindCompositeType(StructType shape)
         => CompositeTypes.FirstOrDefault(type => type.Shape == shape);
 
-    /// <summary>Sets the PostgreSQL server version for offline planning of version-dependent defaults.</summary>
+    /// <summary>Sets the PostgreSQL server version for planning version-dependent schema features.</summary>
     public PgsqlDialect WithServerVersion(Version serverVersion)
     {
         ArgumentNullException.ThrowIfNull(serverVersion);
         var dialect = (PgsqlDialect)MemberwiseClone();
         dialect.ServerVersion = serverVersion;
+        dialect.SchemaCapabilities = SchemaCapabilities with { SupportsVirtualGeneratedColumns = serverVersion.Major >= 18 };
         return dialect;
     }
 
-    public override DialectCapabilities Capabilities { get; } = PgsqlSchemaCapabilities.Create();
+    private DialectCapabilities SchemaCapabilities { get; set; } = PgsqlSchemaCapabilities.Create();
+    public override DialectCapabilities Capabilities => SchemaCapabilities;
 
     internal PgsqlDialect(ILanguage language, string[] aliases, IRenderer renderer, ICaster[] casters, IDbTypeMapper dbTypeMapper, ISqlFunctionMapper sqlFunctionMapper)
         : base(language, aliases, renderer, casters, dbTypeMapper, sqlFunctionMapper) { }

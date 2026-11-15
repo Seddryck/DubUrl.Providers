@@ -6,9 +6,31 @@ using DubUrl.Schema.Renderers;
 
 namespace DubUrl.Provider.Snowflake.Schema.Generation;
 
-internal sealed class SnowflakeSchemaSqlRenderer : StandardSchemaSqlRenderer, IColumnDefaultSqlRenderer, IStructuredColumnSqlRenderer, IColumnAnnotationSqlRenderer
+internal sealed class SnowflakeSchemaSqlRenderer : StandardSchemaSqlRenderer, IColumnDefaultSqlRenderer,
+    IStructuredColumnSqlRenderer, ITableAnnotationSqlRenderer, IColumnAnnotationSqlRenderer
 {
     internal static SnowflakeSchemaSqlRenderer Default { get; } = new();
+
+    public IReadOnlyList<SchemaSqlCommand> PlanTableAnnotations(IDialect dialect, DatabaseObjectName table,
+        IReadOnlyDictionary<string, string> annotations)
+    {
+        if (annotations.Count == 0)
+            return [];
+
+        var names = new HashSet<string>(StringComparer.Ordinal);
+        var assignments = new List<string>(annotations.Count);
+        foreach (var (key, value) in annotations.OrderBy(item => item.Key, StringComparer.Ordinal))
+        {
+            var tag = SnowflakeTableTags.RenderName(key);
+            if (!names.Add(tag))
+                throw new NotSupportedException($"Snowflake annotation '{key}' names a tag that is already assigned.");
+            if (value.EnumerateRunes().Count() > 256)
+                throw new NotSupportedException($"Snowflake tag '{key}' cannot have a value longer than 256 characters.");
+            assignments.Add($"{tag} = {SnowflakeTableTags.Literal(value)}");
+        }
+        var name = RenderObjectName(dialect, table.Catalog, table.Database, table.Schema, table.Name);
+        return [new($"ALTER TABLE {name} SET TAG {string.Join(", ", assignments)};", SchemaSqlOperation.Comment, table.ToString())];
+    }
 
     public IReadOnlyList<SchemaSqlCommand> PlanColumnAnnotations(IDialect dialect, DatabaseObjectName table,
         IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>> annotations)
@@ -62,10 +84,14 @@ internal sealed class SnowflakeSchemaSqlRenderer : StandardSchemaSqlRenderer, IC
 
     public override bool SupportsCommentRendering => true;
 
+    public override string RenderIdentifier(IDialect dialect, string name)
+        => SnowflakeStructuredTypes.QuoteIdentifier(name);
+
     public override string RenderObjectName(IDialect dialect, string? catalog, string? database, string? schema, string name)
     {
         RejectQualifier(catalog, "Catalog", dialect);
-        return QuoteIdentifierParts(dialect, database, schema, name);
+        return string.Join('.', new[] { database, schema, name }.OfType<string>()
+            .Select(SnowflakeStructuredTypes.QuoteIdentifier));
     }
 
     public override string RenderComment(IDialect dialect, SchemaSqlObjectName table, string? column, string description)
