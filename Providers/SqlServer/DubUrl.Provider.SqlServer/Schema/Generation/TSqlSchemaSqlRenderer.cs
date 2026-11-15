@@ -8,7 +8,7 @@ using DubUrl.Schema.Renderers;
 namespace DubUrl.Provider.SqlServer.Schema.Generation;
 
 internal sealed class TSqlSchemaSqlRenderer : StandardSchemaSqlRenderer, IUniqueConstraintSqlRenderer, IColumnDefaultSqlRenderer,
-    IStructuredColumnSqlRenderer, IHierarchySqlRenderer, IColumnDefinitionSqlRenderer, ITableAnnotationSqlRenderer
+    IStructuredColumnSqlRenderer, IHierarchySqlRenderer, IColumnDefinitionSqlRenderer, ITableAnnotationSqlRenderer, IColumnAnnotationSqlRenderer
 {
     internal static TSqlSchemaSqlRenderer Default { get; } = new();
     internal const int NativeStructuredVersion = 17;
@@ -227,6 +227,19 @@ internal sealed class TSqlSchemaSqlRenderer : StandardSchemaSqlRenderer, IUnique
             + $"@schemaName = {(table.Schema is null ? "NULL" : UnicodeLiteral(table.Schema))}, "
             + $"@tableName = {UnicodeLiteral(table.Name)}, @propertyName = {UnicodeLiteral(key)}, @propertyValue = {UnicodeLiteral(value)}"
             + (column is null ? ";" : $", @columnName = {UnicodeLiteral(column)};");
+    }
+
+    public IReadOnlyList<SchemaSqlCommand> PlanColumnAnnotations(IDialect dialect, DatabaseObjectName table,
+        IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>> annotations)
+    {
+        var target = new SchemaSqlObjectName(table.Name, table.Schema, table.Database, table.Catalog);
+        return annotations.SelectMany(column => column.Value.OrderBy(pair => pair.Key, StringComparer.Ordinal).Select(pair =>
+        {
+            if (!IsAnnotationName(pair.Key) || pair.Value.Length > MaxExtendedPropertyValueLength)
+                throw new NotSupportedException($"SQL Server extended property '{pair.Key}' cannot be used as a column annotation.");
+            return new SchemaSqlCommand(RenderExtendedProperty(target, pair.Key, pair.Value, column.Key),
+                SchemaSqlOperation.Comment, $"{table}.{column.Key}");
+        })).ToArray();
     }
 
     private static string UnicodeLiteral(string value) => $"N'{value.Replace("'", "''")}'";
