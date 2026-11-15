@@ -80,7 +80,7 @@ public class MySqlMetadataReaderTests
 
 
     [Test]
-    public async Task UnsupportedGenerationDefaultsAndTypes_HaveObjectDiagnostics()
+    public async Task AutoIncrementLeavesSettingsUnspecifiedAndOtherUnsupportedMetadataIsDiagnosed()
     {
         var connection = Catalog(Table(["database_name", "table_name"], ["db", "t"]),
             Table(["database_name", "table_name", "column_name", "ordinal", "type_name", "native_type_name", "extra", "default_expression"],
@@ -88,9 +88,9 @@ public class MySqlMetadataReaderTests
                 ["db", "t", "stamp", 2, "timestamp", "timestamp", "DEFAULT_GENERATED", "CURRENT_TIMESTAMP"],
                 ["db", "t", "unsigned_value", 3, "int", "int unsigned", "", null]));
         var result = await new MySqlMetadataReader().ReadAsync(connection.Object, new() { Features = [SchemaFeature.Columns, SchemaFeature.Generation, SchemaFeature.Defaults] });
-        Assert.That(result.Diagnostics.Select(d => d.Feature), Is.EquivalentTo(new[] { SchemaFeature.Generation, SchemaFeature.Defaults, SchemaFeature.Columns }));
+        Assert.That(result.Diagnostics.Select(d => d.Feature), Is.EquivalentTo(new[] { SchemaFeature.Defaults, SchemaFeature.Columns }));
         Assert.That(result.Diagnostics.All(d => d.Code == "SDI009" && d.Object == new MetadataName("t", Database: "db") && d.Coverage == MetadataCoverage.Unrepresentable), Is.True);
-        Assert.That(result.Tables.Single().Columns[0].Generation, Is.Null);
+        Assert.That(result.Tables.Single().Columns[0].Generation, Is.EqualTo(new MetadataGeneration()));
     }
 
     [TestCase("select `db`.`t`.`a` AS `label` from `db`.`t`", true)]
