@@ -154,7 +154,7 @@ public sealed class OracleDiscoveryTests
         using var connection = schema.Connect();
         connection.Open();
         QaSql.Execute(connection, """
-            CREATE TABLE SAMPLE (A NUMBER DEFAULT 1, B NUMBER, C NUMBER,
+            CREATE TABLE SAMPLE (A NUMBER DEFAULT 1, B NUMBER DEFAULT ON NULL ABS(-23), C NUMBER,
                 CONSTRAINT UQ_DEFERRED UNIQUE (A,B) DEFERRABLE INITIALLY DEFERRED,
                 CONSTRAINT UQ_SUPPORTED UNIQUE (C))
             """);
@@ -176,11 +176,17 @@ public sealed class OracleDiscoveryTests
         Assert.That(partial.Diagnostics.Where(diagnostic => diagnostic.Code == "SDI003")
             .Select(diagnostic => (diagnostic.Feature, diagnostic.Coverage)), Is.EquivalentTo(new[]
             {
-                (SchemaFeature.Defaults, MetadataCoverage.Unsupported),
                 (SchemaFeature.Generation, MetadataCoverage.Unsupported),
                 (SchemaFeature.Checks, MetadataCoverage.Unsupported)
             }));
-        var keyDiagnostic = partial.Diagnostics.Single(diagnostic => diagnostic.Code == "SDI009");
+        var defaultDiagnostic = partial.Diagnostics.Single(diagnostic =>
+            diagnostic.Code == "SDI009" && diagnostic.Feature == SchemaFeature.Defaults);
+        Assert.That(defaultDiagnostic.Object, Is.EqualTo(name));
+        Assert.That(defaultDiagnostic.Member, Is.EqualTo("B"));
+        Assert.That(defaultDiagnostic.NativeDefinition, Is.EqualTo("DEFAULT ON NULL ABS(-23)"));
+        Assert.That(partial.Schema!.Tables.Values.Single().Columns["A"].DefaultValue, Is.EqualTo(1m));
+        var keyDiagnostic = partial.Diagnostics.Single(diagnostic =>
+            diagnostic.Code == "SDI009" && diagnostic.Feature == SchemaFeature.UniqueConstraints);
         Assert.That(keyDiagnostic.Object, Is.EqualTo(name));
         Assert.That(keyDiagnostic.Message, Does.Contain("UQ_DEFERRED"));
         Assert.That(partial.Coverage[SchemaFeature.UniqueConstraints], Is.EqualTo(MetadataCoverage.Unrepresentable));

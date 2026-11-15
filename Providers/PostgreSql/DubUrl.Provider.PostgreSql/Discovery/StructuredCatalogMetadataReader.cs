@@ -13,7 +13,16 @@ public abstract class StructuredCatalogMetadataReader : CatalogSchemaMetadataRea
     protected override IReadOnlySet<SchemaFeature> UnsupportedFeatures { get; } = Enum.GetValues<SchemaFeature>()
         .Where(feature => feature is not (SchemaFeature.Tables or SchemaFeature.Columns)).ToHashSet();
 
-    protected override string KeysSql => "";
+    protected override string KeysSql => "unsupported keys";
+
+    protected override Task<List<CatalogRow>> ReadCatalogRowsAsync(DbConnection connection, string sql,
+        DiscoveryOptions options, CancellationToken cancellationToken)
+        => sql == KeysSql ? Task.FromResult<List<CatalogRow>>([])
+            : base.ReadCatalogRowsAsync(connection, sql, options, cancellationToken);
+
+    public new virtual Task<SchemaMetadata> ReadAsync(DbConnection connection, DiscoveryOptions options,
+        CancellationToken cancellationToken = default)
+        => base.ReadAsync(connection, options, cancellationToken);
 
     public async Task<StructuredSchemaMetadata> ReadWithStructuredTypesAsync(DbConnection connection,
         DiscoveryOptions options, CancellationToken cancellationToken)
