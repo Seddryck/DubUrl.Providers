@@ -123,12 +123,14 @@ public sealed class MySqlDiscoveryTests
             var result = await inspector.InspectAsync(connection, reader, options with { AllowPartial = partial });
             Assert.That(result.IsSuccess, Is.EqualTo(partial));
             Assert.That(result.IsComplete, Is.False);
-            Assert.That(result.Diagnostics.Count(d => d.Object?.Database == database), Is.EqualTo(4));
+            Assert.That(result.Diagnostics.Count(d => d.Object?.Database == database), Is.EqualTo(3));
             Assert.That(result.Diagnostics.Count(d => d.Code == "SDI009" && d.Feature == SchemaFeature.Indexes && d.Object == Name("t")), Is.EqualTo(2));
-            Assert.That(result.Diagnostics.Count(d => d.Code == "SDI009" && d.Feature == SchemaFeature.Generation && d.Object == Name("t")), Is.EqualTo(1));
+            Assert.That(result.Diagnostics.Any(d => d.Feature == SchemaFeature.Generation && d.Object == Name("t")), Is.False);
             Assert.That(result.Diagnostics.Count(d => d.Code == "SDI008" && d.Feature == SchemaFeature.Views && d.Object == Name("aggregate_view")), Is.EqualTo(1));
             Assert.That(result.Diagnostics.All(d => d.Coverage == MetadataCoverage.Unrepresentable), Is.True);
-            Assert.That(result.Schema!.Indexes, Is.Empty);
+            var table = result.Schema!.Tables.Values.Single(item => item.Name == "t" && item.Identity.Database == database);
+            Assert.That(table.Columns["id"].Generation, Is.TypeOf<ProviderDefaultIdentityColumnGeneration>());
+            Assert.That(result.Schema.Indexes, Is.Empty);
             Assert.That(result.Schema.Views, Is.Empty);
         }
     }

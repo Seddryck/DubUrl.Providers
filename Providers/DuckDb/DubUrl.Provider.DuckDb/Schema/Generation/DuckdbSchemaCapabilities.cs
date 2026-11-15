@@ -14,6 +14,6 @@ internal static class DuckdbSchemaCapabilities
             SupportsComments = true,
             SupportsViews = true,
             // CHAR is a VARCHAR alias; DuckDB accepts but does not enforce declared lengths.
-            NativeTypes = new HashSet<string>(["JSON", "UUID", "HUGEINT", "CHAR", "VARCHAR"], StringComparer.OrdinalIgnoreCase),
+            NativeTypes = new HashSet<string>(["JSON", "UUID", "HUGEINT", "TIMESTAMP_NS", "CHAR", "VARCHAR"], StringComparer.OrdinalIgnoreCase),
         };
 }

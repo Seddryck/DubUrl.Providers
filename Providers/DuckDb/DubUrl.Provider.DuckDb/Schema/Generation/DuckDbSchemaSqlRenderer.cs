@@ -10,11 +10,22 @@ using DubUrl.Schema.Renderers;
 namespace DubUrl.Provider.DuckDb.Schema.Generation;
 
 /// <summary>DuckDB uses a dedicated sequence and nextval default for each portable identity column.</summary>
-internal sealed class DuckDbSchemaSqlRenderer : StandardSchemaSqlRenderer, ISequenceIdentitySqlRenderer, IUniqueConstraintSqlRenderer, IColumnDefaultSqlRenderer, IStructuredColumnSqlRenderer
+internal sealed class DuckDbSchemaSqlRenderer : StandardSchemaSqlRenderer, ISequenceIdentitySqlRenderer, IUniqueConstraintSqlRenderer,
+    IColumnDefaultSqlRenderer, IStructuredColumnSqlRenderer, ITemporalColumnSqlRenderer
 {
     internal static DuckDbSchemaSqlRenderer Default { get; } = new();
 
     internal const string UtcTimestamp = "timezone('UTC', CURRENT_TIMESTAMP)";
+
+    public string? RenderTemporalColumnType(IDialect dialect, DbType type, int fractionalSecondsPrecision)
+        => (type, fractionalSecondsPrecision) switch
+        {
+            (DbType.DateTime2, 0) => "TIMESTAMP_S",
+            (DbType.DateTime2, 3) => "TIMESTAMP_MS",
+            (DbType.DateTime2, 6) => "TIMESTAMP",
+            (DbType.DateTime2, 9) => "TIMESTAMP_NS",
+            _ => null
+        };
 
     public string? RenderStructuredType(IDialect dialect, StructuredColumnTypeContext context)
     {

@@ -3,13 +3,15 @@ using System.Data.Common;
 using System.Runtime.CompilerServices;
 using DubUrl.Discovery;
 using DubUrl.Providers.Discovery;
+using DubUrl.Provider.DuckDb.Sql;
 using DubUrl.Provider.DuckDb.Schema.Generation;
 using DubUrl.Schema;
 using DubUrl.Schema.Constraints;
 
 namespace DubUrl.Provider.DuckDb.Discovery;
 
-public sealed class DuckDbMetadataReader : CatalogSchemaMetadataReader, IUniqueConstraintMetadataReader, IStructuredColumnMetadataReader
+public sealed class DuckDbMetadataReader : CatalogSchemaMetadataReader, IUniqueConstraintMetadataReader,
+    IStructuredColumnMetadataReader, ITemporalColumnMetadataReader
 {
     private readonly ConditionalWeakTable<MetadataColumn, StructuredColumnMetadata> structuredTypes = new();
 
@@ -287,11 +289,16 @@ public sealed class DuckDbMetadataReader : CatalogSchemaMetadataReader, IUniqueC
         return column with { Default = expression, Length = length };
     }
 
+    public int? GetFractionalSecondsPrecision(MetadataColumn column)
+        => column.NativeType == "TIMESTAMP_NS" ? 9 : null;
+
     protected override MetadataColumn MapColumn(CatalogRow row)
     {
         var column = base.MapColumn(row);
         if (row.Bool("structured") == true)
             return column with { Type = DbType.Object, Length = null, Precision = null, Scale = null };
+        if (row.Text("type_name")?.Equals("TIMESTAMP_NS", StringComparison.OrdinalIgnoreCase) == true)
+            return column with { Type = DbType.DateTime2, NativeType = "TIMESTAMP_NS", NativeDialect = typeof(DuckDbDialect) };
         return column.Type == System.Data.DbType.AnsiString ? column with { Type = System.Data.DbType.String } : column;
     }
 }
