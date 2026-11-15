@@ -7,7 +7,7 @@ using DubUrl.Schema.Renderers;
 
 namespace DubUrl.Provider.Spark.Sql;
 
-internal sealed class SparkSchemaSqlRenderer : StandardSchemaSqlRenderer, ITableDefinitionSqlRenderer,
+internal class SparkSchemaSqlRenderer : StandardSchemaSqlRenderer, ITableDefinitionSqlRenderer,
     IColumnDefinitionSqlRenderer, ITableDescriptionSqlRenderer, IColumnDefaultSqlRenderer, ISchemaCommandSqlRenderer,
     IStructuredColumnSqlRenderer, ITableAnnotationSqlRenderer, IColumnAnnotationSqlRenderer
 {

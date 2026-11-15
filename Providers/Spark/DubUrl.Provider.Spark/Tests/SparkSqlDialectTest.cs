@@ -15,6 +15,17 @@ namespace DubUrl.Provider.Spark.Tests;
 
 public sealed class SparkSqlDialectTest
 {
+    [Test]
+    public void DatabricksColumnTagPlanIncludesNativeCommentAndQualifiedTagAssignment()
+    {
+        var column = new Column("id", DbType.Int32, description: "Identifier")
+        { Annotations = new Dictionary<string, string> { ["owner"] = "team's data" } };
+        var table = new Table(new DatabaseObjectName("items", "sales", null, "uc"), [column]);
+        var commands = new SchemaScriptRenderer(Databricks()).Plan(new([table]));
+        Assert.That(commands[0].CommandText, Does.Contain("COMMENT 'Identifier'"));
+        Assert.That(commands[1].CommandText, Is.EqualTo("""ALTER TABLE `uc`.`sales`.`items` ALTER COLUMN `id` SET TAGS ('owner' = 'team\'s data');"""));
+    }
+
     [TestCase(false)]
     [TestCase(true)]
     public void TableAnnotationsAreQuotedAndPlannedAfterCreation(bool databricks)

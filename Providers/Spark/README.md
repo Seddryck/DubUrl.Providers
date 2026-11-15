@@ -50,6 +50,8 @@ Use the shortcut path in the URL. The mapper rejects a raw HTTP endpoint path an
 
 Use `WithInformationalKeys()` to accept Unity Catalog's informational primary and foreign keys. Use `WithInformationalKeys(supportsUnique: true)` on compute that supports informational `UNIQUE` and foreign keys that reference it. Deployment checks the visible keys of existing parent tables before applying replacement commands. [Databricks key constraints](https://docs.databricks.com/aws/en/sql/language-manual/sql-ref-syntax-ddl-create-table-constraint) · [Unity Catalog metadata visibility](https://docs.databricks.com/aws/en/sql/language-manual/sql-ref-information-schema)
 
+DubUrl discovers Unity Catalog column tags through each catalog's `information_schema.column_tags` and restores them using `ALTER TABLE ... ALTER COLUMN ... SET TAGS`. Column comments remain native comments. The legacy Hive metastore does not support this tag path.
+
 ## Table annotations
 
 Spark and Databricks discover table annotations from `SHOW TBLPROPERTIES` and replay them using a separate `ALTER TABLE ... SET TBLPROPERTIES` statement. Databricks excludes `delta.` keys from annotations. Spark filters internal catalog properties and excludes `delta.` keys for Delta tables. Delta CHECK constraints continue to use their own discovery path.
