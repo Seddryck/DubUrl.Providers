@@ -111,9 +111,16 @@ public class MySqlMetadataReader : CatalogSchemaMetadataReader, IUniqueConstrain
 
     protected virtual CatalogRow NormalizeDefault(CatalogRow row)
     {
-        return row.Text("default_expression") is { } value
-            && !(row.Text("extra") ?? "").Contains("DEFAULT_GENERATED", StringComparison.Ordinal)
-            ? row.With(("default_expression", "'" + value.Replace("'", "''", StringComparison.Ordinal) + "'")) : row;
+        if (row.Text("default_expression") is not { } value)
+            return row;
+        if ((row.Text("extra") ?? "").Contains("DEFAULT_GENERATED", StringComparison.Ordinal))
+        {
+            if (row.Text("type_name") is not ("char" or "varchar" or "tinytext" or "text" or "mediumtext" or "longtext")
+                || MySqlCatalogLiteral.Decode(value) is not { } literal)
+                return row;
+            value = literal;
+        }
+        return row.With(("default_expression", "'" + value.Replace("'", "''", StringComparison.Ordinal) + "'"));
     }
 
     protected override MetadataColumn MapColumn(CatalogRow row)
