@@ -1,4 +1,5 @@
 using DubUrl.Discovery;
+using DubUrl.Providers;
 
 namespace DubUrl.Provider.Spark.Discovery;
 
@@ -18,7 +19,8 @@ internal static class SparkTableProperties
     internal static bool IsDelta(string key) => key.StartsWith("delta.", StringComparison.OrdinalIgnoreCase);
 
     internal static bool IsReserved(string key) =>
-        key.ToLowerInvariant() is "external" or "location" or "owner" or "provider" or "comment"
+        ColumnAnnotationProperty.IsReserved(key)
+        || key.ToLowerInvariant() is "external" or "location" or "owner" or "provider" or "comment"
             or "transient_lastddltime" or "last_modified_time" or "last_modified_user"
             or "numfiles" or "numpartitions" or "numrows" or "rawdatasize" or "totalsize"
         || key.StartsWith("spark.sql.", StringComparison.OrdinalIgnoreCase)
