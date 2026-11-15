@@ -1,9 +1,9 @@
 {
   "schemaVersion": 1,
-  "providerCommit": "7bd46f9ba41d305708d3a0455fbb614fccb50e8b",
-  "runUrl": "https://github.com/Seddryck/DubUrl.Providers/actions/runs/43750021370/attempts/1",
+  "providerCommit": "9da04cd408d653ac58effd7c8dfd2a7c4b2caedc",
+  "runUrl": "https://github.com/Seddryck/DubUrl.Providers/actions/runs/43757720437/attempts/1",
   "dubUrlVersion": "0.67.1",
-  "dubUrlSchemaVersion": "0.108.0",
+  "dubUrlSchemaVersion": "0.109.0",
   "features": [
     {
       "id": "tables",
