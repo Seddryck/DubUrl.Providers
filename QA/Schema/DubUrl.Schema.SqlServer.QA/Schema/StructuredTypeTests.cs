@@ -15,6 +15,54 @@ namespace DubUrl.Schema.SqlServer.QA;
 [Category("Schema")]
 public sealed class StructuredTypeTests
 {
+    [TestCase(16)]
+    [TestCase(17)]
+    public void NativeArraysAreRejectedBeforeDdl(int serverMajorVersion)
+    {
+        var dialect = Dialect(new Version(serverMajorVersion, 0));
+        var identity = new DatabaseObjectName("structured_native_array", "dbo");
+        var type = new StructuredColumnType(new ArrayType(new ScalarType(DbType.Int32), true), StructuredStorage.Native);
+
+        AssertUnsupported(dialect, identity, type);
+    }
+
+    [Test]
+    public async Task CatalogDistinguishesJsonArraysFromNativeArrayColumns()
+    {
+        await using var connection = Connection();
+        await connection.OpenAsync();
+        var version = Version.Parse(connection.ServerVersion);
+        var nativeJson = version.Major >= 17;
+        var name = "qa_array_inspection_" + Guid.NewGuid().ToString("N");
+        var target = $"[dbo].[{name}]";
+        try
+        {
+            var rejected = Assert.Throws<SqlException>(() => Execute(connection, $"CREATE TABLE {target} (v int ARRAY)"));
+            Assert.That(rejected!.Number, Is.EqualTo(102));
+
+            Execute(connection, $"CREATE TABLE {target} (v {(nativeJson ? "json" : "nvarchar(max)")})");
+            Execute(connection, $"INSERT INTO {target} VALUES (N'[1,2,3]')");
+            Assert.That(Scalar(connection, $"SELECT JSON_VALUE(v, '$[0]') FROM {target}"), Is.EqualTo("1"));
+
+            var identity = new MetadataName(name, "dbo");
+            var snapshot = await new SqlServerMetadataReader().ReadWithStructuredTypesAsync(connection, new()
+            {
+                Tables = [identity],
+                Features = [SchemaFeature.Tables, SchemaFeature.Columns]
+            }, CancellationToken.None);
+            Assert.That(snapshot.Metadata.Tables.Single(table => table.Identity == identity).Columns.Single().Name,
+                Is.EqualTo("v"));
+            if (nativeJson)
+                Assert.That(snapshot.StructuredColumns[new(identity, "v")].Type?.Storage, Is.EqualTo(StructuredStorage.Json));
+            else
+                Assert.That(snapshot.StructuredColumns.ContainsKey(new(identity, "v")), Is.False);
+        }
+        finally
+        {
+            Execute(connection, $"DROP TABLE IF EXISTS {target}");
+        }
+    }
+
     [Test]
     public async Task JsonTextRoundTripsAsUnicodeText()
     {
@@ -97,6 +145,11 @@ public sealed class StructuredTypeTests
     private static TSqlDialect Dialect(SqlConnection connection, out Version version)
     {
         version = Version.Parse(connection.ServerVersion);
+        return Dialect(version);
+    }
+
+    private static TSqlDialect Dialect(Version version)
+    {
         var builder = new DialectRegistryBuilder();
         builder.AddDialect<TSqlDialect>(["mssqlserver"]);
         return builder.Build().Get<TSqlDialect>().WithServerVersion(version);

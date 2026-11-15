@@ -9,6 +9,7 @@ import defusedxml.ElementTree as ET
 
 
 OPERATIONS = ("inspect", "generate")
+REJECTIONS_ARTIFACT = "schema-qa-rejections"
 EXPECTATIONS = {
     "Supported": "supported",
     "RendererRejects": "unsupported",
@@ -20,6 +21,7 @@ EXPECTATIONS = {
     "Inapplicable": "unverified",
 }
 FAILURES = {"Failed", "Error", "Timeout", "Aborted", "Disconnected", "PassedButRunAborted"}
+FIXTURE_DDL_REJECTIONS = {"RendererRejects", "DatabaseRejects"}
 EXPECTATION_LINE = re.compile(r"^Expectation: (\w+)\. (.+)$", re.MULTILINE)
 
 
@@ -50,7 +52,7 @@ def read_results(directory):
     return results
 
 
-def observation(rule, results):
+def observation(rule, results, operation):
     test = rule["test"]
     matches = results.get(test, ())
     expected = rule.get("expected")
@@ -62,7 +64,11 @@ def observation(rule, results):
             stdout = matches[0].findtext("{*}Output/{*}StdOut", default="")
             match = EXPECTATION_LINE.search(stdout)
             if match:
-                expected = EXPECTATIONS[match[1]]
+                expectation = match[1]
+                if operation == "inspect" and expectation in FIXTURE_DDL_REJECTIONS and matches[0].get("outcome") == "Passed":
+                    # The test stopped at fixture setup without reading the catalog.
+                    return None
+                expected = EXPECTATIONS[expectation]
                 if expected != "supported":
                     note = match[2].strip()
 
@@ -76,6 +82,8 @@ def observation(rule, results):
     item = {"test": test, "status": status, "outcomes": outcomes}
     if note:
         item["note"] = note
+    if "artifact" in rule:
+        item["artifact"] = rule["artifact"]
     return item
 
 
@@ -91,8 +99,8 @@ def summarize(evidence):
 
 
 def index_focused(config, providers, scenarios):
-    targets = {target["id"] for target in config["targets"]}
-    features = {feature["id"] for feature in config["features"]}
+    targets = {target["id"]: target for target in config["targets"]}
+    features = {feature["id"]: feature for feature in config["features"]}
     if len(targets) != len(config["targets"]) or len(features) != len(config["features"]):
         raise ValueError("Coverage targets and feature IDs must be unique")
     if any(target["provider"] not in providers for target in config["targets"]):
@@ -105,19 +113,41 @@ def index_focused(config, providers, scenarios):
     for rule in config["focused"]:
         if rule["operation"] not in (*OPERATIONS, "both") or rule["expected"] not in EXPECTATIONS.values():
             raise ValueError(f"Invalid coverage rule for {rule['test']}")
-        if not set(rule["targets"]) <= targets or not set(rule["features"]) <= features:
+        if not set(rule["targets"]) <= targets.keys() or not set(rule["features"]) <= features.keys():
             raise ValueError(f"Unknown coverage target or feature for {rule['test']}")
         operations = OPERATIONS if rule["operation"] == "both" else (rule["operation"],)
         for target in rule["targets"]:
             for feature in rule["features"]:
                 for operation in operations:
                     focused[target, feature, operation].append(rule)
-    return focused
+    rejections = {}
+    for section, operation, test_prefix in (
+        ("rendererRejections", "generate", "RendererRejects"),
+        ("inspectionRejections", "inspect", "InspectionRejects"),
+    ):
+        for rejection in config[section]:
+            if not set(rejection["targets"]) <= targets.keys() or not set(rejection["features"]) <= features.keys():
+                raise ValueError(f"Unknown coverage target or feature for {section}")
+            for target in rejection["targets"]:
+                for feature in rejection["features"]:
+                    key = (target, feature, operation)
+                    if key in focused or key in rejections:
+                        raise ValueError(f"Duplicate coverage rule for {target}/{feature}/{operation}")
+                    if operation == "generate" and features[feature].get(operation) and targets[target]["shared"]:
+                        raise ValueError(f"Renderer rejection already has a shared generation rule for {target}/{feature}")
+                    rejections[key] = {
+                        "test": f"SchemaCoverageRejectionTests.{test_prefix}_{target}_{feature}",
+                        "expected": "unsupported",
+                        "note": rejection["note"],
+                        "artifact": REJECTIONS_ARTIFACT,
+                    }
+    return focused, rejections
 
 
 def build_coverage(config, inventory, scenarios, artifacts, revision, run_url, core_version, schema_version):
     providers = {row["id"]: row["label"] for row in inventory["databases"]}
-    focused = index_focused(config, providers, scenarios)
+    focused, rejections = index_focused(config, providers, scenarios)
+    rejection_results = read_results(artifacts / REJECTIONS_ARTIFACT)
     report = {
         "schemaVersion": 1,
         "providerCommit": revision,
@@ -140,9 +170,14 @@ def build_coverage(config, inventory, scenarios, artifacts, revision, run_url, c
                 feature_id = feature["id"]
                 coverage[feature_id] = {}
                 for operation in OPERATIONS:
-                    rules = [{"test": "Shared_" + name} for name in feature.get(operation, ())] if target["shared"] else []
-                    rules.extend(focused.get((target["id"], feature_id, operation), ()))
-                    evidence = [observation(rule, results) for rule in rules]
+                    key = (target["id"], feature_id, operation)
+                    if key in rejections:
+                        # A shared inspection case can stop at rejected fixture DDL.
+                        evidence = [observation(rejections[key], rejection_results, operation)]
+                    else:
+                        rules = [{"test": "Shared_" + name} for name in feature.get(operation, ())] if target["shared"] else []
+                        rules.extend(focused.get(key, ()))
+                        evidence = [item for rule in rules if (item := observation(rule, results, operation)) is not None]
                     coverage[feature_id][operation] = {"status": summarize(evidence), "evidence": evidence}
             column["targets"].append({
                 "id": target["id"],

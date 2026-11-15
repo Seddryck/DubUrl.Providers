@@ -11,6 +11,17 @@ namespace DubUrl.Provider.PostgreSql.QA;
 [Category("Postgresql")]
 public sealed partial class PostgreSqlSchemaTests : ProviderContract
 {
+    private Version serverVersion = null!;
+
+    [OneTimeSetUp]
+    public void ReadServerVersion()
+    {
+        using var connection = new NpgsqlConnection(PostgreSqlTestDatabase.ProviderConnectionString);
+        connection.Open();
+        serverVersion = connection.PostgreSqlVersion;
+        featureExpectations = CreateFeatureExpectations(serverVersion.Major);
+    }
+
     protected override DbConnection CreateConnection()
         => new NpgsqlConnection(PostgreSqlTestDatabase.ProviderConnectionString);
 
@@ -18,7 +29,7 @@ public sealed partial class PostgreSqlSchemaTests : ProviderContract
     {
         var builder = new DialectRegistryBuilder();
         builder.AddDialect<PgsqlDialect>(["pgsql"]);
-        return builder.Build().Get<PgsqlDialect>();
+        return builder.Build().Get<PgsqlDialect>().WithServerVersion(serverVersion);
     }
 
     protected override SchemaCapabilities Capabilities

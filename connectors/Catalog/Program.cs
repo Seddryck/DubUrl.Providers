@@ -10,10 +10,13 @@ if (args is ["connection-urls", var root, var output])
     return;
 }
 
-if (args.Length != 3) throw new ArgumentException("Expected matrix path, output path, and version.");
-var version = Regex.Match(args[2], @"^(?<major>\d+)\.(?<minor>\d+)\.(?<patch>\d+)(?:[-+].+)?$",
-    RegexOptions.None, TimeSpan.FromSeconds(1));
-if (!version.Success) throw new ArgumentException("Invalid connector version.");
+if (args.Length != 4) throw new ArgumentException("Expected matrix path, output path, connector version, and minimum DubUrl version.");
+if (!Regex.IsMatch(args[2], @"^\d+\.\d+\.\d+(?:[-+].+)?$", RegexOptions.None, TimeSpan.FromSeconds(1)))
+    throw new ArgumentException("Invalid connector version.");
+var coreVersion = Version.Parse(args[3]);
+if (coreVersion.Build < 0 || coreVersion.Revision >= 0)
+    throw new ArgumentException("Expected a stable three-part DubUrl version.");
+var apiRange = $"[{coreVersion},{coreVersion.Major + 1}.0.0)";
 using var matrix = JsonDocument.Parse(File.ReadAllText(args[0]));
 if (matrix.RootElement.GetProperty("schemaVersion").GetInt32() != 2) throw new InvalidOperationException("Expected matrix schema version 2.");
 var rows = matrix.RootElement.GetProperty("connectors").EnumerateArray()
@@ -53,7 +56,7 @@ var entries = selections.GroupBy(selection => selection.Key).Select(group =>
     return new ConnectorDefinition
     {
         Provider = id, Databases = databases, Version = args[2],
-        DubUrlApiRange = $"[{version.Groups["major"].Value}.{version.Groups["minor"].Value}.{version.Groups["patch"].Value},{int.Parse(version.Groups["major"].Value) + 1}.0.0)",
+        DubUrlApiRange = apiRange,
         Assembly = canonical.Mapping.Database!.Type.Assembly.GetName().Name + ".dll",
         ImplementationAssemblies = canonical.Implementations,
         Driver = driver,
