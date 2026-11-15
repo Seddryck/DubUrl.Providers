@@ -8,6 +8,7 @@
     <PackageReference Include="NUnit" Version="5.0.0" />
     <PackageReference Include="NUnit3TestAdapter" Version="5.1.0" />
     <PackageReference Include="System.Data.Odbc" Version="10.0.12" />
+    <PackageReference Include="DubUrl.Schema.Documents" Version="$(SchemaPackageVersion)" />
     <ProjectReference Include="../../../QA/DubUrl.Provider.QA/DubUrl.Provider.QA.csproj" />
     <ProjectReference Include="../../Odbc/DubUrl.Provider.Odbc/DubUrl.Provider.Odbc.csproj" />
   </ItemGroup>

@@ -13,32 +13,79 @@ using DubUrl.Schema.Constraints;
 namespace DubUrl.Provider.Oracle.Discovery;
 
 /// <summary>Read-only discovery of Oracle objects visible to the connected user in the current PDB.</summary>
-public sealed class OracleMetadataReader : CatalogSchemaMetadataReader, IUniqueConstraintMetadataReader, IStructuredColumnMetadataReader
+public sealed class OracleMetadataReader : CatalogSchemaMetadataReader, ISchemaMetadataReader, IUniqueConstraintMetadataReader, IStructuredColumnMetadataReader
 {
     private readonly bool detectServerVersion = true;
     private readonly ConditionalWeakTable<MetadataColumn, StructuredColumnMetadata> structuredTypes = new();
     private readonly ConditionalWeakTable<CatalogRow, OracleNamedTypeMetadata> namedTypes = new();
+    private readonly Version? serverVersion;
+    protected override bool SupportsColumnAnnotations => serverVersion is not null && OracleColumnAnnotations.Supports(serverVersion);
+
+    private async Task<SchemaMetadata> ReadCatalogAsync(DbConnection connection, DiscoveryOptions options,
+        CancellationToken cancellationToken = default)
+    {
+        var metadata = await ProviderSchemaDiagnostics.ReadAsync(() => base.ReadAsync(connection, options, cancellationToken)).ConfigureAwait(false);
+        if ((serverVersion is not null && !SupportsColumnAnnotations) || !options.Features.Contains(SchemaFeature.ColumnAnnotations))
+            return metadata;
+
+        var coverage = metadata.Coverage.ToDictionary();
+        List<CatalogRow> rows;
+        try
+        {
+            rows = await ReadScopedRowsAsync(connection, OracleColumnAnnotations.CatalogQuery, options, cancellationToken).ConfigureAwait(false);
+            coverage[SchemaFeature.ColumnAnnotations] = MetadataCoverage.Available;
+        }
+        catch (DbException exception)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var status = exception.ErrorCode == 942
+                && !SupportsConnectedVersion(connection) ? MetadataCoverage.Unsupported : MetadataCoverage.Inaccessible;
+            coverage[SchemaFeature.ColumnAnnotations] = status;
+            return metadata with { Coverage = coverage, Diagnostics = [.. metadata.Diagnostics,
+                new("SDI002", SchemaFeature.ColumnAnnotations, status, "Oracle column annotations could not be read.")] };
+        }
+
+        var diagnostics = metadata.Diagnostics.ToList();
+        var annotations = rows.ToLookup(row => (Identity(row), row.Text("column_name")));
+        var tables = metadata.Tables.Select(table => table with
+        {
+            Columns = table.Columns.Select(column =>
+            {
+                var values = OracleColumnAnnotations.Read(annotations[(table.Identity, column.Name)], table.Identity, column.Name, diagnostics);
+                if (values.Count == 0) return column;
+                var annotated = column with { Annotations = values };
+                if (structuredTypes.TryGetValue(column, out var type))
+                    structuredTypes.Add(annotated, type);
+                return annotated;
+            }).ToArray()
+        }).ToArray();
+        return metadata with { Tables = tables, Coverage = coverage, Diagnostics = diagnostics };
+    }
+
+    private static bool SupportsConnectedVersion(DbConnection connection)
+        => ReadServerVersion(connection) is not { } version
+            || OracleColumnAnnotations.Supports(version);
 
     public new Task<SchemaMetadata> ReadAsync(DbConnection connection, DiscoveryOptions options, CancellationToken cancellationToken = default)
     {
         // The mapper constructs the reader before opening the connection.
-        if (detectServerVersion && options.Features.Contains(SchemaFeature.Defaults)
+        if (detectServerVersion && (options.Features.Contains(SchemaFeature.Defaults) || options.Features.Contains(SchemaFeature.ColumnAnnotations))
             && ReadServerVersion(connection) is { Major: >= 23 } version)
             return new OracleMetadataReader(version, structuredTypes).ReadCatalogAsync(connection, options, cancellationToken);
 
         return ReadCatalogAsync(connection, options, cancellationToken);
     }
 
-    private Task<SchemaMetadata> ReadCatalogAsync(DbConnection connection, DiscoveryOptions options, CancellationToken cancellationToken)
-        => ProviderSchemaDiagnostics.ReadAsync(() => base.ReadAsync(connection, options, cancellationToken));
-
     private static Version? ReadServerVersion(DbConnection connection)
     {
         if (connection.State != ConnectionState.Open) return null;
         var text = connection.ServerVersion;
         if (text is null) return null;
-        var end = text.IndexOf('.');
-        return int.TryParse(end < 0 ? text : text[..end], out var major) && major >= 0 ? new Version(major, 0) : null;
+        var components = text.Split('.');
+        if (!int.TryParse(components[0], out var major) || major < 0)
+            return null;
+        var minor = components.Length > 1 && int.TryParse(components[1], out var parsed) && parsed >= 0 ? parsed : 0;
+        return new Version(major, minor);
     }
 
     public async Task<StructuredSchemaMetadata> ReadWithStructuredTypesAsync(DbConnection connection,
@@ -65,6 +112,7 @@ public sealed class OracleMetadataReader : CatalogSchemaMetadataReader, IUniqueC
     private OracleMetadataReader(Version serverVersion, ConditionalWeakTable<MetadataColumn, StructuredColumnMetadata> structuredTypes) : this()
     {
         ArgumentNullException.ThrowIfNull(serverVersion);
+        this.serverVersion = serverVersion;
         detectServerVersion = false;
         this.structuredTypes = structuredTypes;
         if (serverVersion.Major >= 23)
