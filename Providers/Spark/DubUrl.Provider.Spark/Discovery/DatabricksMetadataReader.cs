@@ -1,6 +1,7 @@
 using System.Data.Common;
 using System.Text.Json;
 using DubUrl.Discovery;
+using DubUrl.Providers.Discovery;
 using DubUrl.Provider.Spark.Sql;
 using DubUrl.Schema;
 
@@ -280,15 +281,29 @@ public sealed class DatabricksMetadataReader : SparkCatalogMetadataReader
         if (checkRows.Count > 0) checkRows = PortableChecks(name, columnRows, checkRows, diagnose);
 
         var table = base.MapTable(row, columnRows, keyRows, indexRows, checkRows, options, diagnose);
-        if (table.PrimaryKey is not null) DiagnoseKey(SchemaFeature.PrimaryKeys);
-        if (table.ForeignKeys.Count > 0) DiagnoseKey(SchemaFeature.ForeignKeys);
-        if (table.UniqueConstraints.Count > 0) DiagnoseKey(SchemaFeature.UniqueConstraints);
+        if (table.PrimaryKey is { } primary)
+            DiagnoseKey(SchemaFeature.PrimaryKeys, primary.Name, primary.Columns);
+        foreach (var key in table.ForeignKeys)
+            DiagnoseKey(SchemaFeature.ForeignKeys, key.Name, key.Columns,
+                $" REFERENCES {QualifiedName(key.Target)} ({string.Join(", ", key.TargetColumns.Select(Quote))})");
+        foreach (var key in table.UniqueConstraints)
+            DiagnoseKey(SchemaFeature.UniqueConstraints, key.Name, key.Columns);
         return options.Features.Contains(SchemaFeature.Annotations) && read?.Properties.GetValueOrDefault(name) is { } properties
             ? table with { Annotations = SparkTableProperties.Read(properties, SparkTableProperties.IsDelta) }
             : table;
 
-        void DiagnoseKey(SchemaFeature feature) =>
-            diagnose(feature, "Databricks keys are informational. Schema document v1 cannot preserve their lack of enforcement.");
+        void DiagnoseKey(SchemaFeature feature, string? key, IReadOnlyList<string> columns, string? references = null)
+        {
+            var kind = feature switch
+            {
+                SchemaFeature.PrimaryKeys => "PRIMARY KEY",
+                SchemaFeature.ForeignKeys => "FOREIGN KEY",
+                _ => "UNIQUE",
+            };
+            ProviderSchemaDiagnostics.Report(diagnose, name, feature,
+                "Databricks keys are informational. Schema document v1 cannot preserve their lack of enforcement.",
+                constraint: key, nativeDefinition: $"{kind} ({string.Join(", ", columns.Select(Quote))}){references} NOT ENFORCED");
+        }
     }
 
     private static List<CatalogRow> PortableChecks(MetadataName table, List<CatalogRow> columnRows, List<CatalogRow> checkRows,
@@ -301,20 +316,26 @@ public sealed class DatabricksMetadataReader : SparkCatalogMetadataReader
             .Select(row => row.Text("column_name")!).ToDictionary(DeltaVectorSql.ConstraintName, StringComparer.OrdinalIgnoreCase);
         foreach (var check in checkRows.Where(row => Identity(row) == table))
         {
-            var sql = check.Text("expression")?.Trim() ?? "";
+            var original = check.Text("expression");
+            var sql = original?.Trim() ?? "";
+            var checkName = check.Text("check_name");
             if (check.Text("check_name") is { } name && vectors.TryGetValue(name, out var column)
                 && DeltaVectorSql.ReadDimensions(column, sql) is not null)
                 continue;
             const string prefix = "coalesce((";
             const string suffix = "), true)";
-            if (sql.StartsWith(prefix, StringComparison.OrdinalIgnoreCase) && sql.EndsWith(suffix, StringComparison.OrdinalIgnoreCase))
-                checks.Add(check.With(("expression", sql[prefix.Length..^suffix.Length])));
-            else if (DiscoveryExpressions.TryCheck(sql, check.Text("check_name"), out var comparison)
-                && (!IsNonNull(comparison!.Left) || !IsNonNull(comparison.Right)))
-            {
-                diagnose(SchemaFeature.Checks, "A Delta comparison check can reject NULL, which the portable comparison does not preserve.");
-            }
-            else checks.Add(check);
+            var wrapped = sql.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)
+                && sql.EndsWith(suffix, StringComparison.OrdinalIgnoreCase);
+            var candidate = wrapped ? sql[prefix.Length..^suffix.Length] : sql;
+            if (!DiscoveryExpressions.TryCheck(candidate, checkName, out var comparison))
+                ProviderSchemaDiagnostics.Report(diagnose, table, SchemaFeature.Checks, "A check expression cannot be represented.",
+                    constraint: checkName, nativeDefinition: original);
+            else if (!wrapped && (!IsNonNull(comparison!.Left) || !IsNonNull(comparison.Right)))
+                ProviderSchemaDiagnostics.Report(diagnose, table, SchemaFeature.Checks,
+                    "A Delta comparison check can reject NULL, which the portable comparison does not preserve.",
+                    constraint: checkName, nativeDefinition: original);
+            else
+                checks.Add(wrapped ? check.With(("expression", candidate)) : check);
         }
         return checks;
 
