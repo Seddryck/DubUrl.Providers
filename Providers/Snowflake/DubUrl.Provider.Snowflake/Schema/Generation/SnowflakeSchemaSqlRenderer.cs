@@ -7,7 +7,7 @@ using DubUrl.Schema.Renderers;
 namespace DubUrl.Provider.Snowflake.Schema.Generation;
 
 internal sealed class SnowflakeSchemaSqlRenderer : StandardSchemaSqlRenderer, IColumnDefaultSqlRenderer,
-    IStructuredColumnSqlRenderer, ITableAnnotationSqlRenderer
+    IStructuredColumnSqlRenderer, ITableAnnotationSqlRenderer, IColumnAnnotationSqlRenderer
 {
     internal static SnowflakeSchemaSqlRenderer Default { get; } = new();
 
@@ -30,6 +30,15 @@ internal sealed class SnowflakeSchemaSqlRenderer : StandardSchemaSqlRenderer, IC
         }
         var name = RenderObjectName(dialect, table.Catalog, table.Database, table.Schema, table.Name);
         return [new($"ALTER TABLE {name} SET TAG {string.Join(", ", assignments)};", SchemaSqlOperation.Comment, table.ToString())];
+    }
+
+    public IReadOnlyList<SchemaSqlCommand> PlanColumnAnnotations(IDialect dialect, DatabaseObjectName table,
+        IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>> annotations)
+    {
+        var target = RenderObjectName(dialect, table.Catalog, table.Database, table.Schema, table.Name);
+        return annotations.Select(column => new SchemaSqlCommand(
+            $"ALTER TABLE {target} MODIFY COLUMN {RenderIdentifier(dialect, column.Key)} SET TAG {SnowflakeColumnTags.Assignments(column.Value)};",
+            SchemaSqlOperation.Comment, $"{table}.{column.Key}")).ToArray();
     }
 
     public string? RenderStructuredType(IDialect dialect, StructuredColumnTypeContext context)
