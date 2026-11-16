@@ -1,6 +1,7 @@
 using System.Data;
 using System.Text.Json;
 using DubUrl.Discovery;
+using DubUrl.Provider.Hive.Discovery;
 using DubUrl.Provider.DuckDb.Sql;
 using DubUrl.Provider.Hive.Sql;
 using DubUrl.Provider.MySql.Discovery;
@@ -64,6 +65,7 @@ public sealed class SchemaCoverageRejectionTests
             "SingleStore" => new SingleStoreMetadataReader(),
             "Spark" => new SparkMetadataReader(),
             "Databricks" => new DatabricksMetadataReader(),
+            "Hive" => new HiveMetadataReader(),
             _ => throw new ArgumentOutOfRangeException(nameof(target), target, "Unknown schema inspection target."),
         };
         var metadataFeature = feature switch
@@ -75,6 +77,7 @@ public sealed class SchemaCoverageRejectionTests
             "foreign-keys" => SchemaFeature.ForeignKeys,
             "unique" => SchemaFeature.UniqueConstraints,
             "indexes" or "unique-index" or "index-order" => SchemaFeature.Indexes,
+            "null-default" => SchemaFeature.Defaults,
             _ => throw new ArgumentOutOfRangeException(nameof(feature), feature, "Unknown schema inspection feature."),
         };
 

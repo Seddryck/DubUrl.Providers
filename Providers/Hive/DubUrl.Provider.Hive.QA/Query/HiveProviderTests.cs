@@ -5,6 +5,10 @@ namespace DubUrl.Provider.Hive.QA.Query;
 
 public sealed class HiveProviderTests : ProviderContract
 {
+    protected override bool SupportsSchemaDiscovery => true;
+    protected override Task VerifySchemaDiscoveryAsync(ConnectionUrl url)
+        => HiveQaDatabase.VerifySharedDiscoveryAsync(scope => VerifySchemaDiscoveryAsync(url, scope));
+
     protected override string ConnectionUrl => HiveQaDatabase.GetUrl();
     protected override string AuthenticationConnectionUrl => HiveQaDatabase.GetLocation();
     protected override string SelectFirstCustomerSql => HiveQaDatabase.FirstCustomer;

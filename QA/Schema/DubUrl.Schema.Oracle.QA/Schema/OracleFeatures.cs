@@ -50,8 +50,8 @@ public sealed partial class OracleBaselineTests
             ["DiscoveryPrimaryKey"] = FeatureExpectation.Supported,
             ["DiscoveryUnique"] = FeatureExpectation.Supported,
             ["DiscoveryForeignKey"] = FeatureExpectation.Supported,
-            ["DiscoveryDefaults"] = new(ExpectedOutcome.NotEnforced,"Discovery of Oracle LONG defaults is outside the qualified slice."),
-            ["DiscoveryNullDefault"] = new(ExpectedOutcome.NullDefaultNotPreserved, "Oracle exposes the NULL literal in DATA_DEFAULT_VC. DubUrl's version-qualified catalog reader loses it."),
+            ["DiscoveryDefaults"] = FeatureExpectation.Supported,
+            ["DiscoveryNullDefault"] = new(ExpectedOutcome.NullDefaultNotPreserved, "Oracle exposes the NULL literal in DATA_DEFAULT_VC. DubUrl's catalog reader loses it."),
             ["DiscoveryIdentity"] = new(ExpectedOutcome.RendererRejects,"Oracle identity generation is outside the qualified slice.","Identity"),
             ["DiscoveryChecks"] = new(ExpectedOutcome.NotEnforced,"Discovery of Oracle check conditions is outside the qualified slice."),
             ["DiscoveryGeneration"] = new(ExpectedOutcome.RendererRejects,"Oracle generated columns are outside the qualified slice.","Generated"),
@@ -81,8 +81,6 @@ public sealed partial class OracleBaselineTests
     protected override string CurrentSchema(DbConnection connection) => QaSql.Text(QaSql.Rows(connection,"SELECT SYS_CONTEXT('USERENV','CURRENT_SCHEMA') FROM dual").Single()[0]);
     protected override DatabaseObjectName QualifiedName(DbConnection connection,string name) => new(name,schema:CurrentSchema(connection));
     protected override ISchemaMetadataReader CreateMetadataReader() => new OracleMetadataReader();
-    protected override ISchemaMetadataReader CreateNullDefaultMetadataReader(DbConnection connection)
-        => new OracleMetadataReader(Version.Parse(string.Join('.', connection.ServerVersion.Split('.').Take(2))));
     protected override int? ExpectedDiscoveredStringLength => 40;
     protected override System.Data.DbType ExpectedDiscoveredIntegerType => System.Data.DbType.Decimal;
     protected override IndexSortDirection DiscoveryFirstIndexDirection => IndexSortDirection.Ascending;

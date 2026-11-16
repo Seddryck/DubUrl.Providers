@@ -29,9 +29,11 @@ public class SqlServerHierarchyRoundTripTests
         var identity = new DatabaseObjectName(name, "dbo");
         var target = $"[dbo].[{name}]";
         var hierarchy = new Hierarchy("id", parentColumnName: "manager_id");
+        var annotations = new Dictionary<string, string> { ["Owner"] = "finance" };
         var table = new TableBuilder().WithIdentity(identity)
             .WithColumns(columns => columns.Add(column => column.WithName("id").WithType(DbType.Int32)))
             .WithConstraints(constraints => constraints.AddPrimaryKey(key => key.WithColumnNames("id")))
+            .WithAnnotations(annotations)
             .WithHierarchy(hierarchy).Build();
 
         async Task Execute(string sql)
@@ -63,6 +65,7 @@ public class SqlServerHierarchyRoundTripTests
             Assert.Multiple(() =>
             {
                 Assert.That(result.Hierarchies[identity], Is.EqualTo(hierarchy));
+                Assert.That(discovered.Annotations, Is.EquivalentTo(annotations));
                 Assert.That(discovered.Constraints.Get<PrimaryKeyConstraint>()?.Columns.Keys, Is.EqualTo(new[] { "id" }));
                 Assert.That(discovered.Columns["node_path"].NativeType?.Name, Is.EqualTo("hierarchyid"));
                 Assert.That(discovered.Columns["parent_path"].Generation, Is.TypeOf<GeneratedColumnGeneration>());
@@ -82,6 +85,7 @@ public class SqlServerHierarchyRoundTripTests
             var physicalOnly = await inspector.InspectAsync(connection, reader, options);
             Assert.That(physicalOnly.IsComplete, Is.True, string.Join(Environment.NewLine, physicalOnly.Diagnostics));
             Assert.That(physicalOnly.Hierarchies, Is.Empty);
+            Assert.That(physicalOnly.Schema!.Tables[identity.Key].Annotations, Is.EquivalentTo(annotations));
         }
         finally
         {

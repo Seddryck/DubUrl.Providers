@@ -1,9 +1,11 @@
 using System.Data.Common;
+using System.Data;
 using DubUrl.Authentication;
 using DubUrl.Discovery;
 using DubUrl.Provider.Spark.Discovery;
 using DubUrl.Provider.Spark.QA;
 using DubUrl.Schema;
+using DubUrl.Schema.Documents;
 using NUnit.Framework;
 
 namespace DubUrl.Provider.Databricks.QA.Connection;
@@ -12,6 +14,42 @@ namespace DubUrl.Provider.Databricks.QA.Connection;
 public sealed class DatabricksMetadataTests
 {
     private static ConnectionUrl OwnerUrl => new ConnectionUrl(DatabricksWarehouse.Url).WithAuthentication(DatabricksWarehouse.Authentication);
+
+    [Test]
+    public Task ColumnTagsAndCommentsRoundTripThroughDocuments()
+    {
+        var url = OwnerUrl;
+        return SparkSchemaQa.WithScratchAsync(url, async (connection, catalog, schema) =>
+        {
+            var renderer = new SchemaScriptRenderer(url.Dialect);
+            var column = new Column("id", DbType.Int32, description: "Owner's description")
+            { Annotations = new Dictionary<string, string> { ["duburl_qa_owner"] = "analytics" } };
+            var reader = new DatabricksMetadataReader();
+
+            async Task<Table> Discover(string name)
+            {
+                var result = await new SchemaInspector().InspectAsync(connection, reader, new()
+                {
+                    Tables = [new(name, schema, Catalog: catalog)],
+                    Features = [SchemaFeature.Tables, SchemaFeature.Columns, SchemaFeature.Comments, SchemaFeature.ColumnAnnotations]
+                });
+                Assert.That(result.IsComplete, Is.True, string.Join(", ", result.Diagnostics.Select(item => item.Message)));
+                return result.Schema!.Tables.Values.Single();
+            }
+
+            var source = new Table(new DatabaseObjectName("source_items", schema, null, catalog), [column]);
+            foreach (var command in renderer.Plan(new([source])))
+                SparkSchemaQa.Execute(connection, command.CommandText);
+            var document = new SchemaDocumentExporter().Map(new([await Discover("source_items")]));
+            document.Tables.Single().Identity.Name = "target_items";
+            foreach (var command in renderer.Plan(new SchemaDocumentMapper().Map(document)))
+                SparkSchemaQa.Execute(connection, command.CommandText);
+
+            var recreated = (await Discover("target_items")).Columns[column.Name];
+            Assert.That(recreated.Description, Is.EqualTo(column.Description));
+            Assert.That(recreated.Annotations, Is.EquivalentTo(column.Annotations));
+        });
+    }
 
     [Test]
     public Task ScopedDiscoveryFollowsReferencesAndReadsCanonicalDefinitions()

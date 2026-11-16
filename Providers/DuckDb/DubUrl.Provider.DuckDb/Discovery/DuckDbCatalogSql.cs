@@ -128,8 +128,9 @@ internal static class DuckDbCatalogSql
         return true;
     }
 
-    public static string? GeneratedExpression(string sql, string column)
+    public static string? GeneratedExpression(string sql, string column, out string? rejectedClause)
     {
+        rejectedClause = null;
         var tokens = Tokenize(sql);
         var open = tokens.FindIndex(token => token.Is("("));
         if (open < 0) return null;
@@ -138,30 +139,33 @@ internal static class DuckDbCatalogSql
         foreach (var (start, stop) in Items(tokens, open + 1, end))
         {
             if (!tokens[start].Identifier || tokens[start].Value != column) continue;
-            return ColumnGeneration(sql, tokens, start, stop);
+            return ColumnGeneration(sql, tokens, start, stop, out rejectedClause);
         }
         return null;
     }
 
-    private static string? ColumnGeneration(string sql, List<Token> tokens, int start, int stop)
+    private static string? ColumnGeneration(string sql, List<Token> tokens, int start, int stop, out string? rejectedClause)
     {
+        rejectedClause = null;
         var depth = 0;
         for (var i = start + 1; i < stop; i++)
         {
             if (tokens[i].Is("(")) depth++;
             else if (tokens[i].Is(")")) depth--;
             if (depth != 0 || !tokens[i].Is("GENERATED")) continue;
-            return GenerationClause(sql, tokens, i + 1, stop);
+            var expression = GenerationClause(sql, tokens, i + 1, stop);
+            if (expression is null) rejectedClause = sql[tokens[i].Start..tokens[stop - 1].End];
+            return expression;
         }
         return null;
     }
 
-    private static string GenerationClause(string sql, List<Token> tokens, int cursor, int stop)
+    private static string? GenerationClause(string sql, List<Token> tokens, int cursor, int stop)
     {
         if (cursor < stop && tokens[cursor].Is("ALWAYS")) cursor++;
-        if (cursor + 1 >= stop || !tokens[cursor].Is("AS") || !tokens[cursor + 1].Is("(")) return "<unrepresentable generated column>";
+        if (cursor + 1 >= stop || !tokens[cursor].Is("AS") || !tokens[cursor + 1].Is("(")) return null;
         var close = Closing(tokens, cursor + 1);
-        if (close < 0 || close >= stop) return "<unrepresentable generated column>";
+        if (close < 0 || close >= stop) return null;
         return sql[tokens[cursor + 1].End..tokens[close].Start].Trim();
     }
 

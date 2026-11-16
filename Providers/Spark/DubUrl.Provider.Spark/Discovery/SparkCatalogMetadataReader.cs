@@ -3,6 +3,7 @@ using System.Data.Common;
 using System.Globalization;
 using System.Runtime.CompilerServices;
 using DubUrl.Discovery;
+using DubUrl.Providers.Discovery;
 using DubUrl.Provider.Spark.Sql;
 using DubUrl.Schema;
 
@@ -12,6 +13,14 @@ public abstract class SparkCatalogMetadataReader : CatalogSchemaMetadataReader, 
 {
     private readonly ConditionalWeakTable<MetadataView, object> hiddenDefinitions = new();
     private readonly ConditionalWeakTable<MetadataColumn, StructuredColumnMetadata> structuredTypes = new();
+
+    protected MetadataColumn WithAnnotations(MetadataColumn column, IReadOnlyDictionary<string, string> annotations)
+    {
+        var updated = column with { Annotations = annotations };
+        if (structuredTypes.TryGetValue(column, out var structured))
+            structuredTypes.Add(updated, structured);
+        return updated;
+    }
 
     public async Task<StructuredSchemaMetadata> ReadWithStructuredTypesAsync(DbConnection connection,
         DiscoveryOptions options, CancellationToken cancellationToken)
@@ -30,7 +39,8 @@ public abstract class SparkCatalogMetadataReader : CatalogSchemaMetadataReader, 
 
     public new virtual async Task<SchemaMetadata> ReadAsync(DbConnection connection, DiscoveryOptions options, CancellationToken cancellationToken = default)
     {
-        var metadata = await base.ReadAsync(connection, options, cancellationToken).ConfigureAwait(false);
+        var metadata = await ProviderSchemaDiagnostics.ReadAsync(() => base.ReadAsync(connection, options, cancellationToken))
+            .ConfigureAwait(false);
         if (options.Tables.Count == 0 && options.Features.Contains(SchemaFeature.Views)
             && metadata.Views.Any(view => hiddenDefinitions.TryGetValue(view, out _)
                 && (options.Catalogs.Count == 0 || options.Catalogs.Contains(view.Identity.Catalog, StringComparer.Ordinal))
@@ -124,8 +134,8 @@ public abstract class SparkCatalogMetadataReader : CatalogSchemaMetadataReader, 
         if (definition is not null && options.Features.Contains(SchemaFeature.Generation))
         {
             var generation = SparkCatalogDefinition.Generation(definition, out var unsupported);
-            if (unsupported)
-                diagnose(SchemaFeature.Generation, "The generated column or identity mode cannot be represented without loss.");
+            if (unsupported is not null)
+                Report(SchemaFeature.Generation, "The generated column or identity mode cannot be represented without loss.", unsupported);
             column = column with { Generation = generation };
         }
 
@@ -138,7 +148,7 @@ public abstract class SparkCatalogMetadataReader : CatalogSchemaMetadataReader, 
         {
             if (symbolic.Kind is DubUrl.Schema.ColumnDefaultKind.CurrentSchema or DubUrl.Schema.ColumnDefaultKind.CurrentDatabase)
             {
-                diagnose(SchemaFeature.Defaults, "A catalog namespace default does not preserve the inserting session's namespace.");
+                Report(SchemaFeature.Defaults, "A catalog namespace default does not preserve the inserting session's namespace.", defaultSql);
                 return column;
             }
             return column with { Default = symbolic };
@@ -156,11 +166,17 @@ public abstract class SparkCatalogMetadataReader : CatalogSchemaMetadataReader, 
         }
         if (defaultTokens.Any(token => token.Text.StartsWith('\'')))
         {
-            diagnose(SchemaFeature.Defaults, "A quoted default uses an unsupported literal or escape.");
+            Report(SchemaFeature.Defaults, "A quoted default uses an unsupported literal or escape.", defaultSql);
             return column;
         }
-        return base.MapCatalogColumn(row.With(("default_expression", defaultSql)), options, diagnose) with
-        { Generation = column.Generation };
+        return base.MapCatalogColumn(row.With(("default_expression", defaultSql)), options, (feature, message) =>
+        {
+            if (feature == SchemaFeature.Defaults) Report(feature, message, defaultSql);
+        }) with { Generation = column.Generation };
+
+        void Report(SchemaFeature feature, string message, string sql)
+            => ProviderSchemaDiagnostics.Report(diagnose, Identity(row), feature, message,
+                member: row.Text("column_name"), nativeDefinition: sql);
     }
 
     protected static bool NeedsDefinition(DiscoveryOptions options) =>

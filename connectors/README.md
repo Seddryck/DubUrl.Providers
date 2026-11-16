@@ -17,6 +17,16 @@ The workflow publishes the validated ZIPs and `connector-catalog.json` to
 can continue to use their existing catalogs and download URLs. The `connection-url-catalog` release
 contains the separate metadata bundle used by the URL builder.
 
+The workflow also publishes each release ZIP to GHCR as an OCI artifact tagged
+`ghcr.io/seddryck/duburl-connectors/<connector-id>:<provider-version>`. The workflow summary
+lists the digest-pinned references. Pull a ZIP by digest with ORAS, set
+`DUBURL_ProviderPacks__CatalogPath` to the matching `connector-catalog.json` from the GitHub Release,
+and run `duburl connector install <connector-id> --archive <zip>`.
+
+The workflow's `GITHUB_TOKEN` creates new packages. For an existing package linked to
+another repository, grant `Seddryck/DubUrl.Providers` **Write** under **Manage Actions access**
+in the package settings. This applies to the PostgreSQL pilot package linked to DubUrl Core.
+
 To build and validate locally, use the same Core version for both commands and an empty output directory.
 
 ```powershell

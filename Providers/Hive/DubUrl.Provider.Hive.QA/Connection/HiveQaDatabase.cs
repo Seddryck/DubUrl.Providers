@@ -1,3 +1,6 @@
+using System.Data.Common;
+using DubUrl.Discovery;
+using DubUrl.Providers.QA.Contracts.Schema;
 using NUnit.Framework;
 
 namespace DubUrl.Provider.Hive.QA.Connection;
@@ -13,6 +16,23 @@ internal static class HiveQaDatabase
 
     internal static string GetLocation()
         => $"odbc+hive://{ReadFixtureSetting(HiveEndpoint)}/default";
+
+    internal static async Task VerifySharedDiscoveryAsync(Func<DiscoveryOptions, Task> verify)
+    {
+        var url = new ConnectionUrl(GetUrl(useNativeQuery: true));
+        using var connection = (DbConnection)url.Open();
+        var schema = "duburl_qa_" + Guid.NewGuid().ToString("N");
+        QaSql.Execute(connection, $"CREATE DATABASE {schema}");
+        try
+        {
+            QaSql.Execute(connection, $"CREATE TABLE {schema}.customer (id INT)");
+            await verify(new DiscoveryOptions { Schemas = [schema] });
+        }
+        finally
+        {
+            QaSql.Execute(connection, $"DROP DATABASE {schema} CASCADE");
+        }
+    }
 
     internal static string ReadFixtureSetting(string variable)
     {

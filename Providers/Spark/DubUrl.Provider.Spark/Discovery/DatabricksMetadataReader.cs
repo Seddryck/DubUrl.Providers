@@ -1,6 +1,7 @@
 using System.Data.Common;
 using System.Text.Json;
 using DubUrl.Discovery;
+using DubUrl.Providers.Discovery;
 using DubUrl.Provider.Spark.Sql;
 using DubUrl.Schema;
 
@@ -34,6 +35,7 @@ public sealed class DatabricksMetadataReader : SparkCatalogMetadataReader
 
     protected override IReadOnlySet<SchemaFeature> UnsupportedFeatures => Unsupported;
     protected override bool SupportsAnnotations => true;
+    protected override bool SupportsColumnAnnotations => true;
     protected override string TablesSql => """
         SELECT table_catalog AS catalog_name, table_schema AS schema_name, table_name, comment
         FROM {info}.tables WHERE table_schema <> 'information_schema'
@@ -87,6 +89,8 @@ public sealed class DatabricksMetadataReader : SparkCatalogMetadataReader
         if (read is not null) read.Scope = scope;
         if (sql == TablesSql)
         {
+            if (options.Features.Contains(SchemaFeature.ColumnAnnotations))
+                await ReadColumnTagsAsync(connection, scope, cancellationToken).ConfigureAwait(false);
             if (options.Features.Contains(SchemaFeature.Annotations))
             {
                 foreach (var table in scope.Tables)
@@ -173,6 +177,49 @@ public sealed class DatabricksMetadataReader : SparkCatalogMetadataReader
             }
         }
         return result;
+    }
+
+    private async Task ReadColumnTagsAsync(DbConnection connection, TableScope scope, CancellationToken cancellationToken)
+    {
+        foreach (var catalog in scope.Names.GroupBy(name => name.Catalog, StringComparer.Ordinal))
+        {
+            if (DatabricksColumnTags.IsLegacyCatalog(catalog.Key))
+            {
+                foreach (var table in catalog)
+                    read!.Diagnostics.Add(new("SDS003", SchemaFeature.ColumnAnnotations, MetadataCoverage.Unsupported,
+                        "Databricks column tags require Unity Catalog.", table));
+                continue;
+            }
+
+            try
+            {
+                var rows = await QueryAsync(connection, $"""
+                    SELECT catalog_name, schema_name, table_name, column_name, tag_name, tag_value
+                    FROM {Quote(catalog.Key!)}.information_schema.column_tags
+                    """, cancellationToken).ConfigureAwait(false);
+                foreach (var column in rows.Where(row => scope.Names.Contains(Identity(row)) && row.Text("column_name") is not null)
+                    .GroupBy(row => new StructuredColumnIdentity(Identity(row), row.Text("column_name")!)))
+                {
+                    var tags = DatabricksColumnTags.Read(column, message =>
+                        read!.Diagnostics.Add(new("SDS004", SchemaFeature.ColumnAnnotations,
+                            MetadataCoverage.Unrepresentable, message, Identity(column.First()))));
+                    read!.ColumnTags.Add(column.Key, tags);
+                }
+            }
+            catch (DbException)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                foreach (var table in catalog)
+                    read!.Inaccessible(SchemaFeature.ColumnAnnotations, table, "Databricks column tags could not be read.");
+            }
+        }
+    }
+
+    protected override MetadataColumn MapColumn(CatalogRow row)
+    {
+        var column = base.MapColumn(row);
+        return read?.ColumnTags.GetValueOrDefault(new(Identity(row), column.Name)) is { } tags
+            ? column with { Annotations = tags } : column;
     }
 
     private async Task<List<CatalogRow>?> ReadTablePropertiesAsync(DbConnection connection, MetadataName name, CancellationToken cancellationToken)
@@ -280,15 +327,29 @@ public sealed class DatabricksMetadataReader : SparkCatalogMetadataReader
         if (checkRows.Count > 0) checkRows = PortableChecks(name, columnRows, checkRows, diagnose);
 
         var table = base.MapTable(row, columnRows, keyRows, indexRows, checkRows, options, diagnose);
-        if (table.PrimaryKey is not null) DiagnoseKey(SchemaFeature.PrimaryKeys);
-        if (table.ForeignKeys.Count > 0) DiagnoseKey(SchemaFeature.ForeignKeys);
-        if (table.UniqueConstraints.Count > 0) DiagnoseKey(SchemaFeature.UniqueConstraints);
+        if (table.PrimaryKey is { } primary)
+            DiagnoseKey(SchemaFeature.PrimaryKeys, primary.Name, primary.Columns);
+        foreach (var key in table.ForeignKeys)
+            DiagnoseKey(SchemaFeature.ForeignKeys, key.Name, key.Columns,
+                $" REFERENCES {QualifiedName(key.Target)} ({string.Join(", ", key.TargetColumns.Select(Quote))})");
+        foreach (var key in table.UniqueConstraints)
+            DiagnoseKey(SchemaFeature.UniqueConstraints, key.Name, key.Columns);
         return options.Features.Contains(SchemaFeature.Annotations) && read?.Properties.GetValueOrDefault(name) is { } properties
             ? table with { Annotations = SparkTableProperties.Read(properties, SparkTableProperties.IsDelta) }
             : table;
 
-        void DiagnoseKey(SchemaFeature feature) =>
-            diagnose(feature, "Databricks keys are informational. Schema document v1 cannot preserve their lack of enforcement.");
+        void DiagnoseKey(SchemaFeature feature, string? key, IReadOnlyList<string> columns, string? references = null)
+        {
+            var kind = feature switch
+            {
+                SchemaFeature.PrimaryKeys => "PRIMARY KEY",
+                SchemaFeature.ForeignKeys => "FOREIGN KEY",
+                _ => "UNIQUE",
+            };
+            ProviderSchemaDiagnostics.Report(diagnose, name, feature,
+                "Databricks keys are informational. Schema document v1 cannot preserve their lack of enforcement.",
+                constraint: key, nativeDefinition: $"{kind} ({string.Join(", ", columns.Select(Quote))}){references} NOT ENFORCED");
+        }
     }
 
     private static List<CatalogRow> PortableChecks(MetadataName table, List<CatalogRow> columnRows, List<CatalogRow> checkRows,
@@ -301,20 +362,26 @@ public sealed class DatabricksMetadataReader : SparkCatalogMetadataReader
             .Select(row => row.Text("column_name")!).ToDictionary(DeltaVectorSql.ConstraintName, StringComparer.OrdinalIgnoreCase);
         foreach (var check in checkRows.Where(row => Identity(row) == table))
         {
-            var sql = check.Text("expression")?.Trim() ?? "";
+            var original = check.Text("expression");
+            var sql = original?.Trim() ?? "";
+            var checkName = check.Text("check_name");
             if (check.Text("check_name") is { } name && vectors.TryGetValue(name, out var column)
                 && DeltaVectorSql.ReadDimensions(column, sql) is not null)
                 continue;
             const string prefix = "coalesce((";
             const string suffix = "), true)";
-            if (sql.StartsWith(prefix, StringComparison.OrdinalIgnoreCase) && sql.EndsWith(suffix, StringComparison.OrdinalIgnoreCase))
-                checks.Add(check.With(("expression", sql[prefix.Length..^suffix.Length])));
-            else if (DiscoveryExpressions.TryCheck(sql, check.Text("check_name"), out var comparison)
-                && (!IsNonNull(comparison!.Left) || !IsNonNull(comparison.Right)))
-            {
-                diagnose(SchemaFeature.Checks, "A Delta comparison check can reject NULL, which the portable comparison does not preserve.");
-            }
-            else checks.Add(check);
+            var wrapped = sql.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)
+                && sql.EndsWith(suffix, StringComparison.OrdinalIgnoreCase);
+            var candidate = wrapped ? sql[prefix.Length..^suffix.Length] : sql;
+            if (!DiscoveryExpressions.TryCheck(candidate, checkName, out var comparison))
+                ProviderSchemaDiagnostics.Report(diagnose, table, SchemaFeature.Checks, "A check expression cannot be represented.",
+                    constraint: checkName, nativeDefinition: original);
+            else if (!wrapped && (!IsNonNull(comparison!.Left) || !IsNonNull(comparison.Right)))
+                ProviderSchemaDiagnostics.Report(diagnose, table, SchemaFeature.Checks,
+                    "A Delta comparison check can reject NULL, which the portable comparison does not preserve.",
+                    constraint: checkName, nativeDefinition: original);
+            else
+                checks.Add(wrapped ? check.With(("expression", candidate)) : check);
         }
         return checks;
 
@@ -334,6 +401,7 @@ public sealed class DatabricksMetadataReader : SparkCatalogMetadataReader
         public TableScope? Scope { get; set; }
         public List<DiscoveryDiagnostic> Diagnostics { get; } = [];
         public Dictionary<MetadataName, List<CatalogRow>?> Properties { get; } = [];
+        public Dictionary<StructuredColumnIdentity, IReadOnlyDictionary<string, string>> ColumnTags { get; } = [];
 
         public void Inaccessible(SchemaFeature feature, MetadataName? name, string message)
             => Diagnostics.Add(new("SDS002", feature, MetadataCoverage.Inaccessible, message, name));

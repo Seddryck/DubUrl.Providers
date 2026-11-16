@@ -29,7 +29,6 @@ public abstract partial class ProviderContract : SchemaContract
     protected abstract IReadOnlyList<IndexFact> ReadIndexes(DbConnection connection, DatabaseObjectName table);
     protected abstract bool ObjectExists(DbConnection connection, DatabaseObjectName name, bool view);
     protected abstract ISchemaMetadataReader? CreateMetadataReader();
-    protected virtual ISchemaMetadataReader? CreateNullDefaultMetadataReader(DbConnection connection) => CreateMetadataReader();
     protected virtual string NullDefaultTableSuffix => "";
     protected abstract PublicDatabase CreatePublicDatabase();
     protected abstract string ExpressionIndexSql(string index, string table, string column);
@@ -471,10 +470,9 @@ public abstract partial class ProviderContract : SchemaContract
             Assert.That(ObjectExists(connection, new(name), false), Is.False);
         }
     }
-    private async Task<SchemaInspectionResult> Inspect(SchemaFeature[] features, Table[]? selected = null, bool partial = true,
-        bool closure = false, ISchemaMetadataReader? reader = null)
+    private async Task<SchemaInspectionResult> Inspect(SchemaFeature[] features, Table[]? selected = null, bool partial = true, bool closure = false)
     {
-        reader ??= CreateMetadataReader() ?? throw new InvalidOperationException("A supported discovery test requires a real reader.");
+        var reader = CreateMetadataReader() ?? throw new InvalidOperationException("A supported discovery test requires a real reader.");
         var result = await new SchemaInspector().InspectAsync(database, reader, DiscoveryScope(CurrentSchema(database)) with
         {
             Tables = selected?.Select(t => DiscoveryName(t.Name)).ToArray() ?? [],
@@ -512,9 +510,7 @@ public abstract partial class ProviderContract : SchemaContract
         Execute($"CREATE TABLE {Q(table.Identity)} ({Q("omitted")} INT, {Q("explicit_null")} INT DEFAULT NULL, " +
             $"{Q("literal_default")} INT DEFAULT 7){NullDefaultTableSuffix}");
 
-        var reader = CreateNullDefaultMetadataReader(database)
-            ?? throw new InvalidOperationException("Default discovery requires a metadata reader.");
-        var inspected = await Inspect([.. basic, SchemaFeature.Defaults], [table], partial: false, reader: reader);
+        var inspected = await Inspect([.. basic, SchemaFeature.Defaults], [table], partial: false);
         Assert.That(inspected.IsComplete, Is.True, string.Join(" / ", inspected.Diagnostics.Select(d => d.Message)));
         var columns = inspected.Schema!.Tables.Values.Single().Columns;
         Assert.That(columns["omitted"].DefaultValue, Is.Null);
