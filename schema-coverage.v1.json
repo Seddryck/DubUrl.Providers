@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "providerCommit": "9da04cd408d653ac58effd7c8dfd2a7c4b2caedc",
-  "runUrl": "https://github.com/Seddryck/DubUrl.Providers/actions/runs/43757720437/attempts/1",
+  "providerCommit": "f6c8cf8ef0ac169fd7ea733323e934c535d5e85d",
+  "runUrl": "https://github.com/Seddryck/DubUrl.Providers/actions/runs/43849931755/attempts/1",
   "dubUrlVersion": "0.67.1",
   "dubUrlSchemaVersion": "0.109.0",
   "features": [
@@ -596,12 +596,31 @@
             },
             "null-default": {
               "inspect": {
-                "status": "unverified",
-                "evidence": []
+                "status": "unsupported",
+                "evidence": [
+                  {
+                    "test": "Shared_DiscoveryNullDefault",
+                    "status": "unsupported",
+                    "outcomes": [
+                      "Passed"
+                    ],
+                    "note": "PostgreSQL stores neither declaration as a column default in its catalog."
+                  }
+                ]
               },
               "generate": {
-                "status": "unverified",
-                "evidence": []
+                "status": "supported",
+                "evidence": [
+                  {
+                    "test": "SchemaCoverageRenderTests.RendersExplicitNullDefault_PostgreSql",
+                    "status": "supported",
+                    "outcomes": [
+                      "Passed"
+                    ],
+                    "note": "Checks generated CREATE TABLE SQL.",
+                    "artifact": "schema-qa-rejections"
+                  }
+                ]
               }
             },
             "current-date": {
@@ -1536,12 +1555,31 @@
             },
             "null-default": {
               "inspect": {
-                "status": "unverified",
-                "evidence": []
+                "status": "unsupported",
+                "evidence": [
+                  {
+                    "test": "Shared_DiscoveryNullDefault",
+                    "status": "unsupported",
+                    "outcomes": [
+                      "Passed"
+                    ],
+                    "note": "PostgreSQL stores neither declaration as a column default in its catalog."
+                  }
+                ]
               },
               "generate": {
-                "status": "unverified",
-                "evidence": []
+                "status": "supported",
+                "evidence": [
+                  {
+                    "test": "SchemaCoverageRenderTests.RendersExplicitNullDefault_PostgreSql-18",
+                    "status": "supported",
+                    "outcomes": [
+                      "Passed"
+                    ],
+                    "note": "Checks generated CREATE TABLE SQL.",
+                    "artifact": "schema-qa-rejections"
+                  }
+                ]
               }
             },
             "current-date": {
@@ -2480,12 +2518,31 @@
             },
             "null-default": {
               "inspect": {
-                "status": "unverified",
-                "evidence": []
+                "status": "unsupported",
+                "evidence": [
+                  {
+                    "test": "Shared_DiscoveryNullDefault",
+                    "status": "unsupported",
+                    "outcomes": [
+                      "Passed"
+                    ],
+                    "note": "SQL Server exposes the NULL literal in the default constraint definition. DubUrl's catalog reader loses it."
+                  }
+                ]
               },
               "generate": {
-                "status": "unverified",
-                "evidence": []
+                "status": "supported",
+                "evidence": [
+                  {
+                    "test": "SchemaCoverageRenderTests.RendersExplicitNullDefault_SqlServer",
+                    "status": "supported",
+                    "outcomes": [
+                      "Passed"
+                    ],
+                    "note": "Checks generated CREATE TABLE SQL.",
+                    "artifact": "schema-qa-rejections"
+                  }
+                ]
               }
             },
             "current-date": {
@@ -3409,12 +3466,31 @@
             },
             "null-default": {
               "inspect": {
-                "status": "unverified",
-                "evidence": []
+                "status": "unsupported",
+                "evidence": [
+                  {
+                    "test": "Shared_DiscoveryNullDefault",
+                    "status": "unsupported",
+                    "outcomes": [
+                      "Passed"
+                    ],
+                    "note": "SQL Server exposes the NULL literal in the default constraint definition. DubUrl's catalog reader loses it."
+                  }
+                ]
               },
               "generate": {
-                "status": "unverified",
-                "evidence": []
+                "status": "supported",
+                "evidence": [
+                  {
+                    "test": "SchemaCoverageRenderTests.RendersExplicitNullDefault_SqlServer-2025",
+                    "status": "supported",
+                    "outcomes": [
+                      "Passed"
+                    ],
+                    "note": "Checks generated CREATE TABLE SQL.",
+                    "artifact": "schema-qa-rejections"
+                  }
+                ]
               }
             },
             "current-date": {
@@ -4357,12 +4433,31 @@
             },
             "null-default": {
               "inspect": {
-                "status": "unverified",
-                "evidence": []
+                "status": "unsupported",
+                "evidence": [
+                  {
+                    "test": "Shared_DiscoveryNullDefault",
+                    "status": "unsupported",
+                    "outcomes": [
+                      "Passed"
+                    ],
+                    "note": "MySQL reports SQL NULL in COLUMN_DEFAULT for both declarations."
+                  }
+                ]
               },
               "generate": {
-                "status": "unverified",
-                "evidence": []
+                "status": "supported",
+                "evidence": [
+                  {
+                    "test": "SchemaCoverageRenderTests.RendersExplicitNullDefault_MySql",
+                    "status": "supported",
+                    "outcomes": [
+                      "Passed"
+                    ],
+                    "note": "Checks generated CREATE TABLE SQL.",
+                    "artifact": "schema-qa-rejections"
+                  }
+                ]
               }
             },
             "current-date": {
@@ -5698,12 +5793,31 @@
             },
             "null-default": {
               "inspect": {
-                "status": "unverified",
-                "evidence": []
+                "status": "unsupported",
+                "evidence": [
+                  {
+                    "test": "Shared_DiscoveryNullDefault",
+                    "status": "unsupported",
+                    "outcomes": [
+                      "Passed"
+                    ],
+                    "note": "SQLite exposes the NULL literal in dflt_value. DubUrl's catalog reader loses it."
+                  }
+                ]
               },
               "generate": {
-                "status": "unverified",
-                "evidence": []
+                "status": "supported",
+                "evidence": [
+                  {
+                    "test": "SchemaCoverageRenderTests.RendersExplicitNullDefault_Sqlite",
+                    "status": "supported",
+                    "outcomes": [
+                      "Passed"
+                    ],
+                    "note": "Checks generated CREATE TABLE SQL.",
+                    "artifact": "schema-qa-rejections"
+                  }
+                ]
               }
             },
             "current-date": {
@@ -6576,12 +6690,31 @@
             },
             "null-default": {
               "inspect": {
-                "status": "unverified",
-                "evidence": []
+                "status": "unsupported",
+                "evidence": [
+                  {
+                    "test": "Shared_DiscoveryNullDefault",
+                    "status": "unsupported",
+                    "outcomes": [
+                      "Passed"
+                    ],
+                    "note": "DuckDB exposes the NULL literal in column_default. DubUrl's catalog reader loses it."
+                  }
+                ]
               },
               "generate": {
-                "status": "unverified",
-                "evidence": []
+                "status": "supported",
+                "evidence": [
+                  {
+                    "test": "SchemaCoverageRenderTests.RendersExplicitNullDefault_DuckDb",
+                    "status": "supported",
+                    "outcomes": [
+                      "Passed"
+                    ],
+                    "note": "Checks generated CREATE TABLE SQL.",
+                    "artifact": "schema-qa-rejections"
+                  }
+                ]
               }
             },
             "current-date": {
@@ -7944,7 +8077,7 @@
                 "status": "failed",
                 "evidence": [
                   {
-                    "test": "DatabricksMetadataTests.ScopedDiscoveryFollowsReferencesAndReadsCanonicalDefinitions",
+                    "test": "Shared_DiscoveryNullDefault",
                     "status": "failed",
                     "outcomes": [
                       "Failed"
@@ -7953,14 +8086,16 @@
                 ]
               },
               "generate": {
-                "status": "failed",
+                "status": "supported",
                 "evidence": [
                   {
-                    "test": "EvaluateColumnDefaultsOnInsert",
-                    "status": "failed",
+                    "test": "SchemaCoverageRenderTests.RendersExplicitNullDefault_Databricks",
+                    "status": "supported",
                     "outcomes": [
-                      "Failed"
-                    ]
+                      "Passed"
+                    ],
+                    "note": "Checks generated CREATE TABLE SQL.",
+                    "artifact": "schema-qa-rejections"
                   }
                 ]
               }
@@ -8876,15 +9011,25 @@
             "null-default": {
               "inspect": {
                 "status": "unverified",
-                "evidence": []
-              },
-              "generate": {
-                "status": "unverified",
                 "evidence": [
                   {
-                    "test": "EvaluateColumnDefaultsOnInsert",
+                    "test": "Shared_DiscoveryNullDefault",
                     "status": "unverified",
                     "outcomes": []
+                  }
+                ]
+              },
+              "generate": {
+                "status": "supported",
+                "evidence": [
+                  {
+                    "test": "SchemaCoverageRenderTests.RendersExplicitNullDefault_Spark",
+                    "status": "supported",
+                    "outcomes": [
+                      "Passed"
+                    ],
+                    "note": "Checks generated CREATE TABLE SQL.",
+                    "artifact": "schema-qa-rejections"
                   }
                 ]
               }
@@ -9652,19 +9797,32 @@
             },
             "null-default": {
               "inspect": {
-                "status": "unverified",
+                "status": "unsupported",
                 "evidence": [
                   {
-                    "test": "HiveSchemaTests.InspectionReportsUnavailableDiscovery",
-                    "status": "unverified",
-                    "outcomes": [],
-                    "note": "The Hive ODBC route reports SDI001 because schema discovery is unavailable."
+                    "test": "SchemaCoverageRejectionTests.InspectionRejects_Hive_null-default",
+                    "status": "unsupported",
+                    "outcomes": [
+                      "Passed"
+                    ],
+                    "note": "The Hive metadata reader reports default inspection as unsupported.",
+                    "artifact": "schema-qa-rejections"
                   }
                 ]
               },
               "generate": {
-                "status": "unverified",
-                "evidence": []
+                "status": "supported",
+                "evidence": [
+                  {
+                    "test": "SchemaCoverageRenderTests.RendersExplicitNullDefault_Hive",
+                    "status": "supported",
+                    "outcomes": [
+                      "Passed"
+                    ],
+                    "note": "Checks generated CREATE TABLE SQL.",
+                    "artifact": "schema-qa-rejections"
+                  }
+                ]
               }
             },
             "current-date": {
@@ -13105,12 +13263,31 @@
             },
             "null-default": {
               "inspect": {
-                "status": "unverified",
-                "evidence": []
+                "status": "unsupported",
+                "evidence": [
+                  {
+                    "test": "Shared_DiscoveryNullDefault",
+                    "status": "unsupported",
+                    "outcomes": [
+                      "Passed"
+                    ],
+                    "note": "SingleStore reports SQL NULL in COLUMN_DEFAULT for both declarations."
+                  }
+                ]
               },
               "generate": {
-                "status": "unverified",
-                "evidence": []
+                "status": "supported",
+                "evidence": [
+                  {
+                    "test": "SchemaCoverageRenderTests.RendersExplicitNullDefault_SingleStore",
+                    "status": "supported",
+                    "outcomes": [
+                      "Passed"
+                    ],
+                    "note": "Checks generated CREATE TABLE SQL.",
+                    "artifact": "schema-qa-rejections"
+                  }
+                ]
               }
             },
             "current-date": {
@@ -13997,12 +14174,31 @@
             },
             "null-default": {
               "inspect": {
-                "status": "unverified",
-                "evidence": []
+                "status": "unsupported",
+                "evidence": [
+                  {
+                    "test": "Shared_DiscoveryNullDefault",
+                    "status": "unsupported",
+                    "outcomes": [
+                      "Passed"
+                    ],
+                    "note": "Oracle exposes the NULL literal in DATA_DEFAULT_VC. DubUrl's catalog reader loses it."
+                  }
+                ]
               },
               "generate": {
-                "status": "unverified",
-                "evidence": []
+                "status": "supported",
+                "evidence": [
+                  {
+                    "test": "SchemaCoverageRenderTests.RendersExplicitNullDefault_Oracle",
+                    "status": "supported",
+                    "outcomes": [
+                      "Passed"
+                    ],
+                    "note": "Checks generated CREATE TABLE SQL.",
+                    "artifact": "schema-qa-rejections"
+                  }
+                ]
               }
             },
             "current-date": {
