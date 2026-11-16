@@ -29,6 +29,7 @@ public abstract partial class ProviderContract : SchemaContract
     protected abstract IReadOnlyList<IndexFact> ReadIndexes(DbConnection connection, DatabaseObjectName table);
     protected abstract bool ObjectExists(DbConnection connection, DatabaseObjectName name, bool view);
     protected abstract ISchemaMetadataReader? CreateMetadataReader();
+    protected virtual string NullDefaultTableSuffix => "";
     protected abstract PublicDatabase CreatePublicDatabase();
     protected abstract string ExpressionIndexSql(string index, string table, string column);
     protected abstract string FilteredIndexSql(string index, string table, string column);
@@ -489,12 +490,34 @@ public abstract partial class ProviderContract : SchemaContract
     private async Task Discovery(string scenario)
     {
         var basic = new[] { SchemaFeature.Tables, SchemaFeature.Columns };
+        if (scenario == "DiscoveryNullDefault")
+        {
+            await DiscoverNullDefault(basic);
+            return;
+        }
         if (scenario is "DiscoveryForeignKey" or "DiscoveryClosure" or "MissingReferenceDiagnostic")
         {
             await DiscoverRelationships(scenario, basic);
             return;
         }
         await DiscoverTable(scenario, basic);
+    }
+
+    private async Task DiscoverNullDefault(SchemaFeature[] basic)
+    {
+        var table = new Table(Name("null_default"), [Id("omitted"), Id("explicit_null"), Id("literal_default")]);
+        tables.Add(table);
+        Execute($"CREATE TABLE {Q(table.Identity)} ({Q("omitted")} INT, {Q("explicit_null")} INT DEFAULT NULL, " +
+            $"{Q("literal_default")} INT DEFAULT 7){NullDefaultTableSuffix}");
+
+        var inspected = await Inspect([.. basic, SchemaFeature.Defaults], [table], partial: false);
+        Assert.That(inspected.IsComplete, Is.True, string.Join(" / ", inspected.Diagnostics.Select(d => d.Message)));
+        var columns = inspected.Schema!.Tables.Values.Single().Columns;
+        Assert.That(columns["omitted"].DefaultValue, Is.Null);
+        Assert.That(columns["literal_default"].DefaultValue, Is.Not.Null);
+        Assert.That(Convert.ToInt32(columns["literal_default"].DefaultValue), Is.EqualTo(7));
+        var expected = expectation.Outcome == ExpectedOutcome.NullDefaultNotPreserved ? null : DBNull.Value;
+        Assert.That(columns["explicit_null"].DefaultValue, Is.SameAs(expected));
     }
 
     protected virtual bool DiscoveryIndexIsUnique => true;

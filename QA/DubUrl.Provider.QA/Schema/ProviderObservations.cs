@@ -13,6 +13,7 @@ public enum ExpectedOutcome
     RendererRejects,
     DatabaseRejects,
     NoDiscovery,
+    NullDefaultNotPreserved,
     NoEngineComments,
     NotEnforced,
     Informational,

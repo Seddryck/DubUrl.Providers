@@ -50,6 +50,7 @@ public sealed partial class MySqlBaselineTests
             ["DiscoveryUnique"] = FeatureExpectation.Supported,
             ["DiscoveryForeignKey"] = FeatureExpectation.Supported,
             ["DiscoveryDefaults"] = FeatureExpectation.Supported,
+            ["DiscoveryNullDefault"] = new(ExpectedOutcome.NullDefaultNotPreserved, "MySQL reports SQL NULL in COLUMN_DEFAULT for both declarations."),
             ["DiscoveryIdentity"] = new(ExpectedOutcome.RendererRejects,"Per-column identity seed/increment cannot be represented.","seed"),
             ["DiscoveryChecks"] = FeatureExpectation.Supported,
             ["DiscoveryGeneration"] = FeatureExpectation.Supported,

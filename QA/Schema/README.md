@@ -76,7 +76,7 @@ The Oracle structured-type fixtures use the pinned Oracle Free image, including 
 
 Every provider fixture inherits ProviderContract (which extends SchemaContract) from the internal DubUrl.Schema.QA helper. All seven providers must implement the abstract connection, dialect, script execution, error-code, qualification, comments, column/index catalog, object-existence, metadata-reader and public-deployment hooks. A missing override is a compilation error. Shared code owns the assertions; provider code returns typed observations.
 
-QA/shared-scenarios.json is the authoritative list of 60 required scenarios. The NUnit case source embeds that same manifest; each provider declares an explicit expectation for every scenario and rejects missing or extra declarations. The QA runner validates both original baseline results and every Shared_<scenario> result passed exactly once. Missing, duplicate, skipped or failed cases fail CI. NoDiscovery can only apply to discovery/diagnostic scenarios, never to disable deployment, constraint or comment tests.
+`shared-scenarios.json` is the authoritative list of required scenarios. The NUnit case source embeds that same manifest; each provider declares an explicit expectation for every scenario and rejects missing or extra declarations. The QA runner validates both original baseline results and every Shared_<scenario> result passed exactly once. Missing, duplicate, skipped or failed cases fail CI. NoDiscovery can only apply to discovery/diagnostic scenarios, never to disable deployment, constraint or comment tests.
 
 The scenarios cover deployment/replacement, quoted names, comments and empty descriptions, type/facet/null/default behavior, identities and both generated-column modes, single/composite keys and relationships, dependency order, checks/null semantics/regex, indexes and sort order, views, feature-specific discovery/filtering/closure, partial/strict metadata, round trips, native CHAR/VARCHAR keys, expression/filtered-index and aggregate-view diagnostics, public and fluent deployment, and cleanup after failure.
 
@@ -117,6 +117,11 @@ MySQL, SQLite, and SingleStore reject `NullsNotDistinct` when a key member can b
 `UniqueNullPolicyTests` exercises the plans on .NET 10 using real databases. The cases assert tuple order, catalog names, one enforcement structure, foreign-key eligibility, and inserts with both members present, either member null, and both members null.
 
 ## Typed column defaults
+
+The Explicit DEFAULT NULL row uses provider unit tests that assert the generated CREATE TABLE includes
+`DEFAULT NULL` only on the column that requests it. The live `DiscoveryNullDefault` scenario inspects
+handwritten DDL with an explicit NULL, an omitted default, and a numeric default. The evidence
+for unsupported inspection identifies whether the engine catalog or the DubUrl reader loses the distinction.
 
 Typed defaults require DubUrl.Schema 0.103.0. The schema planner validates each expression and destination before sending DDL. A rejected mapping raises `ColumnDefaultPlanningException` with code `SDD001`. Engine-specific catalog readers recognize the SQL forms they can map back to typed defaults.
 
