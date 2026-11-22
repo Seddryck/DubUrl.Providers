@@ -71,7 +71,7 @@ jobs:
        (!inputs.schema-matrix && (inputs.fixture == 'spark' || inputs.fixture == 'both')) ||
        (github.event_name == 'push' && !inputs.fixture && vars.SPARK_ODBC_DRIVER_VERSION != ''))
     runs-on: [self-hosted, linux, x64, duburl-spark-qa]
-    timeout-minutes: 20
+    timeout-minutes: 35
     concurrency: spark-odbc-qa
     steps:
       - uses: actions/checkout@v7
@@ -80,9 +80,18 @@ jobs:
       - uses: actions/setup-dotnet@v6
         with:
           dotnet-version: '10.0.401'
-      - name: Run Spark shared contracts and live DDL tests
+      - uses: actions/checkout@v7
+        if: '!inputs.schema-matrix'
+        with:
+          repository: Seddryck/DubUrl
+          ref: v0.70.0
+          path: .test-results/duburl-core
+          persist-credentials: false
+      - name: Run Spark shared contracts and live fixtures
         env:
           SPARK_ODBC_DRIVER_VERSION: ${{ vars.SPARK_ODBC_DRIVER_VERSION }}
+          DUBURL_SPARK_SCHEMA_ONLY: ${{ inputs.schema-matrix }}
+          DUBURL_CORE_SOURCE: ${{ github.workspace }}/.test-results/duburl-core
         run: bash Providers/Spark/DubUrl.Provider.Spark.QA/infrastructure/run-qa.sh
       - uses: actions/upload-artifact@v7
         if: always()

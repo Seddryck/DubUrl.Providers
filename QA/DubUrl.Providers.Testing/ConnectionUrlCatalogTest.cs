@@ -85,6 +85,26 @@ public sealed class ConnectionUrlCatalogTest
         });
     }
 
+    [TestCase("sparkKerberos", "1")]
+    public void SparkTcpAuthenticationProfilesSelectSasl(string method, string authMech)
+    {
+        var route = Route("spark-odbc");
+        var profile = route.GetProperty("auth").EnumerateArray().Single(item =>
+            item.ValueKind == JsonValueKind.Object && item.GetProperty("id").GetString() == method);
+        var scheme = route.GetProperty("schemeByLocation").GetProperty("thriftTcp").GetProperty("on").GetString();
+        var auth = catalog.RootElement.GetProperty("authentication").GetProperty(method);
+        var sasl = profile.GetProperty("queryByLocation").GetProperty("thriftTcp").GetProperty("sasl").GetString();
+        var url = new ConnectionUrl($"{scheme}://spark.example{Query(auth)}&sasl={sasl}&Driver=Simba%20Spark%20ODBC%20Driver", registry);
+        var settings = new OdbcConnectionStringBuilder(url.Parse());
+
+        Assert.That(auth.GetProperty("via").GetString(), Is.EqualTo("runtime"));
+        if (method == "sparkKerberos")
+            Assert.That(auth.GetProperty("library").GetString(), Is.EqualTo("ConnectionAuthentication.OperatingSystemIdentity()"));
+        Assert.That(settings["AuthMech"], Is.EqualTo(authMech));
+        Assert.That(settings["ThriftTransport"], Is.EqualTo("1"));
+        Assert.That(settings["SSL"], Is.EqualTo("1"));
+    }
+
     [Test]
     public void CatalogSchemesRequireVerifiedTls()
     {

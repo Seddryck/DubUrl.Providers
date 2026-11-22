@@ -6,6 +6,16 @@ project_dir="$(dirname "$infrastructure_dir")"
 results_dir="$(pwd)/.test-results/spark"
 mkdir -p "$results_dir"
 
+if [[ "${DUBURL_SPARK_SCHEMA_ONLY:-false}" != true ]]; then
+    : "${DUBURL_CORE_SOURCE:?Set DUBURL_CORE_SOURCE to a DubUrl Core checkout for Kerberos QA.}"
+    for tool in kinit klist kvno; do
+        if ! command -v "$tool" >/dev/null; then
+            echo "Spark authentication QA requires $tool on the Simba runner." >&2
+            exit 1
+        fi
+    done
+fi
+
 : "${SPARK_ODBC_DRIVER_VERSION:?Set SPARK_ODBC_DRIVER_VERSION to the pinned Simba Debian package version.}"
 driver_settings="$(odbcinst -q -d -n 'Simba Spark ODBC Driver')"
 driver_library="$(sed -n 's/^Driver[[:space:]]*=[[:space:]]*//p' <<< "$driver_settings")"
@@ -23,7 +33,10 @@ fi
 printf '%s %s\n' "$package" "$version" | tee "$results_dir/driver.txt"
 
 compose=(docker compose --project-name "duburl-spark-odbc-qa-$$-$RANDOM" --file "$infrastructure_dir/compose.yaml")
-trap '"${compose[@]}" down --volumes' EXIT
+cleanup() {
+    "${compose[@]}" down --volumes
+}
+trap cleanup EXIT
 if ! "${compose[@]}" up --detach --wait --wait-timeout 180; then
     "${compose[@]}" logs --tail 100
     exit 1
@@ -31,3 +44,9 @@ fi
 
 dotnet test "$project_dir" -c Release -f net10.0 \
     --logger 'trx;LogFileName=spark.trx' --results-directory "$results_dir"
+
+cleanup
+trap - EXIT
+if [[ "${DUBURL_SPARK_SCHEMA_ONLY:-false}" != true ]]; then
+    bash "$infrastructure_dir/../../../../QA/Authentication/Kerberos/run-spark.sh" "$results_dir"
+fi

@@ -20,5 +20,11 @@
     <None Update="qa-manifest.json" CopyToOutputDirectory="PreserveNewest" />
     <QaInfrastructure Include="infrastructure/**/*" />
   </ItemGroup>
+  <ItemGroup Condition="'$(DubUrlCoreSource)' != ''">
+    <Compile Include="$(DubUrlCoreSource)/DubUrl.Core.Testing/Authentication/KerberosLiveContract.cs" Link="Connection/KerberosLiveContract.cs" />
+  </ItemGroup>
+  <ItemGroup Condition="'$(DubUrlCoreSource)' == ''">
+    <Compile Remove="Connection/SparkKerberosTests.cs" />
+  </ItemGroup>
   <Import Project="../../../build/ProviderQaBundle.targets" />
 </Project>

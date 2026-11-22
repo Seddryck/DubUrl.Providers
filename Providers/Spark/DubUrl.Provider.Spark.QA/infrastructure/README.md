@@ -9,8 +9,12 @@ Use Debian or Ubuntu x64 with .NET 10, Docker Compose v2, unixODBC and `odbcinst
 Spark 3.5.8 was qualified with the Debian x64 package `simbaspark_2.11.0.1009-2_amd64.deb`. Set `SPARK_ODBC_DRIVER_VERSION=2.11.0.1009-2` for that build. For another installer, use the full Debian package version from `dpkg-deb -f <installer.deb> Version`. The runner compares it with the package owning the registered library and records it with the test results. Run from the repository root.
 
 ```sh
-bash Providers/Spark/DubUrl.Provider.Spark.QA/infrastructure/run-qa.sh
+DUBURL_CORE_SOURCE=/path/to/DubUrl bash Providers/Spark/DubUrl.Provider.Spark.QA/infrastructure/run-qa.sh
 ```
+
+The authentication run also requires OpenSSL, MIT Kerberos client tools (`kinit`, `klist`, `kvno`) and a DubUrl v0.70.0 source checkout for the shared `KerberosLiveContract`. The runner restores the DubUrl runtime from NuGet. Set `DUBURL_SPARK_SCHEMA_ONLY=true` to run the schema fixture alone.
+
+The [MIT Kerberos fixture](../../../../QA/Authentication/Kerberos/README.md) runs the same acceptance checks used by MariaDB and SingleStore. Authentication TRX files are written alongside the schema results.
 
 For GitHub Actions, register a Linux x64 runner with label `duburl-spark-qa` and add `SPARK_ODBC_DRIVER_VERSION` as a repository Actions variable. The shared schema QA matrix on `main` then runs Spark and includes its results in the published coverage report. You can also dispatch **Spark, Databricks, and Hive live ODBC QA** with fixture `spark`.
 

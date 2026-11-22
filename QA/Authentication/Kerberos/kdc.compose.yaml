@@ -1,0 +1,12 @@
+services:
+  kdc:
+    build: { context: ., dockerfile: Dockerfile }
+    command: [bash, /fixture/kdc.sh]
+    volumes: [realm:/realm]
+    networks:
+      realm: { aliases: [kdc.fixture.test] }
+    healthcheck:
+      test: [CMD, test, -f, /realm/ready]
+      interval: 2s
+      timeout: 2s
+      retries: 60

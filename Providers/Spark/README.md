@@ -27,9 +27,11 @@ odbc+spark+tcps://<host>[:<port>][/schema/<schema>]
 
 HTTP and HTTPS use `ThriftTransport=2` and default to `/cliservice` when the endpoint path is omitted. A final `/schema/<name>` selects the session schema, so endpoints that end in that pair are unsupported by these schemes. Catalog selection uses Spark session configuration or SQL-qualified names.
 
-On TCP and TCPS, `?sasl=0` selects raw binary Thrift and `?sasl=1` selects SASL. A compatible `ThriftTransport=0` or `ThriftTransport=1` also works. Omitting both uses the driver's default. Authentication and credentials use their existing settings.
+On TCP and TCPS, `?sasl=0` selects raw binary Thrift and `?sasl=1` selects SASL. A compatible `ThriftTransport=0` or `ThriftTransport=1` also works. Omitting both uses the driver's default unless a runtime strategy selects the transport.
 
 The explicit schemes reject conflicting `SSL`, `ThriftTransport`, `HTTPPath`, or path-supplied `Schema` options. For existing `odbc+spark` URLs, the path continues to map to `HTTPPath` and driver options can select the transport and schema. [Spark Thrift Server defaults](https://spark.apache.org/docs/3.5.8/sql-distributed-sql-engine.html#running-the-thrift-jdbcodbc-server) · [Simba transport settings](https://documentation.insightsoftware.com/simba-spark-windows-driver-guide/content/odbc/hi/options/ui/thrifttransport.htm)
+
+With a Spark ODBC provider built against DubUrl Core 0.70.0 or later, use `ConnectionAuthentication.OperatingSystemIdentity()` to authenticate with the process’s existing Kerberos credentials. Supply `KrbServiceName` and `KrbHostFQDN` in the URL. Set `KrbRealm` when the server realm differs from the client’s default. The strategy sets `AuthMech=1` and defaults to SASL over TCP. Provision the Kerberos ticket before connecting. [Simba Kerberos settings](https://documentation.insightsoftware.com/simba-spark-windows-driver-guide/content/odbc/sp/strings.htm)
 
 ## Databricks connection URLs
 

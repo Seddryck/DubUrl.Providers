@@ -54,6 +54,20 @@ No MySQL server is started; no Community, MariaDB, mock server or different plug
 is substituted. Its MySql.Data cases explicitly skip. A licensed server with the
 actual plugin is needed to execute them; MariaDB results are not MySQL evidence.
 
+## Spark on the Linux Simba runner
+
+The Spark fixture extends the same MIT KDC configuration with the
+`spark/spark.fixture.test@DUBURL.TEST` service principal. It provisions a private
+ticket cache per scenario and connects to Spark over loopback using Simba ODBC.
+Hadoop principal mapping allows Alice and the Spark service principal. It rejects
+Bob after he has obtained a valid service ticket. Spark's `CURRENT_USER()`
+returns the authenticated session user.
+
+Use the [Spark QA runner](../../../Providers/Spark/DubUrl.Provider.Spark.QA/infrastructure/README.md)
+with a DubUrl v0.70.0 checkout for the shared Kerberos contract. The runtime comes
+from the published NuGet package. The runner requires two passes per scenario and checks that Bob's
+rejection reached Spark's server-side allowlist.
+
 ## Recorded validation: 2026-10-29
 
 Fresh project `duburl-kerberos-d1f8912fb36f` completed successfully and its containers,
