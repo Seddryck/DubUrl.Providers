@@ -30,7 +30,14 @@
             }
           }
         },
-        "thriftPassword",
+        {
+          "id": "thriftPassword",
+          "queryByLocation": {
+            "thriftTcp": {
+              "sasl": "1"
+            }
+          }
+        },
         {
           "id": "sparkKerberos",
           "queryByLocation": {

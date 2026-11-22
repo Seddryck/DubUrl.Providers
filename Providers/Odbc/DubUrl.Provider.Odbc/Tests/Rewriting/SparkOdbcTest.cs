@@ -257,6 +257,25 @@ public sealed class SparkOdbcTest
         => new ConnectionUrl(url, Registry()).WithAuthentication(ConnectionAuthentication.OperatingSystemIdentity());
 
     [Test]
+    public async Task SparkPasswordStrategyMapsCredentialsOverSaslTls()
+    {
+        var url = new ConnectionUrl(
+            "odbc+spark+tcps://spark.example?Driver=Simba%20Spark%20ODBC%20Driver&AuthMech=3&sasl=1&TrustedCerts=%2Fqa%2Fca.pem", Registry())
+            .WithAuthentication(ConnectionAuthentication.UsernamePassword("alice", "qa-placeholder"));
+
+        using var sync = (DbConnection)url.Connect();
+        await using var connection = await url.ConnectAsync();
+        var settings = new OdbcConnectionStringBuilder(connection.ConnectionString);
+        Assert.That(sync.ConnectionString, Is.EqualTo(connection.ConnectionString));
+        Assert.That(settings["AuthMech"], Is.EqualTo("3"));
+        Assert.That(settings["ThriftTransport"], Is.EqualTo("1"));
+        Assert.That(settings["SSL"], Is.EqualTo("1"));
+        Assert.That(settings["TrustedCerts"], Is.EqualTo("/qa/ca.pem"));
+        Assert.That(settings["UID"], Is.EqualTo("alice"));
+        Assert.That(settings["PWD"], Is.EqualTo("qa-placeholder"));
+    }
+
+    [Test]
     public void DatabricksPatUsesExistingRuntimeCredentialMapping()
     {
         var url = new ConnectionUrl(

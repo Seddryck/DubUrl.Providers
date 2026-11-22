@@ -86,6 +86,7 @@ public sealed class ConnectionUrlCatalogTest
     }
 
     [TestCase("sparkKerberos", "1")]
+    [TestCase("thriftPassword", "3")]
     public void SparkTcpAuthenticationProfilesSelectSasl(string method, string authMech)
     {
         var route = Route("spark-odbc");

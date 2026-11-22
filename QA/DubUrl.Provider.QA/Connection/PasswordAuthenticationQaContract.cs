@@ -12,7 +12,9 @@ namespace DubUrl.Providers.QA.Contracts.Connection;
 [NonParallelizable]
 public abstract class PasswordAuthenticationQaContract : TokenAuthenticationQaContract
 {
-    private PasswordQaDriver Driver => new(AuthenticationConnectionUrl, AuthenticationRegistry);
+    protected virtual string PasswordAuthenticationConnectionUrl => AuthenticationConnectionUrl;
+
+    private PasswordQaDriver Driver => new(PasswordAuthenticationConnectionUrl, AuthenticationRegistry);
 
     [Test, Category("PasswordAuthentication")]
     public async Task PasswordStrategy_AvailabilityIsExplicit()

@@ -19,8 +19,11 @@ internal sealed class PasswordQaDriver(string url, ISchemeRegistry registry)
     internal ConnectionUri Uri { get; } = ConnectionUri.Parse(url);
     internal ISchemeRegistry Registry { get; } = registry;
     internal string Provider => Registry.GetMapper(Uri.Scheme).GetProviderName();
-    internal string Family => QaProbeSql.GetFamily(Uri.Scheme.Canonical);
-    internal bool HasFixtureRecipe => FixtureRecipes.Contains(Provider);
+    private bool IsSparkOdbc => Provider == "System.Data.Odbc" && Uri.Scheme.Parts.Contains("spark");
+    internal string Family => IsSparkOdbc ? "spark" : QaProbeSql.GetFamily(Uri.Scheme.Canonical);
+    internal bool HasFixtureRecipe => FixtureRecipes.Contains(Provider) || (IsSparkOdbc
+        && Uri.Options.Any(option => option.Key.Equals("AuthMech", StringComparison.OrdinalIgnoreCase) && option.Value == "3")
+        && Uri.Scheme.Parts.Contains("tcps") && Uri.HasUsername && Uri.HasPassword && Uri.Password.Length > 0);
     internal UsernamePasswordCredentials Credentials => new(Uri.Username, Uri.Password);
     internal string Location => RemoveUserInfo(url);
     internal string ProbeSql => QaProbeSql.Engine(Family);
@@ -48,6 +51,7 @@ internal sealed class PasswordQaDriver(string url, ISchemeRegistry registry)
     private string PoolRotationLimitation() => Family switch
     {
         "firebird" or "firebirdsql" => "#1689: Firebird QA uses a SELECT-only principal; account/password rotation needs fixture-owned security administration, which is not provisioned.",
+        "spark" => "Spark LDAP provisions a fixed test login. This fixture has no account rotation or isolated ODBC pool-reset recipe.",
         "questdb" => "#1689: QuestDB QA provisions one fixed PG-wire login; SQL account/password rotation and a reliable native pool session probe are not provisioned.",
         _ => $"#1689: {Family} QA has no verified account-rotation/session-ID/native-pool cleanup recipe. No fake pool-rotation pass is substituted."
     };
@@ -66,8 +70,8 @@ internal sealed class PasswordQaDriver(string url, ISchemeRegistry registry)
         var options = Uri.Options.Where(option => !option.Key.Equals("Pooling", StringComparison.OrdinalIgnoreCase))
             .Select(option => System.Uri.EscapeDataString(option.Key) + "=" + System.Uri.EscapeDataString(option.Value))
             .ToList();
-        // QuestDB deliberately accepts a narrow URL-option set; do not inject unsupported Pooling options.
-        if (Family != "questdb") options.Add("Pooling=" + (pooling ? "true" : "false"));
+        // unixODBC controls pooling at the driver-manager level. QuestDB accepts a narrow set of options.
+        if (Provider != "System.Data.Odbc" && Family != "questdb") options.Add("Pooling=" + (pooling ? "true" : "false"));
         return options.Count == 0 ? location : location + "?" + string.Join('&', options);
     }
 

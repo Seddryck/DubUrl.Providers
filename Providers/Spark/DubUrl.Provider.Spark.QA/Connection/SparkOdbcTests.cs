@@ -12,6 +12,21 @@ public sealed class SparkOdbcTests : OdbcContract
     private static ConnectionUrl NativeSchemaUrl => new(ThriftUrl + "&UseNativeQuery=1");
 
     protected override string AuthenticationConnectionUrl => ThriftLocation;
+    protected override string PasswordAuthenticationConnectionUrl
+    {
+        get
+        {
+            var port = Environment.GetEnvironmentVariable("DUBURL_SPARK_LDAP_PORT");
+            if (port is null) return base.PasswordAuthenticationConnectionUrl;
+            var password = Environment.GetEnvironmentVariable("DUBURL_SPARK_LDAP_PASSWORD")
+                ?? throw new InvalidOperationException("The Spark LDAP fixture requires its disposable login password.");
+            var ca = Environment.GetEnvironmentVariable("DUBURL_SPARK_LDAP_CA")
+                ?? throw new InvalidOperationException("The Spark LDAP fixture requires its CA certificate.");
+            return $"odbc+spark+tcps://alice:{Uri.EscapeDataString(password)}@127.0.0.1:{port}"
+                + $"?Driver=Simba%20Spark%20ODBC%20Driver&AuthMech=3&sasl=1&TrustedCerts={Uri.EscapeDataString(ca)}&UseSystemTrustStore=0&AllowSelfSignedServerCert=0&CAIssuedCertNamesMismatch=0"
+                + "&UseNativeQuery=1&SocketTimeout=10";
+        }
+    }
 
     protected override string ConnectionUrl => ThriftUrl;
     protected override bool SupportsSchemaDiscovery => true;

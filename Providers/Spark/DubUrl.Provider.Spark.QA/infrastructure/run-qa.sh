@@ -8,7 +8,7 @@ mkdir -p "$results_dir"
 
 if [[ "${DUBURL_SPARK_SCHEMA_ONLY:-false}" != true ]]; then
     : "${DUBURL_CORE_SOURCE:?Set DUBURL_CORE_SOURCE to a DubUrl Core checkout for Kerberos QA.}"
-    for tool in kinit klist kvno; do
+    for tool in openssl kinit klist kvno; do
         if ! command -v "$tool" >/dev/null; then
             echo "Spark authentication QA requires $tool on the Simba runner." >&2
             exit 1
@@ -43,10 +43,12 @@ if ! "${compose[@]}" up --detach --wait --wait-timeout 180; then
 fi
 
 dotnet test "$project_dir" -c Release -f net10.0 \
+    --filter 'TestCategory!=PasswordAuthentication' \
     --logger 'trx;LogFileName=spark.trx' --results-directory "$results_dir"
 
 cleanup
 trap - EXIT
 if [[ "${DUBURL_SPARK_SCHEMA_ONLY:-false}" != true ]]; then
+    bash "$infrastructure_dir/run-ldap.sh" "$results_dir"
     bash "$infrastructure_dir/../../../../QA/Authentication/Kerberos/run-spark.sh" "$results_dir"
 fi

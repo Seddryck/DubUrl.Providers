@@ -33,6 +33,8 @@ The explicit schemes reject conflicting `SSL`, `ThriftTransport`, `HTTPPath`, or
 
 With a Spark ODBC provider built against DubUrl Core 0.70.0 or later, use `ConnectionAuthentication.OperatingSystemIdentity()` to authenticate with the process’s existing Kerberos credentials. Supply `KrbServiceName` and `KrbHostFQDN` in the URL. Set `KrbRealm` when the server realm differs from the client’s default. The strategy sets `AuthMech=1` and defaults to SASL over TCP. Provision the Kerberos ticket before connecting. [Simba Kerberos settings](https://documentation.insightsoftware.com/simba-spark-windows-driver-guide/content/odbc/sp/strings.htm)
 
+For a password-protected Thrift Server, use `ConnectionAuthentication.UsernamePassword(…)` with `AuthMech=3`. The LDAP QA fixture uses `odbc+spark+tcps` with `sasl=1` and a trusted CA passed in `TrustedCerts`.
+
 ## Databricks connection URLs
 
 ```text
