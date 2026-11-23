@@ -32,7 +32,7 @@ public class SqliteRewriterTest
     [TestCase("sqlite:////c:/directory/data.db", "c:/directory/data.db")]
     public void Map_Url_DataSource(string url, string expected)
     {
-        var urlInfo = new Parser().Parse(url);
+        var urlInfo = new Parsing.Parser().Parse(url);
         var rewriter = new SqliteRewriter(ConnectionStringBuilder, string.Empty);
 
         var result = rewriter.Execute(urlInfo);

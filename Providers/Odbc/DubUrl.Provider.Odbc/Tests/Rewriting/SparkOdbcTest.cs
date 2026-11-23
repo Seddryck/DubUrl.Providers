@@ -207,6 +207,74 @@ public sealed class SparkOdbcTest
         });
     }
 
+    private const string KerberosLocation = "odbc+spark://spark.example?Driver=Simba%20Spark%20ODBC%20Driver";
+    private const string KerberosPrincipal = "&KrbHostFQDN=_HOST&KrbServiceName=spark";
+
+    [TestCase("", "1")]
+    [TestCase("&AuthMech=1&DelegateKrbCreds=0&ThriftTransport=1", "1")]
+    [TestCase("&ThriftTransport=2&HTTPPath=%2Fcliservice&KrbRealm=EXAMPLE", "2")]
+    public async Task StrategyConfiguresSelectedSparkDriver(string options, string transport)
+    {
+        var target = KerberosTarget(KerberosLocation + KerberosPrincipal + options);
+        using var sync = (DbConnection)target.Connect();
+        await using var connection = await target.ConnectAsync();
+        var settings = new OdbcConnectionStringBuilder(connection.ConnectionString);
+        Assert.That(connection.ConnectionString, Is.EqualTo(sync.ConnectionString));
+        Assert.That(settings["AuthMech"], Is.EqualTo("1"));
+        Assert.That(settings["ThriftTransport"], Is.EqualTo(transport));
+        Assert.That(settings["DelegateKrbCreds"], Is.EqualTo("0"));
+        Assert.That(settings.ContainsKey("UID"), Is.False);
+        Assert.That(settings.ContainsKey("PWD"), Is.False);
+        Assert.That(settings["KrbHostFQDN"], Is.EqualTo("_HOST"));
+        Assert.That(settings["KrbServiceName"], Is.EqualTo("spark"));
+        Assert.That(settings.TryGetValue("KrbRealm", out var realm) ? realm : null,
+            Is.EqualTo(transport == "2" ? "EXAMPLE" : null));
+    }
+
+    [TestCase("AuthMech=3")]
+    [TestCase("DelegateKrbCreds=1")]
+    [TestCase("DriverConfigTakePrecedence=1")]
+    [TestCase("UseOnlySSPI=1")]
+    [TestCase("UseJWTAssertion=1")]
+    [TestCase("Trusted_Connection=yes")]
+    [TestCase("Integrated%20Security=true")]
+    [TestCase("ThriftTransport=0")]
+    [TestCase("sasl=0")]
+    [TestCase("PWD=sentinel")]
+    public void ConflictingOptionsRejectBeforeMapping(string option)
+        => Assert.That(() => KerberosTarget(KerberosLocation + "&" + option).ValidateAuthentication(),
+            Throws.TypeOf<ConnectionAuthenticationException>().With.Property("Code").EqualTo(AuthenticationDiagnosticCodes.CredentialConflict));
+
+    [TestCase(KerberosLocation, AuthenticationDiagnosticCodes.MissingCredentials)]
+    [TestCase("odbc+spark://spark.example?Driver=Unverified" + KerberosPrincipal, AuthenticationDiagnosticCodes.UnsupportedAuthentication)]
+    [TestCase("odbc+databricks://spark.example/warehouse/123?Driver=Simba%20Spark%20ODBC%20Driver" + KerberosPrincipal, AuthenticationDiagnosticCodes.UnsupportedAuthentication)]
+    [TestCase("odbc+spark://alice@spark.example?Driver=Simba%20Spark%20ODBC%20Driver" + KerberosPrincipal, AuthenticationDiagnosticCodes.CredentialConflict)]
+    public void InvalidDriverOrLocationRejectsWithoutOpening(string url, string code)
+        => Assert.That(() => KerberosTarget(url).Connect(),
+            Throws.TypeOf<ConnectionAuthenticationException>().With.Property("Code").EqualTo(code));
+
+    private static ConnectionUrl KerberosTarget(string url)
+        => new ConnectionUrl(url, Registry()).WithAuthentication(ConnectionAuthentication.OperatingSystemIdentity());
+
+    [Test]
+    public async Task SparkPasswordStrategyMapsCredentialsOverSaslTls()
+    {
+        var url = new ConnectionUrl(
+            "odbc+spark+tcps://spark.example?Driver=Simba%20Spark%20ODBC%20Driver&AuthMech=3&sasl=1&TrustedCerts=%2Fqa%2Fca.pem", Registry())
+            .WithAuthentication(ConnectionAuthentication.UsernamePassword("alice", "qa-placeholder"));
+
+        using var sync = (DbConnection)url.Connect();
+        await using var connection = await url.ConnectAsync();
+        var settings = new OdbcConnectionStringBuilder(connection.ConnectionString);
+        Assert.That(sync.ConnectionString, Is.EqualTo(connection.ConnectionString));
+        Assert.That(settings["AuthMech"], Is.EqualTo("3"));
+        Assert.That(settings["ThriftTransport"], Is.EqualTo("1"));
+        Assert.That(settings["SSL"], Is.EqualTo("1"));
+        Assert.That(settings["TrustedCerts"], Is.EqualTo("/qa/ca.pem"));
+        Assert.That(settings["UID"], Is.EqualTo("alice"));
+        Assert.That(settings["PWD"], Is.EqualTo("qa-placeholder"));
+    }
+
     [Test]
     public void DatabricksPatUsesExistingRuntimeCredentialMapping()
     {

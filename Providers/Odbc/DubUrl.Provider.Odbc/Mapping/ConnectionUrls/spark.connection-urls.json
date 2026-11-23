@@ -30,11 +30,36 @@
             }
           }
         },
-        "thriftPassword",
-        "thriftKerberos",
+        {
+          "id": "thriftPassword",
+          "queryByLocation": {
+            "thriftTcp": {
+              "sasl": "1"
+            }
+          }
+        },
+        {
+          "id": "sparkKerberos",
+          "queryByLocation": {
+            "thriftTcp": {
+              "sasl": "1"
+            }
+          }
+        },
         "thriftUsername"
       ],
       "providerInvariant": "System.Data.Odbc"
     }
-  ]
+  ],
+  "authentication": {
+    "sparkKerberos": {
+      "label": "Kerberos (existing OS ticket)",
+      "via": "runtime",
+      "query": {
+        "AuthMech": "1"
+      },
+      "library": "ConnectionAuthentication.OperatingSystemIdentity()",
+      "note": "Use the Simba Spark ODBC Driver with an existing Kerberos ticket. Set KrbServiceName and KrbHostFQDN in the URL, and set KrbRealm if the server realm differs from the client's default."
+    }
+  }
 }

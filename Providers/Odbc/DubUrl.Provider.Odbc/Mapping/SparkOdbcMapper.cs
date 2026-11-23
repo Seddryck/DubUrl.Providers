@@ -12,6 +12,7 @@ namespace DubUrl.Provider.Odbc.Mapping;
 
 [WrapperMapper<OdbcConnectivity, PositionalParametrizer>("System.Data.Odbc")]
 [SchemaDiscovery(typeof(SparkMetadataReader))]
+[DubUrl.Authentication.OperatingSystemIdentity(typeof(SparkOperatingSystemIdentity))]
 public class SparkOdbcMapper : BaseMapper, IOdbcMapper
 {
     public SparkOdbcMapper(DbConnectionStringBuilder builder, IDialect dialect, IParametrizer parametrizer,
