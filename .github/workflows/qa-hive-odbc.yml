@@ -1,0 +1,21 @@
+name: Hive ODBC QA
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'Providers/Hive/**'
+      - 'Providers/Odbc/**'
+      - 'QA/DubUrl.Provider.QA/**'
+      - '.github/workflows/qa-hive-odbc.yml'
+      - '.github/workflows/qa-spark-databricks-odbc.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  hive:
+    uses: ./.github/workflows/qa-spark-databricks-odbc.yml
+    with:
+      fixture: hive

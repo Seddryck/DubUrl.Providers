@@ -38,6 +38,8 @@
   <Project Path="Providers/PostgreSql/DubUrl.Provider.Timescale.QA/DubUrl.Provider.Timescale.QA.csproj" />
   <Project Path="Providers/Snowflake/DubUrl.Provider.Snowflake/DubUrl.Provider.Snowflake.csproj" />
   <Project Path="Providers/Spark/DubUrl.Provider.Spark/DubUrl.Provider.Spark.csproj" />
+  <Project Path="Providers/Hive/DubUrl.Provider.Hive/DubUrl.Provider.Hive.csproj" />
+  <Project Path="Providers/Hive/DubUrl.Provider.Hive.QA/DubUrl.Provider.Hive.QA.csproj" />
   <Project Path="Providers/Spark/DubUrl.Provider.Spark.QA/DubUrl.Provider.Spark.QA.csproj" />
   <Project Path="Providers/Spark/DubUrl.Provider.Databricks.QA/DubUrl.Provider.Databricks.QA.csproj" />
   <Project Path="Providers/Sqlite/DubUrl.Provider.Sqlite/DubUrl.Provider.Sqlite.csproj" />

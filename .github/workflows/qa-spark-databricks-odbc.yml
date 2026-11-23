@@ -1,6 +1,14 @@
-name: Spark and Databricks live ODBC QA
+name: Spark, Databricks, and Hive live ODBC QA
 
 on:
+  workflow_call:
+    inputs:
+      fixture:
+        type: string
+        required: true
+      schema-matrix:
+        type: boolean
+        default: false
   push:
     branches: [qa/odbc-connectivity]
   workflow_dispatch:
@@ -8,7 +16,7 @@ on:
       fixture:
         description: Live fixture to run
         type: choice
-        options: [databricks, spark, both]
+        options: [databricks, databricks-oauth, spark, both]
         default: both
 
 permissions:
@@ -22,75 +30,53 @@ jobs:
   databricks:
     name: Databricks Free Edition ODBC
     if: >-
+      !inputs.schema-matrix &&
       (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/qa/odbc-connectivity') &&
-      (github.event_name == 'push' || inputs.fixture != 'spark')
+      (inputs.fixture == 'databricks' || inputs.fixture == 'databricks-oauth' || inputs.fixture == 'both' ||
+       (github.event_name == 'push' && !inputs.fixture))
     runs-on: ubuntu-24.04
     container: debian:bookworm-slim
-    timeout-minutes: 15
+    timeout-minutes: 30
     environment: databricks-qa
     concurrency: databricks-odbc-qa
     steps:
-      - name: Install Debian runtime dependencies
-        shell: bash
-        run: |
-          apt_options=(-o Acquire::http::Timeout=15 -o Acquire::Retries=2)
-          apt-get "${apt_options[@]}" -o APT::Update::Error-Mode=any update
-          apt-get "${apt_options[@]}" install -y --no-install-recommends \
-            ca-certificates curl git unzip unixodbc odbcinst libicu72 libssl3 libgssapi-krb5-2 zlib1g
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
-      - uses: actions/setup-dotnet@v6
-        with:
-          dotnet-version: '10.0.401'
-      - name: Install pinned Databricks ODBC driver
-        shell: bash
-        run: |
-          mkdir -p .test-results/databricks
-          archive="$RUNNER_TEMP/databricks-odbc.zip"
-          curl --fail --silent --show-error --location --retry 3 --retry-max-time 120 --connect-timeout 10 --max-time 60 \
-            https://databricks-bi-artifacts.s3.amazonaws.com/simba-databricks-odbc-drivers/2.14.0/DatabricksODBC-2.14.0-Debian-64bit.zip \
-            --output "$archive"
-          echo "835f793a68e704e93a3726dc5f873140cc9d8e11a33c6c62b0400435b8d08aa8  $archive" | sha256sum --check
-          unzip -q "$archive" -d "$RUNNER_TEMP/databricks-odbc"
-          apt-get -o Acquire::http::Timeout=15 -o Acquire::Retries=2 install -y \
-            "$RUNNER_TEMP/databricks-odbc/databricksodbc_2.14.0.1000-2_amd64.deb"
-          printf '%s\n' '[Databricks ODBC Driver]' 'Driver=/opt/databricks/databricksodbc/lib/64/libdatabricksodbc64.so' > "$RUNNER_TEMP/databricks-odbc.ini"
-          odbcinst -i -d -f "$RUNNER_TEMP/databricks-odbc.ini"
-          odbcinst -q -d -n 'Databricks ODBC Driver' >/dev/null
-          dpkg-query -W databricksodbc | tee .test-results/databricks/driver.txt
-      - name: Build Databricks QA
-        run: dotnet build Providers/Spark/DubUrl.Provider.Databricks.QA -c Release -f net10.0
-      - name: Run Databricks Free Edition shared contracts and live DDL tests
+      - uses: ./.github/actions/databricks-odbc-qa
+      - name: Run Databricks warehouse tests
         shell: bash
         env:
           DATABRICKS_HOST: ${{ vars.DATABRICKS_HOST }}
-          DATABRICKS_HTTP_PATH: ${{ vars.DATABRICKS_HTTP_PATH }}
+          DATABRICKS_WAREHOUSE_ID: ${{ vars.DATABRICKS_WAREHOUSE_ID }}
           DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN }}
+          DATABRICKS_OAUTH_TOKEN: ${{ inputs.fixture == 'databricks-oauth' && secrets.DATABRICKS_OAUTH_TOKEN || '' }}
+          DATABRICKS_RESTRICTED_TOKEN: ${{ secrets.DATABRICKS_RESTRICTED_TOKEN }}
+          DATABRICKS_QA_FIXTURE: ${{ inputs.fixture }}
         run: |
-          status=0
-          dotnet test Providers/Spark/DubUrl.Provider.Databricks.QA -c Release -f net10.0 --no-build \
-            --logger 'trx;LogFileName=databricks.trx' --results-directory .test-results/databricks || status=$?
-          report=.test-results/databricks/databricks.trx
-          if [[ -n "$DATABRICKS_TOKEN" && -f "$report" ]]; then
-            perl -pi -e 's/\Q$ENV{DATABRICKS_TOKEN}\E/[REDACTED]/g' "$report"
-          fi
-          exit "$status"
+          options=()
+          if [[ "$DATABRICKS_QA_FIXTURE" == "databricks-oauth" ]]; then options+=(--oauth); fi
+          bash Providers/Spark/DubUrl.Provider.Databricks.QA/infrastructure/run-qa.sh "${options[@]}"
       - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: databricks-odbc-qa
-          path: .test-results/databricks
+          path: |
+            .test-results/databricks/databricks.trx
+            .test-results/databricks/driver.txt
+          include-hidden-files: true
+          overwrite: true
           if-no-files-found: warn
 
   spark:
     name: Apache Spark Thrift Server ODBC
     if: >-
       (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/qa/odbc-connectivity') &&
-      ((github.event_name == 'push' && vars.SPARK_ODBC_DRIVER_VERSION != '') ||
-       (github.event_name == 'workflow_dispatch' && inputs.fixture != 'databricks'))
+      ((inputs.schema-matrix && inputs.fixture == 'spark' && vars.SPARK_ODBC_DRIVER_VERSION != '') ||
+       (!inputs.schema-matrix && (inputs.fixture == 'spark' || inputs.fixture == 'both')) ||
+       (github.event_name == 'push' && !inputs.fixture && vars.SPARK_ODBC_DRIVER_VERSION != ''))
     runs-on: [self-hosted, linux, x64, duburl-spark-qa]
-    timeout-minutes: 20
+    timeout-minutes: 35
     concurrency: spark-odbc-qa
     steps:
       - uses: actions/checkout@v7
@@ -99,13 +85,66 @@ jobs:
       - uses: actions/setup-dotnet@v6
         with:
           dotnet-version: '10.0.401'
-      - name: Run Spark shared contracts and live DDL tests
+      - uses: actions/checkout@v7
+        if: '!inputs.schema-matrix'
+        with:
+          repository: Seddryck/DubUrl
+          ref: v0.70.0
+          path: .test-results/duburl-core
+          persist-credentials: false
+      - name: Run Spark shared contracts and live fixtures
         env:
           SPARK_ODBC_DRIVER_VERSION: ${{ vars.SPARK_ODBC_DRIVER_VERSION }}
+          DUBURL_SPARK_SCHEMA_ONLY: ${{ inputs.schema-matrix }}
+          DUBURL_CORE_SOURCE: ${{ github.workspace }}/.test-results/duburl-core
         run: bash Providers/Spark/DubUrl.Provider.Spark.QA/infrastructure/run-qa.sh
       - uses: actions/upload-artifact@v7
         if: always()
         with:
-          name: spark-odbc-qa
-          path: .test-results/spark
+          name: ${{ inputs.schema-matrix && 'schema-qa-Spark' || 'spark-odbc-qa' }}
+          path: |
+            .test-results/spark/*.trx
+            .test-results/spark/driver.txt
+          include-hidden-files: true
+          overwrite: true
+          if-no-files-found: warn
+
+  spark-coverage-unavailable:
+    if: inputs.schema-matrix && inputs.fixture == 'spark' && vars.SPARK_ODBC_DRIVER_VERSION == ''
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo '::notice::Spark schema QA needs a licensed runner and SPARK_ODBC_DRIVER_VERSION. Coverage is unverified.'
+
+  hive:
+    if: inputs.fixture == 'hive'
+    name: HiveServer2
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 10.0.401
+      - name: Prepare pinned Linux ODBC driver
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y unixodbc odbcinst libsasl2-2
+          curl --fail --silent --show-error --location --retry 3 \
+            https://downloads.cloudera.com/connectors/ClouderaHiveODBC-2.10.1.1001/Debian/clouderahiveodbc_2.10.1.1001-2_amd64.deb \
+            --output "$RUNNER_TEMP/cloudera-hive-odbc.deb"
+      - name: Run Hive ODBC and schema QA
+        run: |
+          export HIVE_ODBC_DEB="$RUNNER_TEMP/cloudera-hive-odbc.deb"
+          bash Providers/Hive/DubUrl.Provider.Hive.QA/infrastructure/run-qa.sh
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: ${{ inputs.schema-matrix && 'schema-qa-Hive' || 'hive-odbc-qa' }}
+          path: |
+            .test-results/hive/hive.trx
+            .test-results/hive/hive-driver.txt
+          include-hidden-files: true
+          overwrite: true
           if-no-files-found: warn

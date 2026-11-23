@@ -1,0 +1,65 @@
+{
+  "routes": [
+    {
+      "id": "msodbc18",
+      "api": "ODBC",
+      "driver": "Microsoft ODBC Driver 18",
+      "scheme": "odbc+mssql",
+      "locations": [
+        "sqlServerWrapped"
+      ],
+      "tls": "sqlOdbc18",
+      "query": {
+        "Driver": "ODBC Driver 18 for SQL Server"
+      },
+      "fields": {
+        "port": {
+          "layout": "port",
+          "default": 1433
+        }
+      },
+      "auth": [
+        "password",
+        "integrated",
+        "driver"
+      ],
+      "providerInvariant": "System.Data.Odbc"
+    },
+    {
+      "id": "msodbc17",
+      "api": "ODBC",
+      "driver": "Microsoft ODBC Driver 17",
+      "scheme": "odbc+mssql",
+      "locations": [
+        "sqlServerWrapped"
+      ],
+      "query": {
+        "Driver": "ODBC Driver 17 for SQL Server"
+      },
+      "fields": {
+        "port": {
+          "layout": "port",
+          "default": 1433
+        }
+      },
+      "auth": [
+        "password",
+        "integrated",
+        "driver"
+      ],
+      "providerInvariant": "System.Data.Odbc"
+    }
+  ],
+  "tlsPolicies": {
+    "sqlOdbc18": {
+      "modes": [
+        {
+          "id": "default",
+          "label": "Driver default (verified TLS)",
+          "secure": true,
+          "transport": "TCP with verified TLS"
+        }
+      ]
+    }
+  }
+}

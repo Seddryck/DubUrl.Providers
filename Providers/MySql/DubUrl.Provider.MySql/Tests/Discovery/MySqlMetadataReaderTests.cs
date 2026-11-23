@@ -45,8 +45,42 @@ public class MySqlMetadataReaderTests
         connection.Protected().Verify("Dispose", Times.Never(), ItExpr.IsAny<bool>());
     }
 
+    [TestCase(@"_utf8mb4\'2025-11-14 12:13:16.797\'", "2025-11-14 12:13:16.797")]
+    [TestCase(@"_utf8mb4\'O\\\'Brien \\\\ caf" + "\u00c3\u00a9 \u00f0\u009f\u00a6\u0086" + @"\'", "O'Brien \\ café 🦆")]
+    [TestCase(@"_utf8mb4\'\\\\n \\n \\0 \\r \\Z\'", "\\n \n \0 \r \u001a")]
+    [TestCase(@"_utf8mb4\'\'", "")]
+    public async Task CatalogDefaultLiteralsDecodeAsPortableStrings(string native, string expected)
+    {
+        var result = await InspectTextDefault(native);
+        Assert.That(result.Tables.Single().Columns.Single().Default, Is.EqualTo(expected));
+        Assert.That(result.Diagnostics, Is.Empty);
+    }
+
+    [TestCase(@"concat(_utf8mb4\'a\',_utf8mb4\'b\')")]
+    [TestCase(@"_utf8mb4\'a\' + 0")]
+    [TestCase(@"_utf8mb4\'a\' collate utf8mb4_bin")]
+    [TestCase(@"_binary\'a\'")]
+    [TestCase(@"_utf8mb4\'" + "\u00ff" + @"\'")]
+    [TestCase(@"_utf8mb4\'\\q\'")]
+    public async Task OtherCatalogDefaultsKeepTheirNativeDiagnostic(string native)
+    {
+        var result = await InspectTextDefault(native);
+        Assert.That(result.Tables.Single().Columns.Single().Default, Is.Null);
+        Assert.That(result.Diagnostics.Single().Message, Does.Contain(native));
+    }
+
+    private static Task<SchemaMetadata> InspectTextDefault(string native)
+    {
+        var connection = Catalog(Table(["database_name", "table_name"], ["db", "t"]),
+            Table(["database_name", "table_name", "column_name", "ordinal", "type_name", "extra", "default_expression"],
+                ["db", "t", "stamp", 1, "text", "DEFAULT_GENERATED", native]));
+        return new MySqlMetadataReader().ReadAsync(connection.Object,
+            new() { Features = [SchemaFeature.Columns, SchemaFeature.Defaults] });
+    }
+
+
     [Test]
-    public async Task UnsupportedGenerationDefaultsAndTypes_HaveObjectDiagnostics()
+    public async Task AutoIncrementLeavesSettingsUnspecifiedAndOtherUnsupportedMetadataIsDiagnosed()
     {
         var connection = Catalog(Table(["database_name", "table_name"], ["db", "t"]),
             Table(["database_name", "table_name", "column_name", "ordinal", "type_name", "native_type_name", "extra", "default_expression"],
@@ -54,9 +88,9 @@ public class MySqlMetadataReaderTests
                 ["db", "t", "stamp", 2, "timestamp", "timestamp", "DEFAULT_GENERATED", "CURRENT_TIMESTAMP"],
                 ["db", "t", "unsigned_value", 3, "int", "int unsigned", "", null]));
         var result = await new MySqlMetadataReader().ReadAsync(connection.Object, new() { Features = [SchemaFeature.Columns, SchemaFeature.Generation, SchemaFeature.Defaults] });
-        Assert.That(result.Diagnostics.Select(d => d.Feature), Is.EquivalentTo(new[] { SchemaFeature.Generation, SchemaFeature.Defaults, SchemaFeature.Columns }));
+        Assert.That(result.Diagnostics.Select(d => d.Feature), Is.EquivalentTo(new[] { SchemaFeature.Defaults, SchemaFeature.Columns }));
         Assert.That(result.Diagnostics.All(d => d.Code == "SDI009" && d.Object == new MetadataName("t", Database: "db") && d.Coverage == MetadataCoverage.Unrepresentable), Is.True);
-        Assert.That(result.Tables.Single().Columns[0].Generation, Is.Null);
+        Assert.That(result.Tables.Single().Columns[0].Generation, Is.EqualTo(new MetadataGeneration()));
     }
 
     [TestCase("select `db`.`t`.`a` AS `label` from `db`.`t`", true)]

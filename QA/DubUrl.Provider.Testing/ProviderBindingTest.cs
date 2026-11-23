@@ -146,7 +146,7 @@ public class ProviderBindingTest
     public void MissingFactory_SkipsSchemeAndReportsResolutionDiagnostic()
     {
         var registry = CreateCatalog(() => null).Build();
-        var success = registry.TryResolve(new Parser().Parse("pg://localhost/demo"), out var resolved, out var diagnostic);
+        var success = registry.TryResolve(new Parsing.Parser().Parse("pg://localhost/demo"), out var resolved, out var diagnostic);
 
         Assert.Multiple(() =>
         {
@@ -163,7 +163,7 @@ public class ProviderBindingTest
         var factory = new Mock<DbProviderFactory>();
         factory.Setup(x => x.CreateConnectionStringBuilder()).Returns(() => new NpgsqlConnectionStringBuilder());
         var registry = CreateCatalog(() => factory.Object).Build();
-        var success = registry.TryResolve(new Parser().Parse("pg://localhost"), out _, out var diagnostic);
+        var success = registry.TryResolve(new Parsing.Parser().Parse("pg://localhost"), out _, out var diagnostic);
 
         Assert.Multiple(() =>
         {

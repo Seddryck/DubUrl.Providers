@@ -1,0 +1,37 @@
+{
+  "routes": [
+    {
+      "id": "mysql-odbc",
+      "api": "ODBC",
+      "driver": "MySQL Connector/ODBC 8+",
+      "scheme": "odbc+mysql",
+      "locations": [
+        "requiredDatabase"
+      ],
+      "tls": "mysqlOdbc",
+      "fields": {
+        "port": {
+          "layout": "port",
+          "default": 3306,
+          "queryKey": "PORT"
+        }
+      },
+      "auth": [
+        "password",
+        {
+          "id": "integrated",
+          "platforms": [
+            "Windows",
+            "Linux"
+          ],
+          "note": "MySQL Enterprise and Connector/ODBC 8.0.32+ with the matching client plugin."
+        },
+        {
+          "id": "certificate",
+          "note": "Unencrypted PEM files."
+        }
+      ],
+      "providerInvariant": "System.Data.Odbc"
+    }
+  ]
+}

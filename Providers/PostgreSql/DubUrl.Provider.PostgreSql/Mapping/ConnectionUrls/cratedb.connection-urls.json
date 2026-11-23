@@ -1,0 +1,25 @@
+{
+  "routes": [
+    {
+      "id": "crate-npgsql",
+      "api": "ADO.NET",
+      "driver": "Npgsql",
+      "scheme": "cratedb",
+      "locations": [
+        "requiredDatabase"
+      ],
+      "tls": "npgsql",
+      "note": "Use the PostgreSQL wire endpoint. Verified TLS requires TLS on that endpoint.",
+      "fields": {
+        "port": {
+          "layout": "port",
+          "default": 5432
+        }
+      },
+      "auth": [
+        "password"
+      ],
+      "providerInvariant": "Npgsql"
+    }
+  ]
+}

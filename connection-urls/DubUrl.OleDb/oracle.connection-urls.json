@@ -1,0 +1,29 @@
+{
+  "routes": [
+    {
+      "id": "oraoledb",
+      "api": "OLE DB",
+      "driver": "OraOLEDB.Oracle",
+      "platforms": [
+        "Windows"
+      ],
+      "scheme": "oledb+oracle",
+      "locations": [
+        "service",
+        "tns"
+      ],
+      "fields": {
+        "port": {
+          "layout": "port",
+          "default": 1521
+        }
+      },
+      "auth": [
+        "password",
+        "integrated",
+        "driver"
+      ],
+      "providerInvariant": "System.Data.OleDb"
+    }
+  ]
+}

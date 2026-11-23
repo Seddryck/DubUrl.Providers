@@ -1,0 +1,58 @@
+{
+  "routes": [
+    {
+      "id": "npgsql",
+      "api": "ADO.NET",
+      "driver": "Npgsql",
+      "scheme": "postgres",
+      "locations": [
+        "pgDatabase"
+      ],
+      "tls": "npgsql",
+      "fields": {
+        "port": {
+          "layout": "port",
+          "default": 5432
+        }
+      },
+      "auth": [
+        "password",
+        {
+          "id": "integrated",
+          "note": "Network GSS/SSPI requires a configured server and Kerberos credentials."
+        },
+        "certificate"
+      ],
+      "providerInvariant": "Npgsql"
+    }
+  ],
+  "locations": {
+    "pgDatabase": {
+      "transport": "TCP",
+      "fields": {
+        "host": {
+          "layout": "host",
+          "required": true,
+          "url": "host"
+        },
+        "port": {
+          "layout": "port",
+          "url": "port"
+        },
+        "database": {
+          "layout": "text",
+          "label": "Database",
+          "required": true
+        },
+        "searchPath": {
+          "layout": "text",
+          "label": "Schema search path",
+          "queryKey": "Search Path"
+        }
+      },
+      "path": [
+        "database"
+      ]
+    }
+  }
+}

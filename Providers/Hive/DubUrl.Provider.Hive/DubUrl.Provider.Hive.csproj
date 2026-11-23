@@ -1,0 +1,8 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><Description>Apache Hive database metadata for DubUrl.</Description></PropertyGroup>
+  <Import Project="../../Provider.Build.props" />
+  <ItemGroup>
+    <PackageReference Include="DubUrl.Schema" Version="$(SchemaPackageVersion)" />
+    <Compile Include="../../Build/ColumnAnnotationProperty.cs" Link="Discovery/ColumnAnnotationProperty.cs" />
+  </ItemGroup>
+</Project>

@@ -1,0 +1,61 @@
+{
+  "routes": [
+    {
+      "id": "drill-odbc",
+      "api": "ODBC",
+      "driver": "HPE / MapR Drill ODBC",
+      "scheme": "odbc+drill",
+      "locations": [
+        "schema"
+      ],
+      "note": "Direct Drillbit profile. The mapper also accepts ZooKeeper quorum and cluster settings.",
+      "fields": {
+        "port": {
+          "layout": "port",
+          "default": 31010
+        }
+      },
+      "auth": [
+        "none",
+        "password",
+        {
+          "id": "integrated",
+          "label": "Kerberos (OS identity)",
+          "fields": {
+            "krbServiceHost": {
+              "layout": "text",
+              "label": "Kerberos service host",
+              "required": true,
+              "queryKey": "KrbServiceHost"
+            }
+          }
+        },
+        "driver"
+      ],
+      "providerInvariant": "System.Data.Odbc"
+    }
+  ],
+  "locations": {
+    "schema": {
+      "transport": "TCP",
+      "fields": {
+        "host": {
+          "layout": "host",
+          "required": true,
+          "url": "host"
+        },
+        "port": {
+          "layout": "port",
+          "url": "port"
+        },
+        "schema": {
+          "layout": "text",
+          "label": "Schema"
+        }
+      },
+      "path": [
+        "schema"
+      ]
+    }
+  }
+}

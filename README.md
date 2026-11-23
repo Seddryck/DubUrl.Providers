@@ -2,13 +2,18 @@
 
 Provider implementation packages, database-free unit tests, and real database QA for DubUrl.
 
-The projects under Providers use released DubUrl Core packages and DubUrl.Schema 0.104.0. Use the following commands to build and test.
+[Connector packs](connectors/README.md) and their installation catalog are published on
+[DubUrl.Providers Releases](https://github.com/Seddryck/DubUrl.Providers/releases).
+
+The projects under Providers use released DubUrl Core and DubUrl.Schema packages. Use the following commands to build and test.
 
     dotnet build DubUrl.Providers.slnx
     dotnet test QA/DubUrl.Providers.Testing
     dotnet test DubUrl.BulkCopy.Testing
 
 The provider unit suite compiles the tests alongside their owning provider and runs without a database. Schema source-compatibility QA can opt into a local package with `./build/Initialize-SchemaQa.ps1 -SourceCommit <sha>` before building in the same PowerShell session.
+
+For SQL Server, a table-level `Hierarchy` generates a unique `hierarchyid` column named `node_path` and keeps the declared primary key. With parent existence enforced, `parent_path` is a persisted computed column with a self-referencing foreign key. Insert the root using `hierarchyid::GetRoot()` before inserting its children. `SchemaScriptRenderer.PreflightHierarchies` reports `HierarchyId` and whether the foreign key will enforce parent existence.
 
 The shared live fixtures are in QA/DubUrl.Provider.QA. Their four namespaces are Schema, Connection, BulkCopy, and Query under DubUrl.Providers.QA.Contracts. Concrete fixtures supply their real driver, SQL, and expected behavior. Engine regressions live in Specific subfolders.
 
@@ -29,6 +34,50 @@ The required Apache Drill QA check builds the provider and validates its manifes
 The on-demand [Databricks Free Edition](Providers/Spark/DubUrl.Provider.Databricks.QA/infrastructure/README.md) and [Apache Spark](Providers/Spark/DubUrl.Provider.Spark.QA/infrastructure/README.md) ODBC fixtures check connectivity, DDL, and table metadata using the [Spark SQL and Databricks SQL dialects](Providers/Spark/README.md).
 
 The published [DubUrl.ProviderTesting 0.60.0 package](https://www.nuget.org/packages/DubUrl.ProviderTesting/0.60.0) remains available for compatibility. The internal DubUrl.Provider.QA project is not published.
+
+## Databricks OAuth over ODBC
+
+Supply a current OAuth access token from your application when opening a connection with the registered **Databricks ODBC Driver**.
+
+```csharp
+using DubUrl;
+using DubUrl.Provider.Odbc.Authentication;
+
+var warehouse = new ConnectionUrl(
+    "odbc+databricks://workspace.example.com/warehouse/123/main/reporting")
+    .WithAuthentication(DatabricksAuthentication.OAuthAccessToken(accessToken));
+await using var connection = await warehouse.OpenAsync();
+```
+
+DubUrl configures HTTPS and OAuth token pass-through. Keep the token in the authentication strategy and treat the native ODBC connection string as sensitive. [Databricks OAuth token pass-through](https://docs.databricks.com/aws/en/integrations/odbc/authentication#oauth-20-tokens)
+
+## Apache Hive over ODBC
+
+Install the `hive-odbc` connector and register the **Cloudera ODBC Driver for Apache Hive** with your ODBC driver manager under that name. On Linux, unixODBC and `odbcinst` are required. The driver must match the application's architecture. NuGet applications can reference `DubUrl.Provider.Odbc` and `System.Data.Odbc`.
+
+```text
+odbc+hive://hive.example.com/analytics?AuthMech=2&ThriftTransport=1
+```
+
+The URL uses port `10000` by default and maps `analytics` to the driver's `Schema` setting. Match the authentication, Thrift transport, and TLS settings to your server. For a differently registered driver name, set `Driver` in the URL query. The route generates HiveQL identifiers with backticks. It targets HiveServer2. Use `odbc+spark://` with the Spark ODBC driver for Spark SQL Thrift Server. See the [Cloudera driver guide](https://docs.cloudera.com/application-resources/latest/connectors/hive-odbc/2-9-0.html) and the [Hive ODBC QA fixture](Providers/Hive/DubUrl.Provider.Hive.QA/infrastructure/README.md).
+
+The explicit Hive transport schemes use the same URL layout as the Spark transport schemes.
+
+| Scheme | Thrift transport | TLS | Default port |
+| --- | --- | --- | --- |
+| `odbc+hive+http` | HTTP | Off | 10001 |
+| `odbc+hive+https` | HTTP | On | 10001 |
+| `odbc+hive+tcp` | TCP | Off | 10000 |
+| `odbc+hive+tcps` | TCP | On | 10000 |
+
+HTTP and HTTPS default to `/cliservice`. Supply a custom endpoint as the URL path, optionally followed by `/schema/<name>` to select the Hive database. A final `/schema/<name>` is reserved for database selection. TCP and TCPS accept only the optional schema suffix. Use `sasl=0` for raw binary Thrift or `sasl=1` for SASL, or leave it unset to use a compatible `ThriftTransport` option or the driver default. The explicit schemes reject contradictory transport, TLS, and path settings.
+
+```text
+odbc+hive+https://hive.example.com/schema/analytics
+odbc+hive+tcps://hive.example.com/schema/analytics?sasl=1
+```
+
+HiveServer2 4.0.1 is verified over all four transports with Cloudera Hive ODBC 2.10.1.1001. Match `AuthMech` to the endpoint and configure certificate trust for TLS. [Hive transport QA](Providers/Hive/DubUrl.Provider.Hive.QA/infrastructure/README.md#transport-coverage)
 
 ## Structured schema columns
 
@@ -96,3 +145,13 @@ Set `DUBURL_SNOWFLAKE_QA_CONNECTION_STRING` to a disposable Snowflake schema to 
     dotnet test QA/DubUrl.Providers.Testing -f net10.0 --filter "FullyQualifiedName=DubUrl.Provider.Snowflake.Tests.Schema.SnowflakeStructuredTypeLiveTests.AllFiveShapesRoundTrip"
 
 Use `SchemaInspector` with the registered provider reader to recover structured descriptors. Recognized types outside the model, such as DuckDB fixed arrays without a recognized component check or SingleStore vectors with unrepresentable component types, produce an incomplete discovery diagnostic. Legacy scalar columns and native type hints retain their rendering path.
+
+### Snowflake table annotations
+
+Snowflake table annotations preserve directly assigned user-defined tags with a single string value. Use the fully qualified tag name as the annotation key, for example `GOVERNANCE.TAGS.DATA_OWNER` or `GOVERNANCE."Sales.Tags"."Data Owner"`. Discovery requires a role that can see the table in Information Schema. Tags with multiple values produce an incomplete discovery diagnostic.
+
+Generated scripts apply tags after creating the table. Provision the referenced tag definitions in the target account before deployment. The deployment role needs the relevant database and schema privileges plus either account-level `APPLY TAG` or `APPLY` on each tag and `OWNERSHIP` on the table. If Snowflake rejects an assignment, for example because a tag is missing or a value is disallowed, schema deployment stops at the tag command and reports the provider error and failing command.
+
+To verify the live round trip, set `DUBURL_SNOWFLAKE_QA_CONNECTION_STRING` to a disposable schema and use a role that can also create and drop the test tags.
+
+    dotnet test QA/DubUrl.Providers.Testing -f net10.0 --filter "FullyQualifiedName=DubUrl.Provider.Snowflake.Tests.Schema.SnowflakeAnnotationTests.RoundTripsDirectTagsAndExcludesColumnTags"

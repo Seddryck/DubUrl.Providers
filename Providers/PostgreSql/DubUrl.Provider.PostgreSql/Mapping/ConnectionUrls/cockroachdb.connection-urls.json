@@ -1,0 +1,30 @@
+{
+  "routes": [
+    {
+      "id": "cockroach-npgsql",
+      "api": "ADO.NET",
+      "driver": "Npgsql",
+      "scheme": "cockroachdb",
+      "locations": [
+        "requiredDatabase"
+      ],
+      "tls": "npgsql",
+      "note": "The psqlODBC certificate strategy recognizes CockroachDB; confirm a compatible ODBC registration before offering it as a preset.",
+      "fields": {
+        "port": {
+          "layout": "port",
+          "default": 26257
+        }
+      },
+      "auth": [
+        "password",
+        {
+          "id": "integrated",
+          "note": "Network GSSAPI requires a compatible Enterprise deployment."
+        },
+        "certificate"
+      ],
+      "providerInvariant": "Npgsql"
+    }
+  ]
+}

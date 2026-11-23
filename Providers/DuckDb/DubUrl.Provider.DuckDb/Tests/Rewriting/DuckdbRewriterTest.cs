@@ -33,7 +33,7 @@ public class DuckdbRewriterTest
     [TestCase("duckdb:////c:/directory/data.duckdb", "c:/directory/data.duckdb")]
     public void Map_Url_DataSource(string url, string expected)
     {
-        var urlInfo = new Parser().Parse(url);
+        var urlInfo = new Parsing.Parser().Parse(url);
         var rewriter = new DuckdbRewriter(ConnectionStringBuilder, string.Empty);
 
         var result = rewriter.Execute(urlInfo);

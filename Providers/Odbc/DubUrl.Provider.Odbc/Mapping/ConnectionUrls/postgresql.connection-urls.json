@@ -1,0 +1,32 @@
+{
+  "routes": [
+    {
+      "id": "psqlodbc",
+      "api": "ODBC",
+      "driver": "psqlODBC",
+      "scheme": "odbc+postgres",
+      "locations": [
+        "requiredDatabase"
+      ],
+      "tls": "nativeVerified",
+      "fields": {
+        "port": {
+          "layout": "port",
+          "default": 5432
+        }
+      },
+      "auth": [
+        "password",
+        {
+          "id": "integrated",
+          "note": "Requires a supported psqlODBC ANSI/Unicode driver linked to libpq 16+."
+        },
+        {
+          "id": "certificate",
+          "note": "Unencrypted PEM files and libpq 16+."
+        }
+      ],
+      "providerInvariant": "System.Data.Odbc"
+    }
+  ]
+}

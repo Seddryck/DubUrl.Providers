@@ -1,0 +1,29 @@
+{
+  "routes": [
+    {
+      "id": "msoledbsql",
+      "api": "OLE DB",
+      "driver": "MSOLEDBSQL / MSOLEDBSQL19",
+      "platforms": [
+        "Windows"
+      ],
+      "scheme": "oledb+mssql",
+      "locations": [
+        "sqlServerWrapped"
+      ],
+      "tls": "nativeVerified",
+      "fields": {
+        "port": {
+          "layout": "port",
+          "default": 1433
+        }
+      },
+      "auth": [
+        "password",
+        "integrated",
+        "driver"
+      ],
+      "providerInvariant": "System.Data.OleDb"
+    }
+  ]
+}

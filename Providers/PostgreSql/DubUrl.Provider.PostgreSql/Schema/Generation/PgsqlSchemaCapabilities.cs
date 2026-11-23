@@ -13,6 +13,8 @@ internal static class PgsqlSchemaCapabilities
             SupportsRegularExpressionChecks = true,
             SupportsComments = true,
             SupportsViews = true,
-            NativeTypes = new HashSet<string>(["JSON", "JSONB", "UUID", "TEXT", "CITEXT"], StringComparer.OrdinalIgnoreCase),
+            NativeTypes = new HashSet<string>(
+                ["JSON", "JSONB", "UUID", "TEXT", "CITEXT", "CHAR", "CHARACTER", "VARCHAR", "CHARACTER VARYING"],
+                StringComparer.OrdinalIgnoreCase),
         };
 }

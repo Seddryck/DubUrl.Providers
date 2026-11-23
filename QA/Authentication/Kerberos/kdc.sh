@@ -40,6 +40,11 @@ for service in mariadb memsql mysql; do
     chmod 400 "/realm/$host-root.secret"
   fi
 done
+spark_principal=spark/spark.fixture.test@DUBURL.TEST
+kadmin.local -q "addprinc -randkey $spark_principal" >/dev/null 2>&1
+kadmin.local -q "ktadd -k /realm/spark.keytab $spark_principal" >/dev/null 2>&1
+chown 185 /realm/spark.keytab
+chmod 400 /realm/spark.keytab
 openssl req -x509 -newkey rsa:2048 -nodes -keyout /realm/ca.key -out /realm/ca.crt -days 1 -subj /CN=DubUrlKerberosFixtureCA >/dev/null 2>&1
 chmod 444 /realm/ca.crt
 for host in mariadb singlestore mysql; do

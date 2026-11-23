@@ -26,6 +26,7 @@ $packages = @(
     @{ Id = 'DubUrl.Provider.PostgreSql'; Assembly = 'DubUrl.Provider.PostgreSql' },
     @{ Id = 'DubUrl.Provider.Snowflake'; Assembly = 'DubUrl.Provider.Snowflake' },
     @{ Id = 'DubUrl.Provider.Spark'; Assembly = 'DubUrl.Provider.Spark' },
+    @{ Id = 'DubUrl.Provider.Hive'; Assembly = 'DubUrl.Provider.Hive' },
     @{ Id = 'DubUrl.Provider.Sqlite'; Assembly = 'DubUrl.Provider.Sqlite' },
     @{ Id = 'DubUrl.Provider.SqlServer'; Assembly = 'DubUrl.Provider.SqlServer' },
     @{ Id = 'DubUrl.Provider.Teradata'; Assembly = 'DubUrl.Provider.Teradata' },
@@ -81,7 +82,7 @@ foreach ($package in $packages) {
         if ($ForPublish) {
             Assert-Condition (@($dependencyNodes | Where-Object {
                 $_.id -eq 'DubUrl.Schema' -and $_.version -match 'schema-qa\.build'
-            }).Count -eq 0) "Package '$($package.Id)' requires a published Schema package with structured column types."
+            }).Count -eq 0) "Package '$($package.Id)' requires a published DubUrl.Schema dependency."
         }
         Assert-Condition ('DubUrl.Core' -notin $dependencies) "Package '$($package.Id)' depends on the retired DubUrl.Core package."
         if ($package.Id -eq 'DubUrl') {

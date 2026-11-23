@@ -1,0 +1,29 @@
+services:
+  ldap:
+    build:
+      context: .
+      dockerfile: ldap.Dockerfile
+    volumes:
+      - "${DUBURL_SPARK_LDAP_STATE:?Set the Spark LDAP state directory}/ldap-password:/fixture-secrets/ldap-password:ro"
+    healthcheck:
+      test: [CMD, ldapwhoami, -x, -H, "ldap://127.0.0.1:1389", -D, "uid=alice,ou=people,dc=fixture,dc=test", -y, /fixture-secrets/ldap-password]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+  spark:
+    image: apache/spark:3.5.8-scala2.12-java17-python3-ubuntu
+    depends_on:
+      ldap: { condition: service_healthy }
+    volumes:
+      - "${DUBURL_SPARK_LDAP_STATE:?Set the Spark LDAP state directory}/spark:/fixture:ro"
+    environment:
+      SPARK_NO_DAEMONIZE: "true"
+      SPARK_CONF_DIR: /fixture
+    command: [/opt/spark/sbin/start-thriftserver.sh, --master, "local[2]", --conf, spark.ui.enabled=false]
+    ports:
+      - "127.0.0.1::10000/tcp"
+    healthcheck:
+      test: [CMD-SHELL, "bash -c 'exec 3<>/dev/tcp/127.0.0.1/10000'"]
+      interval: 3s
+      timeout: 3s
+      retries: 60

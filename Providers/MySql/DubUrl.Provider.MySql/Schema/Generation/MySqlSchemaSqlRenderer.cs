@@ -6,7 +6,8 @@ using DubUrl.Schema.Renderers;
 
 namespace DubUrl.Provider.MySql.Schema.Generation;
 
-internal sealed class MySqlSchemaSqlRenderer : StandardSchemaSqlRenderer, IUniqueConstraintSqlRenderer, IColumnDefaultSqlRenderer, IStructuredColumnSqlRenderer
+internal sealed class MySqlSchemaSqlRenderer : StandardSchemaSqlRenderer, IUniqueConstraintSqlRenderer, IColumnDefaultSqlRenderer,
+    IStructuredColumnSqlRenderer, IProviderDefaultIdentitySqlRenderer
 {
     internal static MySqlSchemaSqlRenderer Default { get; } = new();
 
@@ -123,6 +124,11 @@ internal sealed class MySqlSchemaSqlRenderer : StandardSchemaSqlRenderer, IUniqu
         // Column COMMENT clauses are emitted with the complete definition in CREATE TABLE.
         return column is null ? $"ALTER TABLE {name} COMMENT = {literal};" : string.Empty;
     }
+
+    public string RenderProviderDefaultIdentity(IDialect dialect, string type)
+        => type is "TINYINT" or "SMALLINT" or "MEDIUMINT" or "INT" or "INTEGER" or "BIGINT"
+            ? $"{type} AUTO_INCREMENT"
+            : throw new NotSupportedException($"MySQL AUTO_INCREMENT requires a supported integer type. Actual type: '{type}'.");
 
     public override string RenderIdentity(IDialect dialect, string type, long seed, long increment)
         => seed == 1 && increment == 1 ? $"{type} AUTO_INCREMENT"

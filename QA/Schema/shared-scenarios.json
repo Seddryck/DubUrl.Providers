@@ -37,6 +37,7 @@
   "DiscoveryUnique",
   "DiscoveryForeignKey",
   "DiscoveryDefaults",
+  "DiscoveryNullDefault",
   "DiscoveryIdentity",
   "DiscoveryGeneration",
   "DiscoveryChecks",

@@ -60,6 +60,7 @@ public sealed partial class SingleStoreSchemaTests
             ["DiscoveryUnique"] = FeatureExpectation.Supported,
             ["DiscoveryForeignKey"] = new(ExpectedOutcome.DatabaseRejects,"SingleStore does not support enforced foreign keys.","2752"),
             ["DiscoveryDefaults"] = FeatureExpectation.Supported,
+            ["DiscoveryNullDefault"] = new(ExpectedOutcome.NullDefaultNotPreserved, "SingleStore reports SQL NULL in COLUMN_DEFAULT for both declarations."),
             ["DiscoveryIdentity"] = new(ExpectedOutcome.RendererRejects,"Per-column identity seed/increment cannot be represented.","seed"),
             ["DiscoveryChecks"] = new(ExpectedOutcome.DatabaseRejects,"The pinned SingleStore engine rejects this table-level CHECK declaration.","1706"),
             ["DiscoveryGeneration"] = FeatureExpectation.Supported,

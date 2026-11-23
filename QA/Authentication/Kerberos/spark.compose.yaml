@@ -1,0 +1,59 @@
+services:
+  kdc:
+    extends:
+      file: kdc.compose.yaml
+      service: kdc
+    ports:
+      - "127.0.0.1::88/tcp"
+  spark:
+    image: apache/spark:3.5.8-scala2.12-java17-python3-ubuntu
+    hostname: spark.fixture.test
+    depends_on:
+      kdc: { condition: service_healthy }
+    volumes:
+      - realm:/realm:ro
+      - ./krb5.conf:/etc/krb5.conf:ro
+    environment:
+      SPARK_NO_DAEMONIZE: "true"
+    command:
+      - /opt/spark/sbin/start-thriftserver.sh
+      - --master
+      - local[2]
+      - --principal
+      - spark/spark.fixture.test@DUBURL.TEST
+      - --keytab
+      - /realm/spark.keytab
+      - --conf
+      - spark.ui.enabled=false
+      - --conf
+      - spark.hadoop.hadoop.security.authentication=kerberos
+      - --hiveconf
+      - hive.server2.thrift.bind.host=0.0.0.0
+      - --hiveconf
+      - hive.server2.thrift.port=10000
+      - --hiveconf
+      - hive.server2.transport.mode=binary
+      - --hiveconf
+      - hive.server2.authentication=KERBEROS
+      - --hiveconf
+      - hive.server2.authentication.kerberos.principal=spark/spark.fixture.test@DUBURL.TEST
+      - --hiveconf
+      - hive.server2.authentication.kerberos.keytab=/realm/spark.keytab
+      - --hiveconf
+      - hive.server2.allow.user.substitution=false
+      - --hiveconf
+      - hive.server2.enable.doAs=false
+      - --conf
+      - 'spark.hadoop.hadoop.security.auth_to_local=RULE:[1:$$1@$$0](alice@DUBURL[.]TEST)s/@.*// RULE:[2:$$1:$$2@$$0](spark:spark[.]fixture[.]test@DUBURL[.]TEST)s/:.*//'
+    ports:
+      - "127.0.0.1::10000/tcp"
+    healthcheck:
+      test: [CMD-SHELL, "bash -c 'exec 3<>/dev/tcp/127.0.0.1/10000'"]
+      interval: 3s
+      timeout: 3s
+      retries: 60
+    networks: [realm]
+volumes:
+  realm:
+networks:
+  realm:

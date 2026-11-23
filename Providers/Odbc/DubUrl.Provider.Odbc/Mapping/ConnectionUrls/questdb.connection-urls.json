@@ -1,0 +1,24 @@
+{
+  "routes": [
+    {
+      "id": "quest-psqlodbc",
+      "api": "ODBC",
+      "driver": "psqlODBC",
+      "scheme": "odbc+questdb",
+      "locations": [
+        "server"
+      ],
+      "note": "The mapper requires credentials. The runtime must supply them before rewriting the URL.",
+      "fields": {
+        "port": {
+          "layout": "port",
+          "default": 8812
+        }
+      },
+      "auth": [
+        "password"
+      ],
+      "providerInvariant": "System.Data.Odbc"
+    }
+  ]
+}

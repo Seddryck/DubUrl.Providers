@@ -1,0 +1,32 @@
+{
+  "routes": [
+    {
+      "id": "timescale-psqlodbc",
+      "api": "ODBC",
+      "driver": "psqlODBC",
+      "scheme": "odbc+timescale",
+      "locations": [
+        "requiredDatabase"
+      ],
+      "tls": "nativeVerified",
+      "fields": {
+        "port": {
+          "layout": "port",
+          "default": 5432
+        }
+      },
+      "auth": [
+        "password",
+        {
+          "id": "integrated",
+          "note": "Self-hosted PostgreSQL and libpq 16+."
+        },
+        {
+          "id": "certificate",
+          "note": "Self-hosted PostgreSQL, unencrypted PEM files and libpq 16+."
+        }
+      ],
+      "providerInvariant": "System.Data.Odbc"
+    }
+  ]
+}

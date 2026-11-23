@@ -33,6 +33,7 @@ DubUrl keeps provider-neutral contracts and runtime behavior in the `DubUrl` pac
 | `DubUrl.Provider.Teradata` | Teradata |
 | `DubUrl.Provider.Text` | Delimited text files through ODBC |
 | `DubUrl.Provider.Trino` | Trino |
+| `DubUrl.Provider.Hive` | Apache Hive |
 
 Each shared family package above depends on `DubUrl` without a concrete ADO.NET driver.
 Install a family package alongside its concrete ADO.NET driver, such as

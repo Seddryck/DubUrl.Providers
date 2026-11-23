@@ -1,4 +1,11 @@
 <Project Sdk="Microsoft.NET.Sdk">
-  <PropertyGroup><Description>Apache Spark and Databricks database metadata for DubUrl.</Description></PropertyGroup>
+  <PropertyGroup>
+    <Description>Apache Spark and Databricks database metadata for DubUrl.</Description>
+    <ProviderSchemaDiagnostics>true</ProviderSchemaDiagnostics>
+  </PropertyGroup>
   <Import Project="..\..\Provider.Build.props" />
+  <ItemGroup>
+    <PackageReference Include="DubUrl.Schema" Version="$(SchemaPackageVersion)" />
+    <Compile Include="../../Build/ColumnAnnotationProperty.cs" Link="Discovery/ColumnAnnotationProperty.cs" />
+  </ItemGroup>
 </Project>

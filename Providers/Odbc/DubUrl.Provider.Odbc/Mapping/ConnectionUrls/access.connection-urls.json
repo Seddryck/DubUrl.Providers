@@ -1,0 +1,20 @@
+{
+  "routes": [
+    {
+      "id": "access-odbc",
+      "api": "ODBC",
+      "driver": "Microsoft Access ODBC",
+      "platforms": [
+        "Windows"
+      ],
+      "scheme": "odbc+accdb",
+      "locations": [
+        "file"
+      ],
+      "auth": [
+        "none"
+      ],
+      "providerInvariant": "System.Data.Odbc"
+    }
+  ]
+}

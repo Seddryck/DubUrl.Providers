@@ -1,0 +1,30 @@
+{
+  "routes": [
+    {
+      "id": "odp",
+      "api": "ADO.NET",
+      "driver": "Oracle Managed Data Access",
+      "scheme": "oracle",
+      "locations": [
+        "service",
+        "tns"
+      ],
+      "note": "Configure wallet or TCPS via Oracle Net.",
+      "fields": {
+        "port": {
+          "layout": "port",
+          "default": 1521
+        }
+      },
+      "auth": [
+        "password",
+        {
+          "id": "integrated",
+          "note": "Windows NTS or supported Kerberos package and Oracle Net configuration."
+        },
+        "driver"
+      ],
+      "providerInvariant": "Oracle.ManagedDataAccess"
+    }
+  ]
+}

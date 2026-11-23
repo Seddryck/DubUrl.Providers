@@ -76,6 +76,8 @@ Repository-specific workflows are defined under `.github/skills/`.
 
 When a task matches an existing skill, read and follow that skill before making changes.
 
+When changing a connection scheme, alias, URL parameter, endpoint, default, authentication mode, TLS mode, or driver selection, read `.github/skills/review-connection-url-catalog/SKILL.md`. Review the affected builder profiles and contract tests and update them when user-visible behavior changes.
+
 ## Pull requests
 
 For every completed implementation:

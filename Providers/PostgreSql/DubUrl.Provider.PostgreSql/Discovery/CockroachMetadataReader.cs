@@ -15,7 +15,8 @@ public sealed class CockroachMetadataReader : StructuredCatalogMetadataReader
 
     protected override string ColumnsSql => """
         SELECT table_schema AS schema_name,table_name,column_name,ordinal_position AS ordinal,is_nullable AS nullable,
-          data_type AS type_name,crdb_sql_type AS declaration,character_maximum_length AS length,
+          data_type AS type_name,crdb_sql_type AS declaration,crdb_sql_type AS native_type_declaration,
+          character_maximum_length AS length,
           numeric_precision AS "precision",numeric_scale AS scale
         FROM information_schema.columns
         WHERE is_hidden='NO' AND table_schema NOT IN ('pg_catalog','information_schema','crdb_internal')

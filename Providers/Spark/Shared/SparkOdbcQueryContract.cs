@@ -4,6 +4,9 @@ namespace DubUrl.Provider.Spark.QA;
 
 public abstract class SparkOdbcQueryContract : ProviderContract
 {
+    protected override bool SupportsSchemaDiscovery => true;
+    protected override Task VerifySchemaDiscoveryAsync(ConnectionUrl url)
+        => SparkSchemaQa.VerifySharedDiscovery(url, scope => VerifySchemaDiscoveryAsync(url, scope));
     protected override string SelectFirstCustomerSql => SparkOdbcCustomerQueries.First;
     protected override string SelectCustomerByIdSql => string.Empty;
     protected override string SelectCustomerByPositionSql => SparkOdbcCustomerQueries.ById;

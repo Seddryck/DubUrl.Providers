@@ -9,7 +9,10 @@ namespace DubUrl.Provider.PostgreSql.QA;
 
 public sealed partial class PostgreSqlSchemaTests
 {
-    protected override IReadOnlyDictionary<string,FeatureExpectation> FeatureExpectations { get; } =
+    private IReadOnlyDictionary<string, FeatureExpectation> featureExpectations = null!;
+    protected override IReadOnlyDictionary<string, FeatureExpectation> FeatureExpectations => featureExpectations;
+
+    private static IReadOnlyDictionary<string, FeatureExpectation> CreateFeatureExpectations(int serverMajor) =>
         new Dictionary<string,FeatureExpectation>
         {
             ["ReplaceTable"] = FeatureExpectation.Supported,
@@ -27,7 +30,9 @@ public sealed partial class PostgreSqlSchemaTests
             ["IdentityDefault"] = FeatureExpectation.Supported,
             ["IdentitySeedIncrement"] = FeatureExpectation.Supported,
             ["GeneratedStored"] = FeatureExpectation.Supported,
-            ["GeneratedVirtual"] = new(ExpectedOutcome.RendererRejects,"The published PostgreSQL renderer supports only stored generated columns.","virtual"),
+            ["GeneratedVirtual"] = serverMajor >= 18
+                ? FeatureExpectation.Supported
+                : new(ExpectedOutcome.RendererRejects,"Virtual generated columns require PostgreSQL 18 or later.","virtual"),
             ["SinglePrimaryKey"] = FeatureExpectation.Supported,
             ["CompositePrimaryKey"] = FeatureExpectation.Supported,
             ["SingleUnique"] = FeatureExpectation.Supported,
@@ -50,6 +55,7 @@ public sealed partial class PostgreSqlSchemaTests
             ["DiscoveryUnique"] = FeatureExpectation.Supported,
             ["DiscoveryForeignKey"] = FeatureExpectation.Supported,
             ["DiscoveryDefaults"] = FeatureExpectation.Supported,
+            ["DiscoveryNullDefault"] = new(ExpectedOutcome.NullDefaultNotPreserved, "PostgreSQL stores neither declaration as a column default in its catalog."),
             ["DiscoveryIdentity"] = FeatureExpectation.Supported,
             ["DiscoveryChecks"] = FeatureExpectation.Supported,
             ["DiscoveryGeneration"] = FeatureExpectation.Supported,
@@ -62,8 +68,8 @@ public sealed partial class PostgreSqlSchemaTests
             ["DiscoveryPartial"] = FeatureExpectation.Supported,
             ["DiscoveryStrict"] = FeatureExpectation.Supported,
             ["DiscoveryRoundTrip"] = FeatureExpectation.Supported,
-            ["NativeVarcharKey"] = new(ExpectedOutcome.RendererRejects,"The provider does not register these explicit native type names.","native type"),
-            ["NativeCharKey"] = new(ExpectedOutcome.RendererRejects,"The provider does not register these explicit native type names.","native type"),
+            ["NativeVarcharKey"] = FeatureExpectation.Supported,
+            ["NativeCharKey"] = FeatureExpectation.Supported,
             ["ExpressionIndexDiagnostic"] = FeatureExpectation.Supported,
             ["FilteredIndexDiagnostic"] = FeatureExpectation.Supported,
             ["AggregateViewDiagnostic"] = FeatureExpectation.Supported,
@@ -75,6 +81,7 @@ public sealed partial class PostgreSqlSchemaTests
         };
     protected override void ExecuteScript(DbConnection connection,string script) => QaSql.Execute(connection,script);
     protected override string DatabaseErrorCode(DbException exception) => ((PostgresException)exception).SqlState;
+    protected override bool VerifyNativeCharacterKeySemantics => true;
     protected override string CurrentSchema(DbConnection connection) => "public";
     protected override DatabaseObjectName QualifiedName(DbConnection connection,string name) => new(name,schema:CurrentSchema(connection));
     protected override ISchemaMetadataReader? CreateMetadataReader() => new PostgreSqlMetadataReader();

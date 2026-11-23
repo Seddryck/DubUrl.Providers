@@ -1,0 +1,108 @@
+{
+  "routes": [
+    {
+      "id": "sqlclient",
+      "api": "ADO.NET",
+      "driver": "Microsoft.Data.SqlClient",
+      "scheme": "mssql",
+      "locations": [
+        "sqlServer"
+      ],
+      "tls": "sqlClient",
+      "fields": {
+        "port": {
+          "layout": "port",
+          "default": 1433
+        }
+      },
+      "auth": [
+        "password",
+        "integrated",
+        {
+          "id": "entraToken",
+          "note": "Requires an Entra-enabled SQL endpoint."
+        },
+        {
+          "id": "browser",
+          "note": "Experimental. Configure the Entra tenant and client ID before using the CLI command."
+        },
+        {
+          "id": "device",
+          "note": "Experimental. Configure the Entra tenant and client ID before using the CLI command."
+        }
+      ],
+      "providerInvariant": "Microsoft.Data.SqlClient"
+    }
+  ],
+  "locations": {
+    "sqlServer": {
+      "transport": "TCP",
+      "requires": {
+        "instance": "database"
+      },
+      "fields": {
+        "host": {
+          "layout": "host",
+          "required": true,
+          "url": "host"
+        },
+        "port": {
+          "layout": "port",
+          "url": "port",
+          "defaultUnless": [
+            "instance"
+          ],
+          "placeholder": "1433 (default instance)"
+        },
+        "instance": {
+          "layout": "text",
+          "label": "Instance"
+        },
+        "database": {
+          "layout": "text",
+          "label": "Database"
+        }
+      },
+      "path": [
+        "instance",
+        "database"
+      ]
+    }
+  },
+  "authentication": {
+    "entraToken": {
+      "label": "Microsoft Entra access token",
+      "via": "runtime",
+      "library": "SqlServerAuthentication.TokenCallback(…)"
+    },
+    "device": {
+      "label": "OAuth device code",
+      "via": "runtime",
+      "cli": [
+        "--oauth",
+        "device-code"
+      ],
+      "library": "Entra device-code session + ConnectionAuthentication.OAuthInteractive(…)"
+    }
+  },
+  "tlsPolicies": {
+    "sqlClient": {
+      "modes": [
+        {
+          "id": "default",
+          "label": "Driver default (verified TLS)",
+          "secure": true
+        },
+        {
+          "id": "strict",
+          "label": "Strict (TDS 8.0)",
+          "via": "url",
+          "query": {
+            "Encrypt": "Strict"
+          },
+          "secure": true
+        }
+      ]
+    }
+  }
+}

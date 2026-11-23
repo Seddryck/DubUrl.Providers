@@ -1,0 +1,53 @@
+{
+  "routes": [
+    {
+      "id": "pbi-desktop-adomd",
+      "api": "ADOMD.NET",
+      "driver": "Microsoft.AnalysisServices.AdomdClient",
+      "platforms": [
+        "Windows"
+      ],
+      "scheme": "pbidesktop",
+      "locations": [
+        "powerBiModel",
+        "powerBiPort"
+      ],
+      "auth": [
+        {
+          "id": "driver",
+          "label": "Local desktop session"
+        }
+      ],
+      "providerInvariant": "Microsoft.AnalysisServices.AdomdClient"
+    }
+  ],
+  "locations": {
+    "powerBiModel": {
+      "label": "Discover by report name",
+      "transport": "Local model",
+      "fields": {
+        "model": {
+          "layout": "text",
+          "label": "Model or report name",
+          "required": true
+        }
+      },
+      "path": [
+        "model"
+      ]
+    },
+    "powerBiPort": {
+      "label": "Connect by port",
+      "transport": "Local model",
+      "fixedHost": "localhost",
+      "fields": {
+        "port": {
+          "layout": "port",
+          "label": "Local port",
+          "required": true,
+          "url": "port"
+        }
+      }
+    }
+  }
+}

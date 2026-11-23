@@ -13,8 +13,11 @@ public enum ExpectedOutcome
     RendererRejects,
     DatabaseRejects,
     NoDiscovery,
+    NullDefaultNotPreserved,
     NoEngineComments,
-    NotEnforced
+    NotEnforced,
+    Informational,
+    Inapplicable
 }
 public sealed record FeatureExpectation(ExpectedOutcome Outcome, string Evidence, params string[] ErrorCodes)
 {

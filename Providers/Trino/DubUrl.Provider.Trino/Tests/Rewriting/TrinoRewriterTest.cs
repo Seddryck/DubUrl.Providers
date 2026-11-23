@@ -1,7 +1,12 @@
-using DubUrl.Provider.Trino.Rewriting;
+using BAMCIS.PrestoClient;
+using DubUrl.Authentication;
 using DubUrl.Core.Testing;
+using DubUrl.Core.Testing.Conversion;
 using DubUrl.Core.Testing.Rewriting;
+using DubUrl.Mapping;
 using DubUrl.Parsing;
+using DubUrl.Provider.Trino.Mapping;
+using DubUrl.Provider.Trino.Rewriting;
 using DubUrl.Querying.Dialects;
 using DubUrl.Querying.Parametrizing;
 using NUnit.Framework;
@@ -10,6 +15,7 @@ using System.Collections.Generic;
 using System.Data.Common;
 using NReco.PrestoAdo;
 using System.Linq;
+using System.Reflection;
 using System.Text;
 using System.Threading.Tasks;
 
@@ -149,4 +155,50 @@ public class TrinoRewriterTest
             Assert.That(result["TrinoHeaders"], Is.EqualTo("1"));
         });
     }
+
+    [TestCase("", true, "1")]
+    [TestCase("?TrinoHeaders=2", true, "2")]
+    [TestCase("?usessl=false", false, "1")]
+    [TestCase("?UseSsl=true&TrinoHeaders=2", true, "2")]
+    public void Parse_NativeTrinoUrl_PreservesCredentialsAndResolvesOptions(
+        string options, bool useSsl, string headers)
+    {
+        var target = new ConnectionUrl($"trino://alice:test-password@trino.example.com:8443/pg/public{options}", CreateRegistry());
+        var settings = new PrestoConnectionStringBuilder { ConnectionString = target.Parse() };
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(settings.UseSsl, Is.EqualTo(useSsl));
+            Assert.That(settings["TrinoHeaders"], Is.EqualTo(headers));
+            Assert.That(settings.Host, Is.EqualTo("trino.example.com"));
+            Assert.That(settings.Port, Is.EqualTo(8443));
+            Assert.That(settings.User, Is.EqualTo("alice"));
+            Assert.That(settings.Password, Is.EqualTo("test-password"));
+        });
+    }
+
+    [TestCase("", true)]
+    [TestCase("?UseSsl=false", false)]
+    public void Connect_NativeTrinoWithRuntimeCredentials_UsesResolvedTls(string options, bool useSsl)
+    {
+        var target = new ConnectionUrl($"trino://trino.example.com/pg/public{options}", CreateRegistry())
+            .WithAuthentication(ConnectionAuthentication.UsernamePassword("alice", "test-password"));
+
+        using var connection = (PrestoConnection)target.Connect();
+        // NReco 1.1.0 does not retain the assigned ConnectionString.
+        var settings = (PrestoClientSessionConfig)typeof(PrestoConnection)
+            .GetField("config", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(connection)!;
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(settings.UseSsl, Is.EqualTo(useSsl));
+            Assert.That(settings.Port, Is.EqualTo(8080));
+            Assert.That(settings.User, Is.EqualTo("alice"));
+            Assert.That(settings.Password, Is.EqualTo("test-password"));
+        });
+    }
+
+    private static SchemeRegistry CreateRegistry()
+        => ConversionTestSupport.Registry("trino", PrestoDbFactory.Instance,
+            builder => new TrinoMapper(builder, ConversionTestSupport.Dialect, ConversionTestSupport.Parametrizer));
 }

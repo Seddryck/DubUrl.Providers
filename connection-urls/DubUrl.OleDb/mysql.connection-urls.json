@@ -1,0 +1,27 @@
+{
+  "routes": [
+    {
+      "id": "mysql-oledb",
+      "api": "OLE DB",
+      "driver": "MySQL Provider",
+      "platforms": [
+        "Windows"
+      ],
+      "scheme": "oledb+mysql",
+      "locations": [
+        "requiredDatabase"
+      ],
+      "fields": {
+        "port": {
+          "layout": "port",
+          "placeholder": "3306"
+        }
+      },
+      "auth": [
+        "password",
+        "driver"
+      ],
+      "providerInvariant": "System.Data.OleDb"
+    }
+  ]
+}
