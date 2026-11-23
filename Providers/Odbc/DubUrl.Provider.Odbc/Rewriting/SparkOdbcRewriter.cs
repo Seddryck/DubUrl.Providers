@@ -19,7 +19,11 @@ internal sealed class SparkOdbcRewriter(DbConnectionStringBuilder builder, Drive
         parts.TakePort("Port");
         parts.TakeCredentials("UID", "PWD");
         if (IsDatabricks(scheme))
+        {
+            if (source.ContainsKey("Auth_AccessToken"))
+                throw new NotSupportedException();
             AddDatabricksSegments(parts);
+        }
         else
             ThriftOdbcTransport.Find(scheme, "spark", "Spark")?.AddSegments(parts);
         return parts.ToUri(scheme);
@@ -88,8 +92,12 @@ internal sealed class SparkOdbcRewriter(DbConnectionStringBuilder builder, Drive
         private void MapDatabricksPath(ConnectionUri urlInfo)
         {
             foreach (var option in urlInfo.Options.Keys)
+            {
                 if (DatabricksPathSettings.Contains(option.Trim()))
                     throw new InvalidConnectionUrlException("Specify the Databricks endpoint, catalog and schema in the URL path.");
+                if (option.Trim().Equals("Auth_AccessToken", StringComparison.OrdinalIgnoreCase))
+                    throw new InvalidConnectionUrlException("Supply the Databricks OAuth access token through the authentication API.");
+            }
 
             var segments = urlInfo.Segments;
             var (httpPath, endpointLength) = segments switch

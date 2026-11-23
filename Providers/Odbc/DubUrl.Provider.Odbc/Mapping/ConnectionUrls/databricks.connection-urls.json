@@ -132,11 +132,13 @@
     },
     "databricksOAuthToken": {
       "label": "OAuth token pass-through",
-      "via": "external",
+      "via": "runtime",
       "query": {
-        "AuthMech": "11"
+        "AuthMech": "11",
+        "Auth_Flow": "0"
       },
-      "note": "Supply and refresh Auth_AccessToken at runtime."
+      "library": "DatabricksAuthentication.OAuthAccessToken(…)",
+      "note": "Supply the OAuth access token through WithAuthentication when opening the connection."
     },
     "databricksPat": {
       "label": "Personal access token",

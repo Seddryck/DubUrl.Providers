@@ -308,6 +308,7 @@ public sealed class SparkOdbcTest
 
     [TestCase("/sql/custom/qa", "")]
     [TestCase("/sql/1.0/warehouses/qa", ";Schema=default")]
+    [TestCase("/sql/1.0/warehouses/qa", ";AuthMech=11;Auth_Flow=0;Auth_AccessToken=test-token")]
     public void DatabricksReverseMappingRejectsUnrepresentableSettings(string httpPath, string defaults)
     {
         var registry = ConversionTestSupport.Registry("odbc+databricks", OdbcFactory.Instance, ReverseMapper);

@@ -16,7 +16,7 @@ on:
       fixture:
         description: Live fixture to run
         type: choice
-        options: [databricks, spark, both]
+        options: [databricks, databricks-oauth, spark, both]
         default: both
 
 permissions:
@@ -32,7 +32,7 @@ jobs:
     if: >-
       !inputs.schema-matrix &&
       (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/qa/odbc-connectivity') &&
-      (inputs.fixture == 'databricks' || inputs.fixture == 'both' ||
+      (inputs.fixture == 'databricks' || inputs.fixture == 'databricks-oauth' || inputs.fixture == 'both' ||
        (github.event_name == 'push' && !inputs.fixture))
     runs-on: ubuntu-24.04
     container: debian:bookworm-slim
@@ -50,8 +50,13 @@ jobs:
           DATABRICKS_HOST: ${{ vars.DATABRICKS_HOST }}
           DATABRICKS_WAREHOUSE_ID: ${{ vars.DATABRICKS_WAREHOUSE_ID }}
           DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN }}
+          DATABRICKS_OAUTH_TOKEN: ${{ inputs.fixture == 'databricks-oauth' && secrets.DATABRICKS_OAUTH_TOKEN || '' }}
           DATABRICKS_RESTRICTED_TOKEN: ${{ secrets.DATABRICKS_RESTRICTED_TOKEN }}
-        run: bash Providers/Spark/DubUrl.Provider.Databricks.QA/infrastructure/run-qa.sh
+          DATABRICKS_QA_FIXTURE: ${{ inputs.fixture }}
+        run: |
+          options=()
+          if [[ "$DATABRICKS_QA_FIXTURE" == "databricks-oauth" ]]; then options+=(--oauth); fi
+          bash Providers/Spark/DubUrl.Provider.Databricks.QA/infrastructure/run-qa.sh "${options[@]}"
       - uses: actions/upload-artifact@v7
         if: always()
         with:

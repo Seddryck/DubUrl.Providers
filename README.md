@@ -35,6 +35,22 @@ The on-demand [Databricks Free Edition](Providers/Spark/DubUrl.Provider.Databric
 
 The published [DubUrl.ProviderTesting 0.60.0 package](https://www.nuget.org/packages/DubUrl.ProviderTesting/0.60.0) remains available for compatibility. The internal DubUrl.Provider.QA project is not published.
 
+## Databricks OAuth over ODBC
+
+Supply a current OAuth access token from your application when opening a connection with the registered **Databricks ODBC Driver**.
+
+```csharp
+using DubUrl;
+using DubUrl.Provider.Odbc.Authentication;
+
+var warehouse = new ConnectionUrl(
+    "odbc+databricks://workspace.example.com/warehouse/123/main/reporting")
+    .WithAuthentication(DatabricksAuthentication.OAuthAccessToken(accessToken));
+await using var connection = await warehouse.OpenAsync();
+```
+
+DubUrl configures HTTPS and OAuth token pass-through. Keep the token in the authentication strategy and treat the native ODBC connection string as sensitive. [Databricks OAuth token pass-through](https://docs.databricks.com/aws/en/integrations/odbc/authentication#oauth-20-tokens)
+
 ## Apache Hive over ODBC
 
 Install the `hive-odbc` connector and register the **Cloudera ODBC Driver for Apache Hive** with your ODBC driver manager under that name. On Linux, unixODBC and `odbcinst` are required. The driver must match the application's architecture. NuGet applications can reference `DubUrl.Provider.Odbc` and `System.Data.Odbc`.

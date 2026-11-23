@@ -4,6 +4,7 @@ using System.Text.Json;
 using DubUrl.BulkCopy;
 using DubUrl.Discovery;
 using DubUrl.Mapping;
+using DubUrl.Provider.Odbc.Authentication;
 using MySqlConnector;
 using NReco.PrestoAdo;
 using Npgsql;
@@ -82,6 +83,32 @@ public sealed class ConnectionUrlCatalogTest
             Assert.That(url.TryGetCapability<SchemaDiscoveryCapability>(out _), Is.True);
             Assert.That(capabilities.GetProperty("fileLoad").GetBoolean(), Is.True);
             Assert.That(url.TryGetCapability<FileLoadCapability>(out _), Is.True);
+        });
+    }
+
+    [Test]
+    public void DatabricksOAuthCatalogUsesRuntimeTokenPassThrough()
+    {
+        var route = Route("databricks-odbc");
+        const string method = "databricksOAuthToken";
+        Assert.That(route.GetProperty("auth").EnumerateArray().Select(item => item.GetString()), Does.Contain(method));
+        var auth = catalog.RootElement.GetProperty("authentication").GetProperty(method);
+        var url = new ConnectionUrl(
+            $"{route.GetProperty("scheme").GetString()}://databricks.example.com/warehouse/123/main/reporting{Query(auth)}&Driver=Databricks%20ODBC%20Driver",
+            registry).WithAuthentication(DatabricksAuthentication.OAuthAccessToken("catalog-test-token"));
+        var mapped = new OdbcConnectionStringBuilder(url.Parse());
+        using var connection = url.Connect();
+        var prepared = new OdbcConnectionStringBuilder(connection.ConnectionString);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(auth.GetProperty("via").GetString(), Is.EqualTo("runtime"));
+            Assert.That(auth.GetProperty("library").GetString(), Is.EqualTo(
+                $"{nameof(DatabricksAuthentication)}.{nameof(DatabricksAuthentication.OAuthAccessToken)}(…)"));
+            Assert.That(mapped["AuthMech"], Is.EqualTo("11"));
+            Assert.That(mapped["Auth_Flow"], Is.EqualTo("0"));
+            Assert.That(mapped.ContainsKey("Auth_AccessToken"), Is.False);
+            Assert.That(prepared.ContainsKey("Auth_AccessToken"), Is.True);
         });
     }
 
