@@ -16,14 +16,14 @@ public sealed class DatabricksMetadataTests
     private static ConnectionUrl OwnerUrl => new ConnectionUrl(DatabricksWarehouse.Url).WithAuthentication(DatabricksWarehouse.Authentication);
 
     [Test]
-    public Task ColumnTagsAndCommentsRoundTripThroughDocuments()
+    public Task TableAndColumnTagsAndCommentsRoundTripThroughDocuments()
     {
         var url = OwnerUrl;
         return SparkSchemaQa.WithScratchAsync(url, async (connection, catalog, schema) =>
         {
             var renderer = new SchemaScriptRenderer(url.Dialect);
             var column = new Column("id", DbType.Int32, description: "Owner's description")
-            { Annotations = new Dictionary<string, string> { ["duburl_qa_owner"] = "analytics" } };
+            { Tags = new Dictionary<string, string> { ["duburl_qa_owner"] = "analytics" } };
             var reader = new DatabricksMetadataReader();
 
             async Task<Table> Discover(string name)
@@ -31,13 +31,17 @@ public sealed class DatabricksMetadataTests
                 var result = await new SchemaInspector().InspectAsync(connection, reader, new()
                 {
                     Tables = [new(name, schema, Catalog: catalog)],
-                    Features = [SchemaFeature.Tables, SchemaFeature.Columns, SchemaFeature.Comments, SchemaFeature.ColumnAnnotations]
+                    Features = [SchemaFeature.Tables, SchemaFeature.Columns, SchemaFeature.Comments, SchemaFeature.Annotations]
                 });
                 Assert.That(result.IsComplete, Is.True, string.Join(", ", result.Diagnostics.Select(item => item.Message)));
+                Assert.That(result.TableTagCoverage, Is.EqualTo(MetadataCoverage.Available));
+                Assert.That(result.ColumnTagCoverage, Is.EqualTo(MetadataCoverage.Available));
                 return result.Schema!.Tables.Values.Single();
             }
 
-            var source = new Table(new DatabaseObjectName("source_items", schema, null, catalog), [column]);
+            var source = new Table(new DatabaseObjectName("source_items", schema, null, catalog), [column],
+                null, null, null, new Dictionary<string, string> { ["duburl_qa_owner"] = "table property" })
+            { Tags = new Dictionary<string, string> { ["duburl_qa_owner"] = "engineering" } };
             foreach (var command in renderer.Plan(new([source])))
                 SparkSchemaQa.Execute(connection, command.CommandText);
             var document = new SchemaDocumentExporter().Map(new([await Discover("source_items")]));
@@ -45,9 +49,15 @@ public sealed class DatabricksMetadataTests
             foreach (var command in renderer.Plan(new SchemaDocumentMapper().Map(document)))
                 SparkSchemaQa.Execute(connection, command.CommandText);
 
-            var recreated = (await Discover("target_items")).Columns[column.Name];
-            Assert.That(recreated.Description, Is.EqualTo(column.Description));
-            Assert.That(recreated.Annotations, Is.EquivalentTo(column.Annotations));
+            var recreated = await Discover("target_items");
+            Assert.Multiple(() =>
+            {
+                Assert.That(recreated.Tags, Is.EquivalentTo(source.Tags));
+                Assert.That(recreated.Annotations, Is.EquivalentTo(source.Annotations));
+                Assert.That(recreated.Columns[column.Name].Description, Is.EqualTo(column.Description));
+                Assert.That(recreated.Columns[column.Name].Tags, Is.EquivalentTo(column.Tags));
+                Assert.That(recreated.Columns[column.Name].Annotations, Is.Empty);
+            });
         });
     }
 
