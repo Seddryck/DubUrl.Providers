@@ -246,32 +246,48 @@ public sealed class DatabricksMetadataReaderTests
             new(structure, StructuredStorage.Native), MetadataCoverage.Available)));
     }
 
-    [Test]
-    public async Task ColumnTagsUseQualifiedColumnIdentityAndPreserveComments()
+    [TestCase("c", false, MetadataCoverage.Available)]
+    [TestCase("c", true, MetadataCoverage.Inaccessible)]
+    [TestCase("hive_metastore", false, MetadataCoverage.Unsupported)]
+    public async Task NativeTagsUseQualifiedScopeAndStaySeparateFromProperties(string catalog, bool tableTagsInaccessible,
+        MetadataCoverage tableCoverage)
     {
         using var connection = Connection(sql => sql switch
         {
             _ when sql.Contains("information_schema.tables") && !sql.Contains("JOIN") =>
-                Rows("catalog_name schema_name table_name", ["c", "s", "items"]),
+                Rows("catalog_name schema_name table_name", [catalog, "s", "items"]),
             _ when sql.Contains("information_schema.columns") =>
                 Rows("catalog_name schema_name table_name column_name ordinal type_name nullable comment",
-                    ["c", "s", "items", "id", 1, "INT", "YES", "Identifier"]),
-            _ when sql.Contains("information_schema.column_tags") =>
+                    [catalog, "s", "items", "id", 1, "INT", "YES", "Identifier"]),
+            _ when sql.StartsWith("SHOW TBLPROPERTIES") => Rows("key value", ["owner", "property"]),
+            _ when catalog == "c" && sql.Contains("information_schema.table_tags") =>
+                tableTagsInaccessible ? throw new CatalogAccessException()
+                    : Rows("catalog_name schema_name table_name tag_name tag_value",
+                        ["c", "s", "items", "owner", "team"], ["c", "other", "items", "owner", "other"]),
+            _ when catalog == "c" && sql.Contains("information_schema.column_tags") =>
                 Rows("catalog_name schema_name table_name column_name tag_name tag_value",
                     ["c", "s", "items", "id", "owner", "team"], ["c", "other", "items", "id", "owner", "other"]),
             _ => throw new AssertionException($"Unexpected catalog query {sql}"),
         });
 
-        ISchemaMetadataReader reader = new DatabricksMetadataReader();
-        var metadata = await reader.ReadAsync(connection, new()
+        var result = await new SchemaInspector().InspectAsync(connection, new DatabricksMetadataReader(), new()
         {
-            Catalogs = ["c"], Schemas = ["s"],
-            Features = [SchemaFeature.Tables, SchemaFeature.Columns, SchemaFeature.Comments, SchemaFeature.ColumnAnnotations]
+            Catalogs = [catalog], Schemas = ["s"], AllowPartial = true,
+            Features = [SchemaFeature.Tables, SchemaFeature.Columns, SchemaFeature.Comments, SchemaFeature.Annotations]
         });
-        var column = metadata.Tables.Single().Columns.Single();
-        Assert.That(column.Comment, Is.EqualTo("Identifier"));
-        Assert.That(column.Annotations, Is.EquivalentTo(new Dictionary<string, string> { ["owner"] = "team" }));
-        Assert.That(metadata.Coverage[SchemaFeature.ColumnAnnotations], Is.EqualTo(MetadataCoverage.Available));
+        var table = result.Schema!.Tables.Values.Single();
+        var column = table.Columns.Values.Single();
+        Assert.Multiple(() =>
+        {
+            Assert.That(result.IsComplete, Is.EqualTo(!tableTagsInaccessible));
+            Assert.That(table.Annotations["owner"], Is.EqualTo("property"));
+            Assert.That(result.TableTagCoverage, Is.EqualTo(tableCoverage));
+            Assert.That(result.ColumnTagCoverage, Is.EqualTo(catalog == "c" ? MetadataCoverage.Available : MetadataCoverage.Unsupported));
+            Assert.That(column.Description, Is.EqualTo("Identifier"));
+            Assert.That(column.Annotations, Is.Empty);
+            Assert.That(table.Tags.GetValueOrDefault("owner"), Is.EqualTo(tableCoverage == MetadataCoverage.Available ? "team" : null));
+            Assert.That(column.Tags.GetValueOrDefault("owner"), Is.EqualTo(catalog == "c" ? "team" : null));
+        });
     }
 
     [Test]
@@ -321,6 +337,10 @@ public sealed class DatabricksMetadataReaderTests
             _ when sql.Contains("FROM `c`.information_schema.tables") => Rows("catalog_name schema_name table_name", ["c", "s", "t"]),
             _ when sql.Contains("FROM `c`.information_schema.columns") => Rows("catalog_name schema_name table_name column_name ordinal type_name nullable",
                 ["c", "s", "t", "v", 1, type, "YES"]),
+            _ when sql.Contains("information_schema.table_tags") =>
+                Rows("catalog_name schema_name table_name tag_name tag_value"),
+            _ when sql.Contains("information_schema.column_tags") =>
+                Rows("catalog_name schema_name table_name column_name tag_name tag_value"),
             _ => throw new AssertionException($"Unexpected catalog query {sql}"),
         }, sql => sql == "DESCRIBE TABLE EXTENDED `c`.`s`.`t` AS JSON"
             ? json ?? throw new CatalogAccessException()

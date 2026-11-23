@@ -26,6 +26,47 @@ public sealed class SparkSqlDialectTest
         Assert.That(commands[1].CommandText, Is.EqualTo("""ALTER TABLE `uc`.`sales`.`items` ALTER COLUMN `id` SET TAGS ('owner' = 'team\'s data');"""));
     }
 
+    [TestCase("true")]
+    [TestCase("false")]
+    public void DatabricksPlansNativeTagsAndChecksLegacyColumnAssignments(string legacyValue)
+    {
+        var column = new Column("email", DbType.String)
+        {
+            Annotations = new Dictionary<string, string> { ["pii"] = legacyValue },
+            Tags = new Dictionary<string, string> { ["pii"] = "true", ["team"] = "data" }
+        };
+        var table = new Table(new DatabaseObjectName("customers", "sales", null, "uc"), [column],
+            null, null, null, new Dictionary<string, string> { ["pii"] = "legacy table property" })
+        { Tags = new Dictionary<string, string> { ["pii"] = "false" } };
+
+        var renderer = new SchemaScriptRenderer(Databricks());
+        var schema = new Schema.Schema([table]);
+        if (legacyValue != "true")
+        {
+            Assert.That(() => renderer.Plan(schema), Throws.TypeOf<NotSupportedException>().With.Message.Contains("legacy annotation"));
+            return;
+        }
+
+        var sql = renderer.Plan(schema).Select(command => command.CommandText).ToArray();
+        Assert.Multiple(() =>
+        {
+            Assert.That(sql, Has.Some.Contains("SET TBLPROPERTIES ('pii' = 'legacy table property')"));
+            Assert.That(sql, Has.Some.Contains("`customers` SET TAGS ('pii' = 'false')"));
+            Assert.That(sql.Count(command => command.Contains("ALTER COLUMN `email` SET TAGS ('pii' = 'true')")), Is.EqualTo(1));
+            Assert.That(sql, Has.Some.Contains("ALTER COLUMN `email` SET TAGS ('team' = 'data')"));
+        });
+    }
+
+    [TestCase("hive_metastore")]
+    [TestCase("spark_catalog")]
+    public void DatabricksRejectsTagsInExplicitLegacyCatalogs(string catalog)
+    {
+        var table = new Table(new DatabaseObjectName("customers", "sales", null, catalog), [new("id", DbType.Int32)])
+        { Tags = new Dictionary<string, string> { ["pii"] = "true" } };
+        Assert.That(() => new SchemaScriptRenderer(Databricks()).Plan(new([table])),
+            Throws.TypeOf<NotSupportedException>().With.Message.Contains("Unity Catalog"));
+    }
+
     [TestCase(false)]
     [TestCase(true)]
     public void TableAnnotationsAreQuotedAndPlannedAfterCreation(bool databricks)

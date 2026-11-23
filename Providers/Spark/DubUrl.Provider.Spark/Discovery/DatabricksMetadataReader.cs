@@ -7,7 +7,7 @@ using DubUrl.Schema;
 
 namespace DubUrl.Provider.Spark.Discovery;
 
-public sealed class DatabricksMetadataReader : SparkCatalogMetadataReader
+public sealed class DatabricksMetadataReader : SparkCatalogMetadataReader, ISchemaTagMetadataReader
 {
     private static readonly IReadOnlySet<SchemaFeature> Unsupported = new HashSet<SchemaFeature> { SchemaFeature.Indexes };
     private static readonly SchemaFeature[] KeyFeatures = [SchemaFeature.PrimaryKeys, SchemaFeature.ForeignKeys, SchemaFeature.UniqueConstraints];
@@ -35,7 +35,6 @@ public sealed class DatabricksMetadataReader : SparkCatalogMetadataReader
 
     protected override IReadOnlySet<SchemaFeature> UnsupportedFeatures => Unsupported;
     protected override bool SupportsAnnotations => true;
-    protected override bool SupportsColumnAnnotations => true;
     protected override string TablesSql => """
         SELECT table_catalog AS catalog_name, table_schema AS schema_name, table_name, comment
         FROM {info}.tables WHERE table_schema <> 'information_schema'
@@ -89,8 +88,6 @@ public sealed class DatabricksMetadataReader : SparkCatalogMetadataReader
         if (read is not null) read.Scope = scope;
         if (sql == TablesSql)
         {
-            if (options.Features.Contains(SchemaFeature.ColumnAnnotations))
-                await ReadColumnTagsAsync(connection, scope, cancellationToken).ConfigureAwait(false);
             if (options.Features.Contains(SchemaFeature.Annotations))
             {
                 foreach (var table in scope.Tables)
@@ -179,47 +176,58 @@ public sealed class DatabricksMetadataReader : SparkCatalogMetadataReader
         return result;
     }
 
-    private async Task ReadColumnTagsAsync(DbConnection connection, TableScope scope, CancellationToken cancellationToken)
+    public async Task<SchemaTagMetadata> ReadTagsAsync(DbConnection connection, DiscoveryOptions options,
+        SchemaMetadata metadata, CancellationToken cancellationToken)
     {
-        foreach (var catalog in scope.Names.GroupBy(name => name.Catalog, StringComparer.Ordinal))
+        var scopes = metadata.Tables.ToLookup(table => table.Identity.Catalog);
+        var catalogs = scopes.Select(scope => scope.Key).Concat(options.Catalogs)
+            .Concat(options.Tables.Select(table => table.Catalog).OfType<string>()).Distinct().ToArray();
+        var unityCatalogs = scopes.Where(scope => scope.Key is not null && !DatabricksTags.IsLegacyCatalog(scope.Key)).ToArray();
+        var hasUnsupported = catalogs.Any(catalog => catalog is null || DatabricksTags.IsLegacyCatalog(catalog));
+        var hasUnityCatalog = catalogs.Any(catalog => catalog is not null && !DatabricksTags.IsLegacyCatalog(catalog));
+        var initialCoverage = hasUnsupported
+            ? hasUnityCatalog ? MetadataCoverage.Unrepresentable : MetadataCoverage.Unsupported
+            : MetadataCoverage.Available;
+        var tableCoverage = initialCoverage;
+        var columnCoverage = initialCoverage;
+        var tables = new Dictionary<MetadataName, IReadOnlyDictionary<string, string>>();
+        var columns = new Dictionary<(MetadataName, string), IReadOnlyDictionary<string, string>>();
+        foreach (var catalog in unityCatalogs)
         {
-            if (DatabricksColumnTags.IsLegacyCatalog(catalog.Key))
-            {
-                foreach (var table in catalog)
-                    read!.Diagnostics.Add(new("SDS003", SchemaFeature.ColumnAnnotations, MetadataCoverage.Unsupported,
-                        "Databricks column tags require Unity Catalog.", table));
-                continue;
-            }
-
-            try
-            {
-                var rows = await QueryAsync(connection, $"""
-                    SELECT catalog_name, schema_name, table_name, column_name, tag_name, tag_value
-                    FROM {Quote(catalog.Key!)}.information_schema.column_tags
-                    """, cancellationToken).ConfigureAwait(false);
-                foreach (var column in rows.Where(row => scope.Names.Contains(Identity(row)) && row.Text("column_name") is not null)
-                    .GroupBy(row => new StructuredColumnIdentity(Identity(row), row.Text("column_name")!)))
-                {
-                    var tags = DatabricksColumnTags.Read(column, message =>
-                        read!.Diagnostics.Add(new("SDS004", SchemaFeature.ColumnAnnotations,
-                            MetadataCoverage.Unrepresentable, message, Identity(column.First()))));
-                    read!.ColumnTags.Add(column.Key, tags);
-                }
-            }
-            catch (DbException)
-            {
-                cancellationToken.ThrowIfCancellationRequested();
-                foreach (var table in catalog)
-                    read!.Inaccessible(SchemaFeature.ColumnAnnotations, table, "Databricks column tags could not be read.");
-            }
+            var info = $"{Quote(catalog.Key!)}.information_schema";
+            tableCoverage = await ReadTagScopeAsync(connection, $"""
+                SELECT catalog_name, schema_name, table_name, tag_name, tag_value FROM {info}.table_tags
+                """, catalog.Select(table => table.Identity).ToHashSet(), Identity, tables, tableCoverage, cancellationToken).ConfigureAwait(false);
+            columnCoverage = await ReadTagScopeAsync(connection, $"""
+                SELECT catalog_name, schema_name, table_name, column_name, tag_name, tag_value FROM {info}.column_tags
+                """, catalog.SelectMany(table => table.Columns.Select(column => (table.Identity, column.Name))).ToHashSet(),
+                row => (Identity(row), row.Text("column_name")!), columns, columnCoverage, cancellationToken).ConfigureAwait(false);
         }
+
+        return new() { Tables = tables, Columns = columns, TableCoverage = tableCoverage, ColumnCoverage = columnCoverage };
     }
 
-    protected override MetadataColumn MapColumn(CatalogRow row)
+    private static async Task<MetadataCoverage> ReadTagScopeAsync<TKey>(DbConnection connection, string sql, HashSet<TKey> scope,
+        Func<CatalogRow, TKey> identify, Dictionary<TKey, IReadOnlyDictionary<string, string>> destination,
+        MetadataCoverage coverage, CancellationToken cancellationToken) where TKey : notnull
     {
-        var column = base.MapColumn(row);
-        return read?.ColumnTags.GetValueOrDefault(new(Identity(row), column.Name)) is { } tags
-            ? column with { Annotations = tags } : column;
+        try
+        {
+            var rows = await QueryAsync(connection, sql, cancellationToken).ConfigureAwait(false);
+            foreach (var group in rows.GroupBy(identify).Where(group => scope.Contains(group.Key)))
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                destination.Add(group.Key, DatabricksTags.Read(group, out var complete));
+                if (!complete && coverage != MetadataCoverage.Inaccessible)
+                    coverage = MetadataCoverage.Unrepresentable;
+            }
+            return coverage;
+        }
+        catch (DbException)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            return MetadataCoverage.Inaccessible;
+        }
     }
 
     private async Task<List<CatalogRow>?> ReadTablePropertiesAsync(DbConnection connection, MetadataName name, CancellationToken cancellationToken)
@@ -401,7 +409,6 @@ public sealed class DatabricksMetadataReader : SparkCatalogMetadataReader
         public TableScope? Scope { get; set; }
         public List<DiscoveryDiagnostic> Diagnostics { get; } = [];
         public Dictionary<MetadataName, List<CatalogRow>?> Properties { get; } = [];
-        public Dictionary<StructuredColumnIdentity, IReadOnlyDictionary<string, string>> ColumnTags { get; } = [];
 
         public void Inaccessible(SchemaFeature feature, MetadataName? name, string message)
             => Diagnostics.Add(new("SDS002", feature, MetadataCoverage.Inaccessible, message, name));

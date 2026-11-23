@@ -54,7 +54,7 @@ Use the shortcut path in the URL. The mapper rejects a raw HTTP endpoint path an
 
 Use `WithInformationalKeys()` to accept Unity Catalog's informational primary and foreign keys. Use `WithInformationalKeys(supportsUnique: true)` on compute that supports informational `UNIQUE` and foreign keys that reference it. Deployment checks the visible keys of existing parent tables before applying replacement commands. [Databricks key constraints](https://docs.databricks.com/aws/en/sql/language-manual/sql-ref-syntax-ddl-create-table-constraint) · [Unity Catalog metadata visibility](https://docs.databricks.com/aws/en/sql/language-manual/sql-ref-information-schema)
 
-DubUrl discovers Unity Catalog column tags through each catalog's `information_schema.column_tags` and restores them using `ALTER TABLE ... ALTER COLUMN ... SET TAGS`. Column comments remain native comments. The legacy Hive metastore does not support this tag path.
+DubUrl discovers Unity Catalog table and column tags through each catalog's `information_schema.table_tags` and `information_schema.column_tags`. Deployment uses `SET TAGS` on the table or column. Column comments remain native comments. Older schema documents that declare column tags under `annotations` still deploy. When a column declares the same key in both maps, matching values are applied once and different values cause planning to fail. Tagging requires Unity Catalog.
 
 ## Table annotations
 
