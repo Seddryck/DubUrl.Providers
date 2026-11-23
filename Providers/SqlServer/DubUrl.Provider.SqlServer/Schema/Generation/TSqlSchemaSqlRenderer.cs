@@ -8,7 +8,7 @@ using DubUrl.Schema.Renderers;
 namespace DubUrl.Provider.SqlServer.Schema.Generation;
 
 internal sealed class TSqlSchemaSqlRenderer : StandardSchemaSqlRenderer, IUniqueConstraintSqlRenderer, IColumnDefaultSqlRenderer,
-    IStructuredColumnSqlRenderer, IHierarchySqlRenderer, IColumnDefinitionSqlRenderer, ITableAnnotationSqlRenderer, IColumnAnnotationSqlRenderer
+    IStructuredColumnSqlRenderer, IHierarchySqlRenderer, IColumnDefinitionSqlRenderer, ITableAnnotationSqlRenderer, IColumnAnnotationSqlRenderer, ITableTagSqlRenderer, IColumnTagSqlRenderer
 {
     internal static TSqlSchemaSqlRenderer Default { get; } = new();
     internal const int NativeStructuredVersion = 17;
@@ -191,7 +191,7 @@ internal sealed class TSqlSchemaSqlRenderer : StandardSchemaSqlRenderer, IUnique
         var commands = new List<SchemaSqlCommand>(annotations.Count);
         foreach (var (key, value) in annotations.OrderBy(item => item.Key, StringComparer.Ordinal))
         {
-            if (!IsAnnotationName(key))
+            if (!IsAnnotationName(key) || SqlServerTags.IsReserved(key))
                 throw new NotSupportedException($"SQL Server extended property '{key}' cannot be used as a table annotation.");
             if (value.Length > MaxExtendedPropertyValueLength)
                 throw new NotSupportedException($"SQL Server annotation '{key}' exceeds 7,500 bytes (3,750 UTF-16 code units).");
@@ -235,11 +235,33 @@ internal sealed class TSqlSchemaSqlRenderer : StandardSchemaSqlRenderer, IUnique
         var target = new SchemaSqlObjectName(table.Name, table.Schema, table.Database, table.Catalog);
         return annotations.SelectMany(column => column.Value.OrderBy(pair => pair.Key, StringComparer.Ordinal).Select(pair =>
         {
-            if (!IsAnnotationName(pair.Key) || pair.Value.Length > MaxExtendedPropertyValueLength)
+            if (!IsAnnotationName(pair.Key) || SqlServerTags.IsReserved(pair.Key) || pair.Value.Length > MaxExtendedPropertyValueLength)
                 throw new NotSupportedException($"SQL Server extended property '{pair.Key}' cannot be used as a column annotation.");
             return new SchemaSqlCommand(RenderExtendedProperty(target, pair.Key, pair.Value, column.Key),
                 SchemaSqlOperation.Comment, $"{table}.{column.Key}");
         })).ToArray();
+    }
+
+    public IReadOnlyList<SchemaSqlCommand> PlanTableTags(IDialect dialect, DatabaseObjectName table,
+        IReadOnlyDictionary<string, string> tags)
+        => PlanTags(table, null, tags).ToArray();
+
+    public IReadOnlyList<SchemaSqlCommand> PlanColumnTags(IDialect dialect, DatabaseObjectName table,
+        IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>> tags)
+        => tags.SelectMany(column => PlanTags(table, column.Key, column.Value)).ToArray();
+
+    private static IEnumerable<SchemaSqlCommand> PlanTags(DatabaseObjectName table, string? column,
+        IReadOnlyDictionary<string, string> tags)
+    {
+        var target = new SchemaSqlObjectName(table.Name, table.Schema, table.Database, table.Catalog);
+        var objectName = column is null ? table.ToString() : $"{table}.{column}";
+        foreach (var (key, value) in tags.OrderBy(pair => pair.Key, StringComparer.Ordinal))
+        {
+            if (value.Length > MaxExtendedPropertyValueLength)
+                throw new NotSupportedException($"SQL Server tag '{key}' exceeds 7,500 bytes (3,750 UTF-16 code units).");
+            yield return new(RenderExtendedProperty(target, SqlServerTags.Encode(key), value, column),
+                SchemaSqlOperation.Comment, objectName);
+        }
     }
 
     private static string UnicodeLiteral(string value) => $"N'{value.Replace("'", "''")}'";

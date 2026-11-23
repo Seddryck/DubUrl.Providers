@@ -11,7 +11,7 @@ using DubUrl.Schema.Constraints;
 namespace DubUrl.Provider.SqlServer.Discovery;
 
 public sealed class SqlServerMetadataReader : CatalogSchemaMetadataReader, ISchemaMetadataReader,
-    IUniqueConstraintMetadataReader, IStructuredColumnMetadataReader, IHierarchyMetadataReader
+    IUniqueConstraintMetadataReader, IStructuredColumnMetadataReader, IHierarchyMetadataReader, ISchemaTagMetadataReader
 {
     private readonly ConditionalWeakTable<MetadataKey, UniqueConstraintMetadata> nullPolicies = new();
     private readonly ConditionalWeakTable<MetadataColumn, StructuredColumnMetadata> structuredTypes = new();
@@ -64,7 +64,7 @@ public sealed class SqlServerMetadataReader : CatalogSchemaMetadataReader, ISche
             foreach (var property in properties[table.Identity])
             {
                 var name = property.Text("property_name")!;
-                if (SqlServerHierarchy.IsHierarchyAnnotation(name))
+                if (SqlServerHierarchy.IsHierarchyAnnotation(name) || SqlServerTags.IsReserved(name))
                     continue;
                 var value = property.Text("property_value");
                 if (TSqlSchemaSqlRenderer.IsAnnotationName(name)
@@ -138,6 +138,8 @@ public sealed class SqlServerMetadataReader : CatalogSchemaMetadataReader, ISche
         foreach (var row in rows)
         {
             var name = row.Text("property_name")!;
+            if (SqlServerTags.IsReserved(name))
+                continue;
             var value = row.Text("property_value");
             if (TSqlSchemaSqlRenderer.IsAnnotationName(name)
                 && value is { Length: <= TSqlSchemaSqlRenderer.MaxExtendedPropertyValueLength })
@@ -163,6 +165,59 @@ public sealed class SqlServerMetadataReader : CatalogSchemaMetadataReader, ISche
         JOIN sys.columns c ON c.object_id=ep.major_id AND c.column_id=ep.minor_id
         WHERE ep.class=1 AND ep.name<>N'MS_Description' AND t.is_ms_shipped=0
         """;
+
+    private static readonly string TagsSql = $"""
+        SELECT s.name AS schema_name,t.name AS table_name,c.name AS column_name,ep.name AS property_name,
+          CASE WHEN CONVERT(sysname,SQL_VARIANT_PROPERTY(ep.value,'BaseType')) IN ('char','varchar','nchar','nvarchar')
+            THEN CONVERT(nvarchar(max),ep.value) END AS property_value
+        FROM sys.extended_properties ep
+        JOIN sys.tables t ON t.object_id=ep.major_id
+        JOIN sys.schemas s ON s.schema_id=t.schema_id
+        LEFT JOIN sys.columns c ON c.object_id=ep.major_id AND c.column_id=ep.minor_id
+        WHERE ep.class=1 AND (ep.minor_id=0 OR c.column_id IS NOT NULL) AND t.is_ms_shipped=0
+          AND ep.name COLLATE Latin1_General_100_CI_AS LIKE N'{SqlServerTags.Prefix}%'
+        """;
+
+    public async Task<SchemaTagMetadata> ReadTagsAsync(DbConnection connection, DiscoveryOptions options,
+        SchemaMetadata metadata, CancellationToken cancellationToken)
+    {
+        if (metadata.Tables.Count == 0)
+            return new() { TableCoverage = MetadataCoverage.Available, ColumnCoverage = MetadataCoverage.Available };
+
+        try
+        {
+            var rows = await QueryAsync(connection, TagsSql, cancellationToken).ConfigureAwait(false);
+            var tables = metadata.Tables.ToDictionary(table => table.Identity);
+            var scopedRows = rows.Where(row => SqlServerTags.IsReserved(row.Text("property_name")!)
+                && tables.TryGetValue(Identity(row), out var table)
+                && (row.Text("column_name") is not { } column || table.Columns.Any(item => item.Name == column)));
+            var tableTags = new Dictionary<MetadataName, IReadOnlyDictionary<string, string>>();
+            var columnTags = new Dictionary<(MetadataName, string), IReadOnlyDictionary<string, string>>();
+            var tableCoverage = MetadataCoverage.Available;
+            var columnCoverage = MetadataCoverage.Available;
+            foreach (var group in scopedRows.GroupBy(row => (Table: Identity(row), Column: row.Text("column_name"))))
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                var tags = SqlServerTags.Read(group, out var complete);
+                if (group.Key.Column is { } column)
+                {
+                    columnTags.Add((group.Key.Table, column), tags);
+                    if (!complete) columnCoverage = MetadataCoverage.Unrepresentable;
+                }
+                else
+                {
+                    tableTags.Add(group.Key.Table, tags);
+                    if (!complete) tableCoverage = MetadataCoverage.Unrepresentable;
+                }
+            }
+            return new() { Tables = tableTags, Columns = columnTags, TableCoverage = tableCoverage, ColumnCoverage = columnCoverage };
+        }
+        catch (DbException)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            return new() { TableCoverage = MetadataCoverage.Inaccessible, ColumnCoverage = MetadataCoverage.Inaccessible };
+        }
+    }
 
     public async Task<StructuredSchemaMetadata> ReadWithStructuredTypesAsync(DbConnection connection,
         DiscoveryOptions options, CancellationToken cancellationToken)
