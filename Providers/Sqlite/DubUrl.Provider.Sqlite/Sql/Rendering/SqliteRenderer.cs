@@ -1,4 +1,4 @@
-﻿using DubUrl.Querying;
+using DubUrl.Querying;
 using DubUrl.Querying.Dialects;
 using DubUrl.Querying.Dialects.Renderers;
 using DubUrl.Querying.Dialects.Formatters;
@@ -21,13 +21,6 @@ internal class SqliteRenderer : AnsiRenderer
                     .With(new FunctionFormatter<DateTimeOffset>("datetime", new TimestampTimeZoneFormatter()))
                     .With(new FunctionFormatter<TimeSpan>("time", new IntervalAsTimeFormatter()))
               , new NullFormatter()
-              , new SqliteIdentifierFormatter())
+              , new IdentifierQuotedFormatter())
     { }
-}
-
-/// <summary>Formats one literal component; qualification belongs to the object-name renderer.</summary>
-internal sealed class SqliteIdentifierFormatter : IdentifierQuotedFormatter
-{
-    protected override string SurroundByQuotes(string value)
-        => $"\"{value.Replace("\"", "\"\"", StringComparison.Ordinal)}\"";
 }

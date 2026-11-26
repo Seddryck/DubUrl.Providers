@@ -1,4 +1,5 @@
 using DubUrl.Provider.Oracle.Schema.Generation;
+using DubUrl.Provider.Oracle.Sql.Rendering;
 using DubUrl.Querying;
 using DubUrl.Querying.Dialects;
 using DubUrl.Querying.Dialects.Casters;
@@ -16,7 +17,7 @@ namespace DubUrl.Provider.Oracle.Sql;
 
 [DbTypeMapper<AnsiTypeMapper>]
 [SqlFunctionMapper<AnsiFunctionMapper>]
-[Renderer<AnsiRenderer>()]
+[Renderer<OracleRenderer>()]
 [ReturnCaster<DateTimeCaster<DateOnly>>]
 [ParentLanguage<SqlLanguage>]
 public class OracleDialect : BaseDialect

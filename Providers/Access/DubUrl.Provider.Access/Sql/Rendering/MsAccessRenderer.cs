@@ -1,4 +1,4 @@
-﻿using DubUrl.Querying;
+using DubUrl.Querying;
 using DubUrl.Querying.Dialects;
 using DubUrl.Querying.Dialects.Renderers;
 using DubUrl.Querying.Dialects.Formatters;
@@ -10,14 +10,22 @@ using System.Threading.Tasks;
 
 namespace DubUrl.Provider.Access.Sql.Rendering;
 
-internal class MsAccessRenderer : AnsiRenderer
+internal sealed class MsAccessRenderer : AnsiRenderer
 {
     public MsAccessRenderer()
         : base(new ValueFormatter()
                     .With(new DateCrossSurroundingFormatter())
               , new NullFormatter()
-              , new IdentifierSquareBracketFormatter()) { }
+              , new AccessIdentifierFormatter()) { }
 
-    protected MsAccessRenderer(BaseValueFormatter value)
-        : base(value, new NullFormatter(), new IdentifierBacktickFormatter()) { }
+    private sealed class AccessIdentifierFormatter : IdentifierQuotedFormatter
+    {
+        protected override string SurroundByQuotes(string value)
+        {
+            if (value.Contains('[') || value.Contains(']'))
+                throw new InvalidIdentifierException("Access identifiers cannot contain square brackets.");
+
+            return $"[{value}]";
+        }
+    }
 }
