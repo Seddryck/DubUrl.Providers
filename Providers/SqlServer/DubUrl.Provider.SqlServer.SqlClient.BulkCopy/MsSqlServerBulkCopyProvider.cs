@@ -10,13 +10,19 @@ public sealed class MsSqlServerBulkCopyProvider : IBulkCopyProvider
         => new Engine(connectionUrl, dependencies);
 
     internal static SqlBulkCopyOptions GetSqlClientOptions(BulkCopyOptions options)
-        => options.TableLock ? SqlBulkCopyOptions.TableLock : SqlBulkCopyOptions.Default;
+    {
+        var nativeOptions = options.TableLock ? SqlBulkCopyOptions.TableLock : SqlBulkCopyOptions.Default;
+        if (options.TransactionMode == BulkCopyTransactionMode.PerBatch)
+            nativeOptions |= SqlBulkCopyOptions.UseInternalTransaction;
+        return nativeOptions;
+    }
 
-    internal static SqlBulkCopy CreateBulkCopy(SqlConnection connection, string tableName, BulkCopyOptions options = default)
-        => new(connection, GetSqlClientOptions(options), externalTransaction: null)
+    internal static SqlBulkCopy CreateBulkCopy(SqlConnection connection, string tableName,
+        BulkCopyOptions options = default, SqlTransaction? transaction = null)
+        => new(connection, GetSqlClientOptions(options), transaction)
         {
             DestinationTableName = tableName,
-            BatchSize = 1000,
+            BatchSize = options.BatchSize ?? BulkCopyOptions.DefaultBatchSize,
             EnableStreaming = true,
             BulkCopyTimeout = 0
         };
@@ -28,13 +34,28 @@ public sealed class MsSqlServerBulkCopyProvider : IBulkCopyProvider
 
         public void Write(string tableName, IDataReader dataReader, BulkCopyOptions options)
         {
+            options.Validate();
             using var connection = connectionUrl.Open();
             dependencies.Execute(connection.GetType().Assembly, () =>
             {
                 if (connection is not SqlConnection sqlConnection)
                     throw new NotSupportedException("The SQL Server bulk-copy adapter requires a Microsoft.Data.SqlClient connection.");
-                using var bulkCopy = CreateBulkCopy(sqlConnection, tableName, options);
-                bulkCopy.WriteToServer(dataReader);
+                using var transaction = options.TransactionMode == BulkCopyTransactionMode.WholeCopy
+                    ? sqlConnection.BeginTransaction()
+                    : null;
+                using var bulkCopy = CreateBulkCopy(sqlConnection, tableName, options, transaction);
+                if (options.TransactionMode == BulkCopyTransactionMode.PerBatch)
+                {
+                    using var batchReader = new BatchDataReader(dataReader, bulkCopy.BatchSize);
+                    while (batchReader.StartBatch())
+                        bulkCopy.WriteToServer(batchReader);
+                }
+                else
+                {
+                    bulkCopy.WriteToServer(dataReader);
+                }
+
+                transaction?.Commit();
             });
         }
 

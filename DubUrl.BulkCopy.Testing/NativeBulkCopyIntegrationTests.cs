@@ -20,13 +20,16 @@ public class NativeBulkCopyIntegrationTests
         => Assert.That(MsSqlServerBulkCopyProvider.GetSqlClientOptions(new BulkCopyOptions { TableLock = tableLock }),
             Is.EqualTo(expected));
 
-    [Test]
-    public void DuckDb_RejectsTableLockBeforeOpeningTheConnectionOrReading()
+    [TestCase(BulkCopyTransactionMode.ProviderDefault)]
+    [TestCase(BulkCopyTransactionMode.WholeCopy)]
+    [TestCase(BulkCopyTransactionMode.PerBatch)]
+    public void DuckDb_RejectsTableLockBeforeOpeningTheConnectionOrReading(BulkCopyTransactionMode mode)
     {
         var url = new TestConnectionUrl(GetDialect<DuckDbDialect>(), bulkCopyProvider: new DuckDbBulkCopyProvider());
         var reader = new Mock<IDataReader>(MockBehavior.Strict);
 
-        Assert.That(() => url.BulkCopy("Customer", reader.Object, new BulkCopyOptions { TableLock = true }),
+        Assert.That(() => url.BulkCopy("Customer", reader.Object,
+            new BulkCopyOptions { TableLock = true, TransactionMode = mode }),
             Throws.TypeOf<NotSupportedException>().With.Message.Contains("TableLock"));
         reader.VerifyNoOtherCalls();
     }

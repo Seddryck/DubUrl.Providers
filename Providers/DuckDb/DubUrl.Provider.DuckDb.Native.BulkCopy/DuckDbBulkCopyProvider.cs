@@ -14,25 +14,66 @@ public sealed class DuckDbBulkCopyProvider : IBulkCopyProvider
     private sealed class Engine(ConnectionUrl connectionUrl, IBulkCopyDependencyResolver dependencies) : IBulkCopyEngine
     {
         public void Write(string tableName, IDataReader dataReader)
+            => Write(tableName, dataReader, default);
+
+        public void Write(string tableName, IDataReader dataReader, BulkCopyOptions options)
         {
+            options.Validate();
+            if (options.TableLock)
+                throw new NotSupportedException("TableLock is not supported by the DuckDB bulk-copy provider.");
+
             using var connection = connectionUrl.Open();
             dependencies.Execute(connection.GetType().Assembly, () =>
             {
                 if (connection is not DuckDBConnection duckDb)
                     throw new NotSupportedException("The DuckDB bulk-copy adapter requires a DuckDB.NET.Data connection.");
+                if (options.TransactionMode == BulkCopyTransactionMode.PerBatch)
+                {
+                    CopyBatches(duckDb, tableName, dataReader, options.BatchSize ?? BulkCopyOptions.DefaultBatchSize);
+                    return;
+                }
+
+                using var transaction = options.TransactionMode == BulkCopyTransactionMode.WholeCopy
+                    ? duckDb.BeginTransaction()
+                    : null;
                 using var appender = duckDb.CreateAppender(tableName);
                 while (dataReader.Read())
-                {
-                    var row = appender.CreateRow();
-                    for (var i = 0; i < dataReader.FieldCount; i++)
-                        Append(row, dataReader[i]);
-                    row.EndRow();
-                }
+                    AppendRow(appender, dataReader);
                 appender.Close();
+                transaction?.Commit();
             });
         }
 
         public void Dispose() { }
+    }
+
+    private static void CopyBatches(DuckDBConnection connection, string tableName, IDataReader dataReader, int batchSize)
+    {
+        while (dataReader.Read())
+        {
+            using var transaction = connection.BeginTransaction();
+            using var appender = connection.CreateAppender(tableName);
+            var rowsRemaining = batchSize;
+            do
+            {
+                AppendRow(appender, dataReader);
+                rowsRemaining--;
+            }
+            while (rowsRemaining > 0 && dataReader.Read());
+
+            appender.Close();
+            transaction.Commit();
+            if (rowsRemaining > 0)
+                return;
+        }
+    }
+
+    private static void AppendRow(DuckDB.NET.Data.DuckDBAppender appender, IDataReader dataReader)
+    {
+        var row = appender.CreateRow();
+        for (var i = 0; i < dataReader.FieldCount; i++)
+            Append(row, dataReader[i]);
+        row.EndRow();
     }
 
     internal static void Append(IDuckDBAppenderRow row, object? value)
