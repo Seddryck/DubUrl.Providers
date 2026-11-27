@@ -1,4 +1,4 @@
-﻿using DubUrl.Querying;
+using DubUrl.Querying;
 using DubUrl.Querying.Dialects;
 using DubUrl.Querying.Dialects.Renderers;
 using DubUrl.Querying.Dialects.Formatters;
@@ -16,15 +16,8 @@ internal class MySqlRenderer : AnsiRenderer
         : base(new ValueFormatter()
                     .With(new FunctionFormatter<TimeSpan>("TIME", new IntervalAsTimeFormatter()))
               , new NullFormatter()
-              , new MySqlIdentifierFormatter()) { }
+              , new IdentifierBacktickFormatter()) { }
 
     protected MySqlRenderer(BaseValueFormatter value)
-        : base(value, new NullFormatter(), new MySqlIdentifierFormatter()) { }
-}
-
-internal sealed class MySqlIdentifierFormatter : IIdentifierFormatter
-{
-    public string Format(string value) => "`" + value.Replace("`", "``", StringComparison.Ordinal) + "`";
-
-    public string Format(object value) => Format((string)value);
+        : base(value, new NullFormatter(), new IdentifierBacktickFormatter()) { }
 }

@@ -4,6 +4,7 @@ using DubUrl.Provider.SqlServer.Discovery;
 using DubUrl.Provider.SqlServer.Sql;
 using DubUrl.Querying.Dialects;
 using DubUrl.Providers.QA.Contracts.Schema;
+using DubUrl.Schema.Constraints;
 using Microsoft.Data.SqlClient;
 using NUnit.Framework;
 
@@ -54,7 +55,9 @@ public sealed class SqlServerDiscoveryTests : DiscoveryContract
             var result = await new DubUrl.Schema.SchemaInspector().InspectAsync(connection, CreateReader(), options);
             Assert.That(result.IsComplete, Is.False);
             var diagnostics = result.Diagnostics.Where(item => item.Code == "SDI009").ToArray();
-            Assert.That(diagnostics, Has.Length.EqualTo(5));
+            Assert.That(diagnostics, Has.Length.EqualTo(4));
+            var check = result.Schema!.Tables.Values.Single().Constraints.OfType<PredicateCheckConstraint>().Single();
+            Assert.That(check.Name, Is.EqualTo(checkName));
             Assert.That(diagnostics.Select(item => item.Object), Is.All.EqualTo(new MetadataName("sample", schema)));
             var filtered = await new DubUrl.Schema.SchemaInspector().InspectAsync(connection, CreateReader(),
                 options with { Schemas = [], Tables = [new("missing", schema)] });

@@ -2,7 +2,7 @@
 param(
     [ValidatePattern('^[0-9a-f]{40}$')]
     [string] $SourceCommit,
-    [string] $DubUrlVersion = '0.70.0'
+    [string] $DubUrlVersion
 )
 
 $ErrorActionPreference = 'Stop'
@@ -12,6 +12,12 @@ if (-not $SourceCommit) {
 }
 
 $root = Split-Path $PSScriptRoot
+if (-not $DubUrlVersion) {
+    $project = Join-Path $root 'QA/DubUrl.Providers.Testing/DubUrl.Providers.Testing.csproj'
+    $DubUrlVersion = dotnet msbuild $project -getProperty:DubUrlVersion
+    if ($LASTEXITCODE -ne 0 -or -not $DubUrlVersion) { throw 'Could not read the pinned DubUrl version.' }
+}
+
 $source = Join-Path $root 'artifacts/schema-source'
 $feed = Join-Path $root 'artifacts/schema-feed'
 $inputs = [Text.Encoding]::UTF8.GetBytes("$SourceCommit/$DubUrlVersion")
