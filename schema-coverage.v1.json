@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "providerCommit": "141076dbe5a06f9b2c242cf9562bc73179c2d1e0",
-  "runUrl": "https://github.com/Seddryck/DubUrl.Providers/actions/runs/46031229521/attempts/1",
+  "providerCommit": "20d5f745f3b89b6026557c3c794fcb67962a6497",
+  "runUrl": "https://github.com/Seddryck/DubUrl.Providers/actions/runs/46040895791/attempts/1",
   "dubUrlVersion": "0.70.2",
   "dubUrlSchemaVersion": "0.111.0",
   "features": [
