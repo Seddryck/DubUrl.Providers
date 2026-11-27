@@ -1,3 +1,4 @@
+using System.Globalization;
 using DubUrl.Provider.Odbc.Rewriting;
 using DubUrl.Adomd.Mapping;
 using DubUrl.Mapping;
@@ -10,7 +11,6 @@ using NUnit.Framework;
 namespace DubUrl.Provider.SsasTabular.QA.Connection;
 
 [TestFixture, Category("SsasTabular"), NonParallelizable, Platform("Win")]
-[Ignore("A pre-provisioned SSAS Tabular AdventureWorks instance is required; the legacy QA harness did not deploy one.")]
 public sealed class SsasTabularTests : AdomdContract
 {
     protected override SchemeRegistry CreateSchemeRegistry()
@@ -29,4 +29,22 @@ public sealed class SsasTabularTests : AdomdContract
     protected override string SelectAllCustomersSql => string.Empty;
     protected override string SelectYoungestCustomersSql => string.Empty;
     protected override string SelectWhereCustomersTemplate => string.Empty;
+
+    protected override bool SupportsCustomerQueries => false;
+    protected override bool SupportsParameters => false;
+    protected override bool SupportsRepositories => false;
+    protected override bool SupportsMicroOrm => false;
+    protected override bool SupportsDapper => false;
+
+    [Test, Category("AdventureWorks")]
+    public void QueryAdventureWorks()
+    {
+        using var connection = CreateLiveConnectionUrl().Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = @"EVALUATE ROW(""Internet Sales"", COUNTROWS('Internet Sales'))";
+        using var reader = command.ExecuteReader();
+        Assert.That(reader.Read(), Is.True);
+        Assert.That(reader.IsDBNull(0), Is.False);
+        Assert.That(Convert.ToDecimal(reader.GetValue(0), CultureInfo.InvariantCulture), Is.GreaterThan(0m));
+    }
 }

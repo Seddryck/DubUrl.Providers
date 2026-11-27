@@ -1,3 +1,4 @@
+using System.Globalization;
 using DubUrl.Provider.Odbc.Rewriting;
 using DubUrl.Adomd.Mapping;
 using DubUrl.Mapping;
@@ -10,7 +11,6 @@ using NUnit.Framework;
 namespace DubUrl.Provider.SsasMultidim.QA.Connection;
 
 [TestFixture, Category("SsasMultidim"), NonParallelizable, Platform("Win")]
-[Ignore("A pre-provisioned SSAS Multidimensional AdventureWorks instance is required; the legacy QA harness did not deploy one.")]
 public sealed class SsasMultidimTests : AdomdContract
 {
     protected override SchemeRegistry CreateSchemeRegistry()
@@ -29,4 +29,23 @@ public sealed class SsasMultidimTests : AdomdContract
     protected override string SelectAllCustomersSql => string.Empty;
     protected override string SelectYoungestCustomersSql => string.Empty;
     protected override string SelectWhereCustomersTemplate => string.Empty;
+
+    protected override bool SupportsPrimitives => false;
+    protected override bool SupportsCustomerQueries => false;
+    protected override bool SupportsParameters => false;
+    protected override bool SupportsRepositories => false;
+    protected override bool SupportsMicroOrm => false;
+    protected override bool SupportsDapper => false;
+
+    [Test, Category("AdventureWorks")]
+    public void QueryAdventureWorks()
+    {
+        using var connection = CreateLiveConnectionUrl().Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = @"SELECT {[Measures].[Internet Sales Amount]} ON COLUMNS FROM [Adventure Works]";
+        using var reader = command.ExecuteReader();
+        Assert.That(reader.Read(), Is.True);
+        Assert.That(reader.IsDBNull(0), Is.False);
+        Assert.That(Convert.ToDecimal(reader.GetValue(0), CultureInfo.InvariantCulture), Is.GreaterThan(0m));
+    }
 }
