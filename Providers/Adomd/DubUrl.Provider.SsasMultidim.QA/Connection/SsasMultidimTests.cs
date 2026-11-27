@@ -48,4 +48,18 @@ public sealed class SsasMultidimTests : AdomdContract
         Assert.That(reader.IsDBNull(0), Is.False);
         Assert.That(Convert.ToDecimal(reader.GetValue(0), CultureInfo.InvariantCulture), Is.GreaterThan(0m));
     }
+
+    [Test, Category("AdventureWorks")]
+    public void QueryMemberWithClosingBracketInTemplateIdentifier()
+    {
+        const string template = """
+            WITH MEMBER [Measures].$member; format="identity"$ AS 42
+            SELECT {[Measures].$member; format="identity"$} ON COLUMNS
+            FROM [Adventure Works]
+            """;
+        var database = new DatabaseUrl(new ConnectionUrlFactory(CliRegistry), ConnectionUrl);
+        var parameters = new Dictionary<string, object?> { ["member"] = "DubUrl]Template Test" };
+
+        Assert.That(database.ReadScalarNonNull<decimal>(template, parameters), Is.EqualTo(42m));
+    }
 }
