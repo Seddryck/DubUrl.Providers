@@ -2,7 +2,7 @@
 param(
     [Parameter(Mandatory)][ValidateSet('PostgreSql','Sqlite','DuckDb','SqlServer','Oracle','SingleStore','MySql')][string]$Database,
     [ValidateSet('net10.0')][string]$Framework = 'net10.0',
-    [string]$DubUrlVersion = '0.67.1',
+    [string]$DubUrlVersion,
     [string]$Version = '0.0.0',
     [string]$ResultsDirectory
 )
@@ -36,11 +36,14 @@ $env:DUBURL_POSTGRESQL_DISCOVERY_QA_CONNECTION_STRING = $env:DUBURL_POSTGRESQL_Q
 $env:DUBURL_SQLSERVER_DISCOVERY_QA_CONNECTION_STRING = "Server=127.0.0.1,$port;Database=master;User ID=sa;Password=$password;TrustServerCertificate=true"
 $env:DUBURL_ORACLE_QA_CONNECTION_STRING = "Data Source=127.0.0.1:$port/FREEPDB1;User Id=system;Password=$password"
 $env:DUBURL_SINGLESTORE_QA_CONNECTION_STRING = "Server=127.0.0.1;Port=$port;Database=DubUrl;User ID=root;Password=$password"
+$coreVersionArgs = @()
+if ($DubUrlVersion) { $coreVersionArgs = @("-p:DubUrlVersion=$DubUrlVersion") }
+
 Push-Location $root
 try {
-    dotnet restore $project -p:TargetFramework=$Framework -p:DubUrlVersion=$DubUrlVersion -p:Version=$Version --nologo
+    dotnet restore $project -p:TargetFramework=$Framework @coreVersionArgs -p:Version=$Version --nologo
     if ($LASTEXITCODE) { throw 'QA restore failed.' }
-    dotnet build $project -c Release -f $Framework --no-restore -p:DubUrlVersion=$DubUrlVersion -p:Version=$Version --nologo
+    dotnet build $project -c Release -f $Framework --no-restore @coreVersionArgs -p:Version=$Version --nologo
     if ($LASTEXITCODE) { throw 'QA build failed.' }
     if ($container) {
         docker compose -f $compose -p $composeProject up -d --wait --wait-timeout 900
