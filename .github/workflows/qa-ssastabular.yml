@@ -26,6 +26,10 @@ jobs:
       - name: Prepare Schema QA packages
         shell: pwsh
         run: ./build/Initialize-SchemaQa.ps1
+      - name: Install SSAS and restore AdventureWorks
+        uses: ./.github/actions/setup-ssas-qa
+        with:
+          mode: tabular
       - name: Run provider QA
         shell: pwsh
         run: ./QA/DubUrl.QA/SsasTabular/deploy-ssastabular-test-env.ps1 -config Release -frameworks @('net8.0', 'net9.0', 'net10.0')

@@ -2,4 +2,4 @@
 
 The live contract expects an SSAS Multidimensional instance on `localhost` with the AdventureWorks cube available as `multidim/AdventureWorks`.
 
-The legacy harness did not provision that proprietary service. The provider contract remains discoverable and explicitly skipped until a runner with that fixture is supplied.
+The GitHub-hosted Windows job installs SQL Server 2025 Enterprise Developer Analysis Services and restores the matching Microsoft AdventureWorks backup before running the live contract. For a local run, provision the same named instance and catalog first.

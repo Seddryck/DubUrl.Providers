@@ -1,0 +1,13 @@
+name: Set up SSAS for provider QA
+description: Install SQL Server 2025 Enterprise Developer Analysis Services and restore AdventureWorks.
+inputs:
+  mode:
+    description: SSAS instance to provision (tabular or multidim).
+    required: true
+runs:
+  using: composite
+  steps:
+    - shell: pwsh
+      env:
+        SSAS_QA_MODE: ${{ inputs.mode }}
+      run: '& "$env:GITHUB_ACTION_PATH/setup.ps1" -Mode $env:SSAS_QA_MODE'

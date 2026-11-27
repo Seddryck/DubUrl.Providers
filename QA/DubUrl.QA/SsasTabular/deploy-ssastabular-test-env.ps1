@@ -6,4 +6,4 @@ Param(
 . $PSScriptRoot\..\Run-ProviderQaSuite.ps1
 
 $project = Join-Path $PSScriptRoot "..\..\..\Providers\Adomd\DubUrl.Provider.SsasTabular.QA\DubUrl.Provider.SsasTabular.QA.csproj"
-Run-ProviderQaSuite -project $project -provider "ssastabular" -config $config -frameworks $frameworks
+Run-ProviderQaSuite -project $project -provider "ssastabular" -config $config -frameworks $frameworks -requiredCategories AdventureWorks
