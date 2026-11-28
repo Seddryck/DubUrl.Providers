@@ -5,7 +5,7 @@ using DubUrl.Provider.DuckDb.Native.BulkCopy;
 using DubUrl.Provider.SqlServer.SqlClient.BulkCopy;
 using DubUrl.Mapping;
 using DubUrl.Querying.Dialects;
-using DuckDB.NET.Data;
+using Microsoft.Data.SqlClient;
 using Moq;
 using NUnit.Framework;
 using static DubUrl.BulkCopy.Testing.BulkCopyEngineFactoryTests;
@@ -14,6 +14,23 @@ namespace DubUrl.BulkCopy.Testing;
 
 public class NativeBulkCopyIntegrationTests
 {
+    [TestCase(false, SqlBulkCopyOptions.Default)]
+    [TestCase(true, SqlBulkCopyOptions.TableLock)]
+    public void SqlServer_MapsTableLockToTheNativeOption(bool tableLock, SqlBulkCopyOptions expected)
+        => Assert.That(MsSqlServerBulkCopyProvider.GetSqlClientOptions(new BulkCopyOptions { TableLock = tableLock }),
+            Is.EqualTo(expected));
+
+    [Test]
+    public void DuckDb_RejectsTableLockBeforeOpeningTheConnectionOrReading()
+    {
+        var url = new TestConnectionUrl(GetDialect<DuckDbDialect>(), bulkCopyProvider: new DuckDbBulkCopyProvider());
+        var reader = new Mock<IDataReader>(MockBehavior.Strict);
+
+        Assert.That(() => url.BulkCopy("Customer", reader.Object, new BulkCopyOptions { TableLock = true }),
+            Throws.TypeOf<NotSupportedException>().With.Message.Contains("TableLock"));
+        reader.VerifyNoOtherCalls();
+    }
+
     [TestCase(false)]
     [TestCase(true)]
     public void NativeEngine_FailureDisposesDependencyScopeAndConnection(bool duckDb)
